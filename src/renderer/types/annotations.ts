@@ -4,6 +4,7 @@ export type AnnotationTool =
   | 'ink'
   | 'rectangle' | 'ellipse' | 'line' | 'arrow'
   | 'textbox' | 'stickynote' | 'stamp'
+  | 'redact'
 
 export type StampName = 'Approved' | 'Draft' | 'Confidential' | 'Rejected' | 'Custom'
 
@@ -56,6 +57,11 @@ export interface StampAnn extends AnnBase {
   imageDataUrl?: string
 }
 
+export interface RedactAnn extends AnnBase {
+  type: 'redact'
+  x1: number; y1: number; x2: number; y2: number  // PDF pts
+}
+
 export type Annotation =
   | HighlightAnn | InkAnn | ShapeAnn
-  | TextBoxAnn | StickyNoteAnn | StampAnn
+  | TextBoxAnn | StickyNoteAnn | StampAnn | RedactAnn

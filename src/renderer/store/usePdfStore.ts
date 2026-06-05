@@ -31,18 +31,34 @@ function computeFitScale(
   return Math.min((containerWidth - CANVAS_PADDING) / pw, (containerHeight - CANVAS_PADDING) / ph)
 }
 
-async function buildPdfDoc(bytes: Uint8Array) {
-  const pdfDoc = await pdfjsLib.getDocument({ data: bytes.slice(0) }).promise
-  const numPages = pdfDoc.numPages
-  const pageSizes = await Promise.all(
-    Array.from({ length: numPages }, (_, i) =>
-      pdfDoc.getPage(i + 1).then(p => {
-        const vp = p.getViewport({ scale: 1 })
-        return { width: vp.width, height: vp.height }
+async function buildPdfDoc(bytes: Uint8Array, password?: string) {
+  return new Promise<{ pdfDoc: PDFDocumentProxy; numPages: number; pageSizes: PageSize[] }>(
+    (resolve, reject) => {
+      const task = pdfjsLib.getDocument({
+        data: bytes.slice(0),
+        password: password ?? '',
       })
-    )
+      task.onPassword = (_updatePwd: (p: string) => void, reason: number) => {
+        if (password && reason === 2) {
+          reject(Object.assign(new Error('Wrong password'), { code: 'WrongPassword' }))
+        } else {
+          reject(Object.assign(new Error('Password required'), { code: 'NeedsPassword' }))
+        }
+      }
+      task.promise.then(async pdfDoc => {
+        const numPages = pdfDoc.numPages
+        const pageSizes = await Promise.all(
+          Array.from({ length: numPages }, (_, i) =>
+            pdfDoc.getPage(i + 1).then(p => {
+              const vp = p.getViewport({ scale: 1 })
+              return { width: vp.width, height: vp.height }
+            })
+          )
+        )
+        resolve({ pdfDoc, numPages, pageSizes })
+      }).catch(reject)
+    }
   )
-  return { pdfDoc, numPages, pageSizes }
 }
 
 interface PdfStore {
@@ -96,8 +112,11 @@ interface PdfStore {
   formCreationTool: FormCreationTool | null
   formsPanelOpen: boolean
 
+  // ── Security ─────────────────────────────────────────────────────────────────
+  encryptionSettings: { userPassword: string; ownerPassword: string; permissions: number } | null
+
   // ── Actions ─────────────────────────────────────────────────────────────────
-  loadPdf: (bytes: ArrayBuffer, filePath: string, fileName: string) => Promise<void>
+  loadPdf: (bytes: ArrayBuffer, filePath: string, fileName: string, password?: string) => Promise<void>
   reloadWithBytes: (bytes: Uint8Array) => Promise<void>
   getBakedBytes: () => Promise<Uint8Array>
 
@@ -136,6 +155,10 @@ interface PdfStore {
   setCustomStampDataUrl: (url: string | null) => void
   toggleAnnotationsPanel: () => void
   setOpenStickyNote: (id: string | null) => void
+
+  // ── Security actions ─────────────────────────────────────────────────────────
+  setEncryptionSettings: (s: { userPassword: string; ownerPassword: string; permissions: number } | null) => void
+  applyRedactions: () => Promise<void>
 
   // ── Form actions ─────────────────────────────────────────────────────────────
   setFormMode: (mode: boolean) => void
@@ -178,12 +201,15 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   formCreationTool: null,
   formsPanelOpen: false,
 
+  // ── Security defaults ────────────────────────────────────────────────────
+  encryptionSettings: null,
+
   // ── Loaders ──────────────────────────────────────────────────────────────
 
-  loadPdf: async (bytes, filePath, fileName) => {
+  loadPdf: async (bytes, filePath, fileName, password?) => {
     clearTextCache()
     const uint8 = new Uint8Array(bytes)
-    const { pdfDoc, numPages, pageSizes } = await buildPdfDoc(uint8)
+    const { pdfDoc, numPages, pageSizes } = await buildPdfDoc(uint8, password)
     const { containerWidth, containerHeight, zoomMode } = get()
     const scale = zoomMode === 'custom'
       ? get().scale
@@ -198,7 +224,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
       scale, currentPage: 1,
       searchOpen: false, searchQuery: '', searchMatches: [], activeMatchIndex: -1,
       selectedAnnotationId: null, openStickyNoteId: null, activeTool: null,
-      formMode: false, formCreationTool: null,
+      formMode: false, formCreationTool: null, encryptionSettings: null,
     })
     loadAllPageText(pdfDoc).catch(() => {})
   },
@@ -280,26 +306,31 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   },
 
   save: async () => {
-    const { filePath, pdfBytes, annotations, formFields } = get()
+    const { filePath, pdfBytes, annotations, formFields, encryptionSettings } = get()
     if (!pdfBytes || !filePath) return
     let baked = pdfBytes
     if (annotations.length > 0) baked = await writeAnnotationsToPdf(baked, annotations)
     if (formFields.length > 0) baked = await writeFormToBytes(baked, formFields)
+    if (encryptionSettings) {
+      baked = new Uint8Array(await window.electronAPI.mupdfEncrypt(baked.buffer as ArrayBuffer, encryptionSettings))
+    }
     await window.electronAPI.writeFile(filePath, baked.slice(0).buffer)
-    // Reload so new fields get persisted IDs and isNew → false
     const hasNew = formFields.some(f => f.isNew)
     if (hasNew) await get().reloadWithBytes(baked)
     else set({ isDirty: false })
   },
 
   saveAs: async () => {
-    const { fileName, pdfBytes, annotations, formFields } = get()
+    const { fileName, pdfBytes, annotations, formFields, encryptionSettings } = get()
     if (!pdfBytes) return
     const newPath = await window.electronAPI.saveFileDialog(fileName || 'document.pdf')
     if (!newPath) return
     let baked = pdfBytes
     if (annotations.length > 0) baked = await writeAnnotationsToPdf(baked, annotations)
     if (formFields.length > 0) baked = await writeFormToBytes(baked, formFields)
+    if (encryptionSettings) {
+      baked = new Uint8Array(await window.electronAPI.mupdfEncrypt(baked.buffer as ArrayBuffer, encryptionSettings))
+    }
     await window.electronAPI.writeFile(newPath, baked.slice(0).buffer)
     const newName = newPath.split(/[\\/]/).pop() ?? newPath
     const hasNew = formFields.some(f => f.isNew)
@@ -406,6 +437,22 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   setCustomStampDataUrl: (url) => set({ customStampDataUrl: url }),
   toggleAnnotationsPanel: () => set(s => ({ annotationsPanelOpen: !s.annotationsPanelOpen })),
   setOpenStickyNote: (id) => set({ openStickyNoteId: id }),
+
+  // ── Security actions ──────────────────────────────────────────────────────
+  setEncryptionSettings: (s) => set({ encryptionSettings: s, isDirty: true }),
+  applyRedactions: async () => {
+    const { annotations, getBakedBytes, applyEdit } = get()
+    const redactAnns = annotations.filter(a => a.type === 'redact')
+    if (redactAnns.length === 0) return
+    const baked = await getBakedBytes()
+    const areas = redactAnns.map(a => ({
+      pageNum: a.pageNum,
+      x1: (a as any).x1, y1: (a as any).y1,
+      x2: (a as any).x2, y2: (a as any).y2,
+    }))
+    const result = await window.electronAPI.mupdfApplyRedactions(baked.buffer as ArrayBuffer, areas)
+    await applyEdit(new Uint8Array(result))
+  },
 
   // ── Form actions ──────────────────────────────────────────────────────────
   setFormMode: (mode) => set({ formMode: mode, formCreationTool: null }),

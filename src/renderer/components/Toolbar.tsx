@@ -6,11 +6,13 @@ interface Props {
   onOpen: () => void
   onMerge: () => void
   onSplit: () => void
+  onMetadata: () => void
+  onSecurity: () => void
 }
 
 const ZOOM_PRESETS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]
 
-export default function Toolbar({ onOpen, onMerge, onSplit }: Props) {
+export default function Toolbar({ onOpen, onMerge, onSplit, onMetadata, onSecurity }: Props) {
   const fileName = usePdfStore(s => s.fileName)
   const numPages = usePdfStore(s => s.numPages)
   const currentPage = usePdfStore(s => s.currentPage)
@@ -21,6 +23,7 @@ export default function Toolbar({ onOpen, onMerge, onSplit }: Props) {
   const isDirty = usePdfStore(s => s.isDirty)
   const undoStack = usePdfStore(s => s.undoStack)
   const redoStack = usePdfStore(s => s.redoStack)
+  const encryptionSettings = usePdfStore(s => s.encryptionSettings)
 
   const setScale = usePdfStore(s => s.setScale)
   const setZoomMode = usePdfStore(s => s.setZoomMode)
@@ -112,6 +115,17 @@ export default function Toolbar({ onOpen, onMerge, onSplit }: Props) {
             </button>
             <button className="toolbar-btn" onClick={onSplit} title="Split this PDF">
               ✂ Split
+            </button>
+            <div className="toolbar-sep" />
+            <button className="toolbar-btn" onClick={onMetadata} title="View / edit document metadata">
+              ℹ Info
+            </button>
+            <button
+              className={`toolbar-btn${encryptionSettings ? ' toolbar-btn-active' : ''}`}
+              onClick={onSecurity}
+              title="Password protection and permissions"
+            >
+              🔒 Security
             </button>
             <div className="toolbar-sep" />
             <button

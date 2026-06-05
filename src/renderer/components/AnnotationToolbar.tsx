@@ -24,7 +24,9 @@ function ToolBtn({ active, title, children, onClick }: ToolBtnProps) {
   )
 }
 
-export default function AnnotationToolbar() {
+interface Props { onRequestRedactConfirm: () => void }
+
+export default function AnnotationToolbar({ onRequestRedactConfirm }: Props) {
   const activeTool = usePdfStore(s => s.activeTool)
   const toolColor = usePdfStore(s => s.toolColor)
   const toolOpacity = usePdfStore(s => s.toolOpacity)
@@ -32,6 +34,7 @@ export default function AnnotationToolbar() {
   const toolFontSize = usePdfStore(s => s.toolFontSize)
   const stampName = usePdfStore(s => s.stampName)
   const annotationsPanelOpen = usePdfStore(s => s.annotationsPanelOpen)
+  const annotations = usePdfStore(s => s.annotations)
   const formMode = usePdfStore(s => s.formMode)
   const formCreationTool = usePdfStore(s => s.formCreationTool)
   const formsPanelOpen = usePdfStore(s => s.formsPanelOpen)
@@ -57,6 +60,8 @@ export default function AnnotationToolbar() {
 
   const toggleFormTool = (tool: FormCreationTool) =>
     setFormCreationTool(formCreationTool === tool ? null : tool)
+
+  const pendingRedactCount = annotations.filter(a => a.type === 'redact').length
 
   const showLineWidth = activeTool === 'ink' ||
     activeTool === 'rectangle' || activeTool === 'ellipse' ||
@@ -123,6 +128,33 @@ export default function AnnotationToolbar() {
         <ToolBtn tool="stickynote" active={activeTool === 'stickynote'} title="Sticky note / Comment" onClick={() => toggle('stickynote')}>📌</ToolBtn>
         <ToolBtn tool="stamp" active={activeTool === 'stamp'} title="Stamp" onClick={() => toggle('stamp')}>⬡</ToolBtn>
       </div>
+
+      <div className="annot-sep" />
+
+      {/* ── Redact ─────────────────────────────────────── */}
+      <div className="annot-group">
+        <ToolBtn tool="redact" active={activeTool === 'redact'}
+          title="Redact — drag to mark an area for permanent content removal"
+          onClick={() => toggle('redact')}
+        >
+          <span style={{ background: '#1a1a1a', color: '#ff4444', padding: '0 3px', borderRadius: 2, fontSize: 11, fontWeight: 700, border: '1px solid #ff4444' }}>
+            REDACT
+          </span>
+        </ToolBtn>
+      </div>
+
+      {pendingRedactCount > 0 && (
+        <>
+          <button
+            className="annot-tool-btn"
+            style={{ color: '#ff4444', borderColor: '#ff4444', fontSize: 11, padding: '3px 9px', background: 'rgba(255,68,68,0.08)' }}
+            title="Apply all redaction marks — permanently removes content from the file"
+            onClick={onRequestRedactConfirm}
+          >
+            ⚠ Apply {pendingRedactCount} Redaction{pendingRedactCount !== 1 ? 's' : ''}
+          </button>
+        </>
+      )}
 
       <div className="annot-sep" />
 

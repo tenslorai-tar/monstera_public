@@ -178,17 +178,33 @@ Monstera PDF Editor/
 - [ ] Overlay invisible text layer from OCR results
 - [ ] Export OCR'd PDF
 
-### Phase 7 — Advanced Editing (mupdf)
-- [ ] Redaction tool (black-out and burn-in text/areas)
+### Phase 7 — Advanced Editing (mupdf) ✅ (partial)
+- [x] Redaction tool — mark areas with drag, apply permanently via MuPDF (content truly removed, not just covered)
 - [ ] Edit existing text in-place
 - [ ] Image extraction and replacement
 - [ ] Crop page
 
-### Phase 8 — Security & Metadata
-- [ ] View and edit document metadata (title, author, etc.)
-- [ ] Password-protect PDF (pdf-lib encryption)
-- [ ] Remove password from PDF
+### Phase 8 — Security & Metadata ✅
+- [x] View and edit document metadata (title, author, subject, keywords) — ℹ Info button in toolbar
+- [x] Password-protect PDF — user password (open), owner password (permissions), AES-256 via MuPDF
+- [x] Set permission flags: print, copy, edit, annotate — applied via MuPDF encryption options
+- [x] Remove password from PDF — enter current password to decrypt
+- [x] Open password-protected PDFs — password prompt appears automatically on open
 - [ ] Flatten/sanitize document
+
+**How to test each feature:**
+| Feature | Steps |
+|---|---|
+| **View metadata** | Open PDF → click "ℹ Info" → see title, author, subject, keywords |
+| **Edit metadata** | Click "ℹ Info" → change fields → Save → reopen → changes persist |
+| **Protect PDF** | Click "🔒 Security" → enter owner password (required) + optional user password → Apply → Ctrl+S → reopen file → prompted for password |
+| **Permissions** | In Security dialog, uncheck e.g. "Allow Copying" → Apply → save → open in a viewer → copy disabled |
+| **Remove password** | Open a protected PDF → enter password → open → click "🔒 Security" → Remove Password tab → enter current password → Remove → save |
+| **Open encrypted PDF** | Open any AES/RC4 encrypted PDF → password dialog appears automatically |
+| **Redact area** | Click "REDACT" tool → drag a rectangle over text/image → red striped box appears |
+| **Apply redactions** | After marking areas, click "⚠ Apply N Redactions" → warning dialog → confirm → content is permanently removed |
+| **Verify redaction** | After applying, Ctrl+S → open in any PDF viewer → try to select/copy text in redacted area — nothing is there |
+| **Verify text extraction** | After saving, run `pdftotext file.pdf -` or open with PDF.js text layer — redacted text does not appear |
 
 ### Phase 9 — Polish & UX
 - [ ] Dark/light theme toggle

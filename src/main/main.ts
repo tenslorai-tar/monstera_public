@@ -110,3 +110,101 @@ ipcMain.handle('file:writeBytesToDir', async (
     fs.writeFileSync(path.join(dirPath, name), Buffer.from(bytes))
   }
 })
+
+// ── MuPDF operations ─────────────────────────────────────────────────────────
+// Dynamic ESM import so the CJS main process can load the ESM mupdf module.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const _esmImport = new Function('m', 'return import(m)') as (m: string) => Promise<any>
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _mupdf: any = null
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getMupdf(): Promise<any> {
+  if (!_mupdf) _mupdf = await _esmImport('mupdf')
+  return _mupdf
+}
+
+ipcMain.handle('mupdf:getMetadata', async (_event, bytes: ArrayBuffer) => {
+  const mupdf = await getMupdf()
+  const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
+  return {
+    title:    doc.getMetaData('info:Title')    ?? '',
+    author:   doc.getMetaData('info:Author')   ?? '',
+    subject:  doc.getMetaData('info:Subject')  ?? '',
+    keywords: doc.getMetaData('info:Keywords') ?? '',
+    creator:  doc.getMetaData('info:Creator')  ?? '',
+    producer: doc.getMetaData('info:Producer') ?? '',
+    needsPassword: doc.needsPassword(),
+    encryption: doc.getMetaData('encryption')  ?? '',
+  }
+})
+
+ipcMain.handle('mupdf:setMetadata', async (_event, bytes: ArrayBuffer, meta: Record<string, string>) => {
+  const mupdf = await getMupdf()
+  const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
+  if (meta.title    !== undefined) doc.setMetaData('info:Title',    meta.title)
+  if (meta.author   !== undefined) doc.setMetaData('info:Author',   meta.author)
+  if (meta.subject  !== undefined) doc.setMetaData('info:Subject',  meta.subject)
+  if (meta.keywords !== undefined) doc.setMetaData('info:Keywords', meta.keywords)
+  const buf = doc.saveToBuffer('')
+  return buf.asUint8Array().buffer
+})
+
+interface EncryptOpts {
+  userPassword: string
+  ownerPassword: string
+  permissions: number
+}
+
+ipcMain.handle('mupdf:encrypt', async (_event, bytes: ArrayBuffer, opts: EncryptOpts) => {
+  const mupdf = await getMupdf()
+  const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
+  const optStr = [
+    'encrypt=aes-256',
+    `user-password=${opts.userPassword}`,
+    `owner-password=${opts.ownerPassword}`,
+    `permissions=${opts.permissions}`,
+  ].join(',')
+  const buf = doc.saveToBuffer(optStr)
+  return buf.asUint8Array().buffer
+})
+
+ipcMain.handle('mupdf:removePassword', async (_event, bytes: ArrayBuffer, password: string) => {
+  const mupdf = await getMupdf()
+  const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
+  if (doc.needsPassword()) {
+    const result = doc.authenticatePassword(password)
+    if (!result) throw new Error('Incorrect password')
+  }
+  const buf = doc.saveToBuffer('decrypt=yes')
+  return buf.asUint8Array().buffer
+})
+
+interface RedactArea {
+  pageNum: number
+  x1: number; y1: number; x2: number; y2: number  // PDF pts
+}
+
+ipcMain.handle('mupdf:applyRedactions', async (_event, bytes: ArrayBuffer, areas: RedactArea[]) => {
+  const mupdf = await getMupdf()
+  const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
+
+  // Group areas by page, create Redact annotations
+  const pageNums = [...new Set(areas.map(a => a.pageNum))]
+  for (const pageNum of pageNums) {
+    const page = doc.loadPage(pageNum - 1)
+    for (const a of areas.filter(r => r.pageNum === pageNum)) {
+      const ann = page.createAnnotation('Redact')
+      ann.setRect([
+        Math.min(a.x1, a.x2), Math.min(a.y1, a.y2),
+        Math.max(a.x1, a.x2), Math.max(a.y1, a.y2),
+      ])
+      ann.setColor([0, 0, 0])
+      ann.update()
+    }
+    // applyRedactions(blackBoxes, imageHandling)
+    page.applyRedactions(true, 0)
+  }
+
+  const buf = doc.saveToBuffer('')
+  return buf.asUint8Array().buffer
+})

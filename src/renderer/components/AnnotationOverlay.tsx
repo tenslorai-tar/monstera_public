@@ -3,7 +3,7 @@ import { usePdfStore } from '../store/usePdfStore'
 import { canvasToPdf, pdfToCanvas, newId } from '../utils/annotationUtils'
 import type {
   Annotation, HighlightAnn, InkAnn,
-  ShapeAnn, TextBoxAnn, StickyNoteAnn, StampAnn
+  ShapeAnn, TextBoxAnn, StickyNoteAnn, StampAnn, RedactAnn
 } from '../types/annotations'
 
 interface Props {
@@ -60,6 +60,9 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
 
   const isDrawingTool = activeTool !== null &&
     !['select', 'eraser', 'highlight', 'underline', 'strikethrough'].includes(activeTool)
+
+  // Redact tool adds to the shape drawing family
+  const isRedactTool = activeTool === 'redact'
   const isMarkupTool = activeTool === 'highlight' ||
     activeTool === 'underline' || activeTool === 'strikethrough'
 
@@ -139,6 +142,18 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       const [x1, y1] = toPdf(draw.sx, draw.sy)
       const [x2, y2] = toPdf(ex, ey)
       if (Math.abs(ex - draw.sx) < 4 && Math.abs(ey - draw.sy) < 4) { setDraw({ k: 'idle' }); return }
+      if (isRedactTool) {
+        const ann: RedactAnn = {
+          id: newId(), pageNum,
+          type: 'redact',
+          color: '#000000', opacity: 1,
+          x1, y1, x2, y2,
+          createdAt: Date.now(),
+        }
+        addAnnotation(ann)
+        setDraw({ k: 'idle' })
+        return
+      }
       const ann: ShapeAnn = {
         id: newId(), pageNum,
         type: activeTool as ShapeAnn['type'],
@@ -419,6 +434,38 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       )
     }
 
+    if (ann.type === 'redact') {
+      const a = ann as RedactAnn
+      const [svgX1, svgY1] = toSvg(Math.min(a.x1, a.x2), Math.max(a.y1, a.y2))
+      const [svgX2, svgY2] = toSvg(Math.max(a.x1, a.x2), Math.min(a.y1, a.y2))
+      const w = svgX2 - svgX1, h = svgY2 - svgY1
+      return (
+        <g key={a.id} onClick={e => handleAnnotClick(a, e)} style={annStyle(a)}>
+          {/* black fill with diagonal warning stripes */}
+          <defs>
+            <pattern id={`rp-${a.id}`} patternUnits="userSpaceOnUse" width={10} height={10} patternTransform="rotate(45)">
+              <rect width={10} height={10} fill="#1a1a1a" />
+              <line x1={0} y1={0} x2={0} y2={10} stroke="#ff4444" strokeWidth={3} />
+            </pattern>
+          </defs>
+          <rect x={svgX1} y={svgY1} width={w} height={h}
+            fill={`url(#rp-${a.id})`}
+            stroke={sel ? '#4a9eff' : '#ff4444'} strokeWidth={sel ? 2 : 1.5}
+            strokeDasharray={sel ? '6,3' : undefined}
+            pointerEvents="all" />
+          {h > 16 && (
+            <text x={svgX1 + w / 2} y={svgY1 + h / 2}
+              textAnchor="middle" dominantBaseline="middle"
+              fill="#ff4444" fontSize={Math.min(11, h * 0.5)}
+              fontWeight="bold" fontFamily="sans-serif"
+              pointerEvents="none">
+              REDACT
+            </text>
+          )}
+        </g>
+      )
+    }
+
     if (ann.type === 'stamp') {
       const a = ann as StampAnn
       const [sx, sy] = toSvg(a.x, a.y)
@@ -459,6 +506,10 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       const sw = toolLineWidth * scale
       const op = toolOpacity
 
+      if (activeTool === 'redact') {
+        return <rect x={x} y={y} width={w} height={h}
+          fill="rgba(255,40,40,0.18)" stroke="#ff4444" strokeWidth={1.5} strokeDasharray="4,3" />
+      }
       if (activeTool === 'rectangle' || draw.k === 'textbox-size') {
         return <rect x={x} y={y} width={w} height={h}
           fill={draw.k === 'textbox-size' ? 'rgba(74,158,255,0.05)' : 'none'}

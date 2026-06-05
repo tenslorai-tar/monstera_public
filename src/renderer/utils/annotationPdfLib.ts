@@ -2,7 +2,7 @@ import { PDFDocument, PDFName, PDFNumber, PDFString, PDFBool, PDFArray } from 'p
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import type {
   Annotation, HighlightAnn, InkAnn, ShapeAnn,
-  TextBoxAnn, StickyNoteAnn, StampAnn
+  TextBoxAnn, StickyNoteAnn, StampAnn, RedactAnn
 } from '../types/annotations'
 import { hexToRgb01, rgb255ToHex, newId } from './annotationUtils'
 
@@ -137,6 +137,20 @@ function writeStickyNote(doc: PDFDocument, a: StickyNoteAnn) {
   })
 }
 
+function writeRedact(doc: PDFDocument, a: RedactAnn) {
+  registerAnnot(doc, a.pageNum - 1, {
+    Type: PDFName.of('Annot'),
+    Subtype: PDFName.of('Redact'),
+    Rect: doc.context.obj([
+      Math.min(a.x1, a.x2), Math.min(a.y1, a.y2),
+      Math.max(a.x1, a.x2), Math.max(a.y1, a.y2),
+    ]),
+    IC: doc.context.obj([0, 0, 0]),
+    NM: PDFString.of(NM_PREFIX + a.id),
+    F: PDFNumber.of(4),
+  })
+}
+
 function writeStamp(doc: PDFDocument, a: StampAnn) {
   const nameMap: Record<string, string> = {
     Approved: 'Approved', Draft: 'Draft', Confidential: 'Confidential',
@@ -179,6 +193,8 @@ export async function writeAnnotationsToPdf(
         writeStickyNote(doc, ann as StickyNoteAnn); break
       case 'stamp':
         writeStamp(doc, ann as StampAnn); break
+      case 'redact':
+        writeRedact(doc, ann as RedactAnn); break
     }
   }
   return doc.save()
@@ -272,6 +288,11 @@ export async function readAnnotationsFromPdf(
               width: Math.max(80, x2 - x1), height: Math.max(30, y2 - y1),
               stampName: sn,
             })
+            break
+          }
+          case 'Redact': {
+            const [x1, y1, x2, y2] = a.rect as number[]
+            result.push({ ...base, type: 'redact', x1, y1, x2, y2 } as RedactAnn)
             break
           }
         }
