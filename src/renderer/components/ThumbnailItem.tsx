@@ -3,21 +3,35 @@ import { usePdfStore } from '../store/usePdfStore'
 
 interface Props {
   pageNum: number
+  pageIndex: number
   scrollRoot: HTMLElement | null
   isActive: boolean
+  isSelected: boolean
+  isDragOver: boolean
   onClick: () => void
+  onToggleSelect: () => void
+  onContextMenu: (e: React.MouseEvent, pageNum: number) => void
+  onDragStart: (pageIndex: number) => void
+  onDragOver: (pageIndex: number) => void
+  onDrop: (toIndex: number) => void
+  onDragEnd: () => void
 }
 
 const THUMB_WIDTH = 120
 
-export default function ThumbnailItem({ pageNum, scrollRoot, isActive, onClick }: Props) {
+export default function ThumbnailItem({
+  pageNum, pageIndex, scrollRoot,
+  isActive, isSelected, isDragOver,
+  onClick, onToggleSelect, onContextMenu,
+  onDragStart, onDragOver, onDrop, onDragEnd,
+}: Props) {
   const pdfDoc = usePdfStore(s => s.pdfDoc)
   const pageSizes = usePdfStore(s => s.pageSizes)
 
   const [inView, setInView] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const renderedRef = useRef(false)
+  const renderedScaleRef = useRef<number | null>(null)
 
   const pageSize = pageSizes[pageNum - 1]
   const thumbScale = pageSize ? THUMB_WIDTH / pageSize.width : 0.2
@@ -35,10 +49,11 @@ export default function ThumbnailItem({ pageNum, scrollRoot, isActive, onClick }
   }, [scrollRoot])
 
   useEffect(() => {
-    if (!inView || !pdfDoc || renderedRef.current) return
+    if (!inView || !pdfDoc) return
+    if (renderedScaleRef.current === thumbScale) return
     const canvas = canvasRef.current
     if (!canvas) return
-    renderedRef.current = true
+    renderedScaleRef.current = thumbScale
 
     ;(async () => {
       const page = await pdfDoc.getPage(pageNum)
@@ -50,14 +65,43 @@ export default function ThumbnailItem({ pageNum, scrollRoot, isActive, onClick }
     })()
   }, [inView, pdfDoc, pageNum, thumbScale])
 
+  // Re-render thumbnail when pdfDoc changes (after an edit)
+  useEffect(() => {
+    renderedScaleRef.current = null
+  }, [pdfDoc])
+
+  const classes = [
+    'thumbnail-item',
+    isActive ? 'thumbnail-active' : '',
+    isSelected ? 'thumbnail-selected' : '',
+    isDragOver ? 'thumbnail-drag-over' : '',
+  ].filter(Boolean).join(' ')
+
   return (
     <div
       ref={wrapperRef}
-      className={`thumbnail-item${isActive ? ' thumbnail-active' : ''}`}
-      onClick={onClick}
+      className={classes}
+      draggable
+      onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; onDragStart(pageIndex) }}
+      onDragOver={e => { e.preventDefault(); onDragOver(pageIndex) }}
+      onDrop={e => { e.preventDefault(); onDrop(pageIndex) }}
+      onDragEnd={onDragEnd}
+      onContextMenu={e => onContextMenu(e, pageNum)}
       title={`Page ${pageNum}`}
     >
-      <div className="thumbnail-canvas-wrapper" style={{ height: thumbHeight }}>
+      <input
+        type="checkbox"
+        className="thumbnail-checkbox"
+        checked={isSelected}
+        onChange={onToggleSelect}
+        onClick={e => e.stopPropagation()}
+        title="Select page"
+      />
+      <div
+        className="thumbnail-canvas-wrapper"
+        style={{ height: thumbHeight }}
+        onClick={onClick}
+      >
         {inView ? (
           <canvas ref={canvasRef} className="thumbnail-canvas" />
         ) : (

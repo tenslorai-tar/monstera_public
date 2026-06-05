@@ -92,24 +92,31 @@ Monstera PDF Editor/
 - [x] PDF.js text layer (selectable + copyable text)
 - [x] Full-text search with highlighted matches and Prev/Next navigation (Ctrl+F)
 
-### Phase 2 — Text & Search
+### Phase 2 — Page Management ✅
+- [x] Delete page(s) — right-click context menu or Page Ops bar when multiple selected
+- [x] Rotate page(s) 90°/180°/270° — context menu or Page Ops bar
+- [x] Reorder pages by drag-and-drop in thumbnail sidebar
+- [x] Duplicate a page — context menu
+- [x] Insert blank page before/after — context menu
+- [x] Insert pages from another PDF — context menu
+- [x] Insert pages from an image (PNG, JPEG) — context menu
+- [x] Extract selected pages to new PDF — context menu / Page Ops bar
+- [x] Merge multiple PDFs into current document — toolbar Merge button
+- [x] Split PDF by page ranges or one-per-page — toolbar Split button + dialog
+- [x] Save (Ctrl+S) and Save As (Ctrl+Shift+S) with file dialogs via IPC
+- [x] Undo/redo stack (up to 10 states) — Ctrl+Z / Ctrl+Y
+- [x] Unsaved-changes indicator (● in title) and Save button enabled when dirty
+
+### Phase 3 — Text & Search
 - [ ] Find/Replace (replace not yet implemented)
 - [ ] Copy selected text to clipboard (works natively via text layer — verify)
 
-### Phase 3 — Annotations
+### Phase 4 — Annotations
 - [ ] Highlight annotation tool
 - [ ] Sticky note / comment tool
 - [ ] Freehand draw tool
 - [ ] Annotation list panel
 - [ ] Save annotations back to PDF (pdf-lib)
-
-### Phase 4 — Page Management
-- [ ] Page reorder (drag-and-drop thumbnails)
-- [ ] Delete pages
-- [ ] Insert blank page
-- [ ] Rotate pages
-- [ ] Extract pages to new PDF
-- [ ] Merge PDFs
 
 ### Phase 5 — Forms
 - [ ] Render AcroForm fields (PDF.js)

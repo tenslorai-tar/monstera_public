@@ -10,33 +10,31 @@ export function useKeyboardShortcuts(onOpen: () => void) {
       if (e.ctrlKey) {
         switch (e.key) {
           case 'o':
-            e.preventDefault()
-            onOpen()
+            e.preventDefault(); onOpen(); break
+          case 's':
+            if (hasPdf) {
+              e.preventDefault()
+              if (e.shiftKey) store.saveAs()
+              else store.save()
+            }
+            break
+          case 'z':
+            if (hasPdf) { e.preventDefault(); store.undo() }
+            break
+          case 'y':
+            if (hasPdf) { e.preventDefault(); store.redo() }
             break
           case 'f':
-            if (hasPdf) {
-              e.preventDefault()
-              store.setSearchOpen(!store.searchOpen)
-            }
+            if (hasPdf) { e.preventDefault(); store.setSearchOpen(!store.searchOpen) }
             break
-          case '+':
-          case '=':
-            if (hasPdf) {
-              e.preventDefault()
-              store.setScale(Math.min(5, Math.round((store.scale + 0.1) * 10) / 10))
-            }
+          case '+': case '=':
+            if (hasPdf) { e.preventDefault(); store.setScale(Math.min(5, Math.round((store.scale + 0.1) * 10) / 10)) }
             break
           case '-':
-            if (hasPdf) {
-              e.preventDefault()
-              store.setScale(Math.max(0.25, Math.round((store.scale - 0.1) * 10) / 10))
-            }
+            if (hasPdf) { e.preventDefault(); store.setScale(Math.max(0.25, Math.round((store.scale - 0.1) * 10) / 10)) }
             break
           case '0':
-            if (hasPdf) {
-              e.preventDefault()
-              store.setZoomMode('fit-page')
-            }
+            if (hasPdf) { e.preventDefault(); store.setZoomMode('fit-page') }
             break
         }
         return
