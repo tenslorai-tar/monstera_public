@@ -13,6 +13,7 @@
   --text-muted: #858585;
   --accent: #4a9eff;
   --accent-hover: #6ab0ff;
+  --bg-hover: rgba(255, 255, 255, 0.06);
 }
 
 html, body, #root {

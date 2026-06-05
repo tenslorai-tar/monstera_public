@@ -1,0 +1,139 @@
+import { useEffect, useRef, useState } from 'react'
+import { TextLayer } from 'pdfjs-dist'
+import { usePdfStore } from '../store/usePdfStore'
+import { textCache } from '../utils/textCache'
+import type { SearchMatch } from '../store/usePdfStore'
+
+interface Props {
+  pageNum: number
+  scrollRoot: HTMLElement | null
+}
+
+function applyHighlights(
+  textLayerEl: HTMLElement,
+  pageMatches: SearchMatch[],
+  activeMatch: SearchMatch | null
+) {
+  const spans = Array.from(textLayerEl.querySelectorAll<HTMLElement>('span'))
+  spans.forEach(s => s.classList.remove('search-match', 'search-match-active'))
+
+  if (pageMatches.length === 0) return
+  const cache = textCache.get(pageMatches[0]?.pageNum ?? -1)
+  if (!cache) return
+
+  const { itemOffsets, itemLengths } = cache
+  for (const match of pageMatches) {
+    const isActive = match === activeMatch
+    const matchEnd = match.matchStart + match.matchLen
+    for (let i = 0; i < itemOffsets.length; i++) {
+      const iStart = itemOffsets[i]
+      const iEnd = iStart + itemLengths[i]
+      if (iStart < matchEnd && iEnd > match.matchStart && i < spans.length) {
+        spans[i].classList.add(isActive ? 'search-match-active' : 'search-match')
+      }
+    }
+  }
+}
+
+export default function PdfPage({ pageNum, scrollRoot }: Props) {
+  const pdfDoc = usePdfStore(s => s.pdfDoc)
+  const scale = usePdfStore(s => s.scale)
+  const pageSizes = usePdfStore(s => s.pageSizes)
+  const searchMatches = usePdfStore(s => s.searchMatches)
+  const activeMatchIndex = usePdfStore(s => s.activeMatchIndex)
+
+  const [inView, setInView] = useState(false)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const textLayerRef = useRef<HTMLDivElement>(null)
+  const renderGenRef = useRef(0)
+
+  const pageSize = pageSizes[pageNum - 1]
+  const pageWidth = pageSize ? pageSize.width * scale : 612 * scale
+  const pageHeight = pageSize ? pageSize.height * scale : 792 * scale
+
+  // Observe when page enters/leaves the scroll viewport
+  useEffect(() => {
+    const el = wrapperRef.current
+    if (!el || !scrollRoot) return
+    const obs = new IntersectionObserver(
+      ([entry]) => setInView(entry.isIntersecting),
+      { root: scrollRoot, rootMargin: '400px 0px' }
+    )
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [scrollRoot])
+
+  // Render canvas + text layer when in view or scale changes
+  useEffect(() => {
+    if (!inView || !pdfDoc) return
+    const canvas = canvasRef.current
+    const textDiv = textLayerRef.current
+    if (!canvas || !textDiv) return
+
+    const gen = ++renderGenRef.current
+    let cancelled = false
+
+    ;(async () => {
+      const page = await pdfDoc.getPage(pageNum)
+      if (cancelled || gen !== renderGenRef.current) return
+
+      const viewport = page.getViewport({ scale })
+      const ctx = canvas.getContext('2d')!
+      canvas.width = viewport.width
+      canvas.height = viewport.height
+
+      await page.render({ canvasContext: ctx, viewport }).promise
+      if (cancelled || gen !== renderGenRef.current) return
+
+      // Re-render text layer
+      textDiv.innerHTML = ''
+      textDiv.style.width = `${viewport.width}px`
+      textDiv.style.height = `${viewport.height}px`
+      const textLayer = new TextLayer({
+        textContentSource: page.streamTextContent(),
+        container: textDiv,
+        viewport,
+      })
+      await textLayer.render()
+      if (cancelled || gen !== renderGenRef.current) { textLayer.cancel(); return }
+
+      // Apply search highlights after text layer settles
+      const pageMatches = searchMatches.filter(m => m.pageNum === pageNum)
+      const activeMatch = activeMatchIndex >= 0 ? searchMatches[activeMatchIndex] : null
+      const activeOnPage = activeMatch?.pageNum === pageNum ? activeMatch : null
+      applyHighlights(textDiv, pageMatches, activeOnPage)
+    })()
+
+    return () => { cancelled = true }
+  }, [inView, pdfDoc, pageNum, scale]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-apply highlights when search results change (text layer already rendered)
+  useEffect(() => {
+    const textDiv = textLayerRef.current
+    if (!textDiv || textDiv.children.length === 0) return
+    const pageMatches = searchMatches.filter(m => m.pageNum === pageNum)
+    const activeMatch = activeMatchIndex >= 0 ? searchMatches[activeMatchIndex] : null
+    const activeOnPage = activeMatch?.pageNum === pageNum ? activeMatch : null
+    applyHighlights(textDiv, pageMatches, activeOnPage)
+  }, [searchMatches, activeMatchIndex, pageNum])
+
+  return (
+    <div
+      ref={wrapperRef}
+      className="pdf-page-wrapper"
+      style={{ width: pageWidth, height: pageHeight }}
+      data-page={pageNum}
+    >
+      {inView ? (
+        <>
+          <canvas ref={canvasRef} className="pdf-page-canvas" />
+          <div ref={textLayerRef} className="text-layer" />
+        </>
+      ) : (
+        <div className="pdf-page-placeholder" />
+      )}
+      <div className="pdf-page-number-badge">{pageNum}</div>
+    </div>
+  )
+}

@@ -1,33 +1,47 @@
-import { useState } from 'react'
+import { useCallback } from 'react'
 import Toolbar from './components/Toolbar'
-import PdfCanvas from './components/PdfCanvas'
+import PdfViewer from './components/PdfViewer'
+import SearchPanel from './components/SearchPanel'
+import StartScreen from './components/StartScreen'
+import { usePdfStore } from './store/usePdfStore'
+import { useRecentFiles } from './hooks/useRecentFiles'
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
 import './styles/app.css'
 
 export default function App() {
-  const [pdfBytes, setPdfBytes] = useState<ArrayBuffer | null>(null)
-  const [fileName, setFileName] = useState<string>('')
+  const loadPdf = usePdfStore(s => s.loadPdf)
+  const numPages = usePdfStore(s => s.numPages)
+  const { recentFiles, addRecentFile, removeRecentFile } = useRecentFiles()
 
-  const handleOpen = async () => {
-    const filePath = await window.electronAPI.openFileDialog()
-    if (!filePath) return
-    const bytes = await window.electronAPI.readFileBytes(filePath)
-    const name = filePath.split(/[\\/]/).pop() ?? filePath
-    setPdfBytes(bytes)
-    setFileName(name)
-  }
+  const openFile = useCallback(async (filePath?: string) => {
+    const path = filePath ?? await window.electronAPI.openFileDialog()
+    if (!path) return
+    const bytes = await window.electronAPI.readFileBytes(path)
+    const name = path.split(/[\\/]/).pop() ?? path
+    await loadPdf(bytes, path, name)
+    addRecentFile(path, name)
+  }, [loadPdf, addRecentFile])
+
+  useKeyboardShortcuts(openFile)
+
+  const hasPdf = numPages > 0
 
   return (
     <div className="app">
-      <Toolbar fileName={fileName} onOpen={handleOpen} />
-      <main className="canvas-area">
-        {pdfBytes ? (
-          <PdfCanvas pdfBytes={pdfBytes} />
-        ) : (
-          <div className="empty-state">
-            <p>Open a PDF to get started</p>
-          </div>
-        )}
-      </main>
+      <Toolbar onOpen={openFile} />
+      {hasPdf ? (
+        <div className="content-area">
+          <PdfViewer />
+          <SearchPanel />
+        </div>
+      ) : (
+        <StartScreen
+          recentFiles={recentFiles}
+          onOpen={openFile}
+          onOpenRecent={path => openFile(path)}
+          onRemoveRecent={removeRecentFile}
+        />
+      )}
     </div>
   )
 }

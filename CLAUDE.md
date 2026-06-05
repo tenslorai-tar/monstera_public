@@ -82,18 +82,19 @@ Monstera PDF Editor/
 - [x] Git initialized with .gitignore and first commit
 - [x] CLAUDE.md created
 
-### Phase 1 — Core Viewer
-- [ ] Multi-page rendering and scrolling
-- [ ] Zoom controls (fit-width, fit-page, percentage)
-- [ ] Page thumbnail panel (sidebar)
-- [ ] Keyboard navigation (arrow keys, Page Up/Down)
-- [ ] Recent files list
+### Phase 1 — Core Viewer ✅
+- [x] Multi-page continuous scroll with lazy rendering (IntersectionObserver per page)
+- [x] Zoom controls: fit-width, fit-page, percentage presets, +/- buttons, Ctrl+scroll
+- [x] Collapsible thumbnail sidebar (lazy-rendered, click to jump)
+- [x] Current page / total pages display with click-to-jump go-to-page input
+- [x] Keyboard shortcuts: Ctrl+O, Ctrl+F, Ctrl++/-, Ctrl+0, PageUp/Down, Alt+Arrow
+- [x] Recent files list on start screen (localStorage, up to 10)
+- [x] PDF.js text layer (selectable + copyable text)
+- [x] Full-text search with highlighted matches and Prev/Next navigation (Ctrl+F)
 
 ### Phase 2 — Text & Search
-- [ ] PDF.js text layer overlay (selectable text)
-- [ ] Find/Replace panel (Ctrl+F)
-- [ ] Search highlight and navigation
-- [ ] Copy selected text to clipboard
+- [ ] Find/Replace (replace not yet implemented)
+- [ ] Copy selected text to clipboard (works natively via text layer — verify)
 
 ### Phase 3 — Annotations
 - [ ] Highlight annotation tool
