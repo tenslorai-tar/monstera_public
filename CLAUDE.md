@@ -172,11 +172,23 @@ Monstera PDF Editor/
 | **Flatten** | Fill fields → click "⊞ Flatten" → Ctrl+S → reopen → fields are baked into content |
 | **Forms panel** | Forms mode → click "≡ Fields" → panel lists all fields; click to jump |
 
-### Phase 6 — OCR
-- [ ] Detect scanned (image-only) pages
-- [ ] Run tesseract.js OCR on selected pages
-- [ ] Overlay invisible text layer from OCR results
-- [ ] Export OCR'd PDF
+### Phase 6 — OCR ✅
+- [x] Detect scanned (image-only) pages — pages with < 15 characters of native text are flagged
+- [x] Run tesseract.js OCR on selected pages — choose scanned-only or all pages; multi-language support (13 languages)
+- [x] Overlay invisible/selectable text layer — OCR words are rendered as transparent, selectable spans aligned to image
+- [x] Search integration — OCR text fed into textCache so Ctrl+F finds text on scanned pages; highlights appear on OCR spans
+- [x] Export OCR'd PDF — embed invisible text (opacity 0) into PDF bytes via pdf-lib so text is extractable on disk
+
+**How to test:**
+| Feature | Steps |
+|---|---|
+| **Detect scanned pages** | Open a scanned PDF → click "🔍 OCR" in toolbar → dialog shows detected scanned pages |
+| **Run OCR** | In OCR dialog, choose language (default English) → click "Run OCR" → progress bar shows per-page |
+| **Invisible text overlay** | After OCR, try to select/copy text on a scanned page — transparent selectable spans appear |
+| **Search scanned text** | After OCR, open search (Ctrl+F), type a word from the scanned page — matches highlighted |
+| **Export searchable PDF** | After OCR, click "Save (overwrite)" or "Save OCR Copy As…" → save → reopen → text is selectable |
+| **Language selection** | In OCR dialog, change language to French/German/etc. before running |
+| **Page scope** | OCR dialog lets you choose: detected scanned pages only, or all pages |
 
 ### Phase 7 — Advanced Editing (mupdf) ✅ (partial)
 - [x] Redaction tool — mark areas with drag, apply permanently via MuPDF (content truly removed, not just covered)

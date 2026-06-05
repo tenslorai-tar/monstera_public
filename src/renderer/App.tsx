@@ -8,6 +8,7 @@ import SplitDialog from './components/SplitDialog'
 import MetadataDialog from './components/MetadataDialog'
 import PasswordDialog from './components/PasswordDialog'
 import RedactConfirmDialog from './components/RedactConfirmDialog'
+import OcrDialog from './components/OcrDialog'
 import { usePdfStore } from './store/usePdfStore'
 import { useRecentFiles } from './hooks/useRecentFiles'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
@@ -28,6 +29,7 @@ export default function App() {
   const [metadataOpen,        setMetadataOpen]        = useState(false)
   const [securityOpen,        setSecurityOpen]        = useState(false)
   const [redactConfirmOpen,   setRedactConfirmOpen]   = useState(false)
+  const [ocrOpen,             setOcrOpen]             = useState(false)
   const [passwordPrompt,      setPasswordPrompt]      = useState<PasswordPromptState>(null)
   const [passwordError,       setPasswordError]       = useState('')
   const [passwordInput,       setPasswordInput]       = useState('')
@@ -75,6 +77,7 @@ export default function App() {
         onSplit={() => setSplitOpen(true)}
         onMetadata={() => setMetadataOpen(true)}
         onSecurity={() => setSecurityOpen(true)}
+        onOcr={() => setOcrOpen(true)}
       />
       {hasPdf && (
         <AnnotationToolbar
@@ -109,6 +112,7 @@ export default function App() {
       )}
       {metadataOpen && <MetadataDialog onClose={() => setMetadataOpen(false)} />}
       {securityOpen && <PasswordDialog onClose={() => setSecurityOpen(false)} />}
+      {ocrOpen && <OcrDialog onClose={() => setOcrOpen(false)} />}
       {redactConfirmOpen && (
         <RedactConfirmDialog
           count={pendingRedactCount}

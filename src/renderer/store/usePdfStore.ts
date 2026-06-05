@@ -6,6 +6,7 @@ import type { Annotation, AnnotationTool, StampName } from '../types/annotations
 import { writeAnnotationsToPdf, readAnnotationsFromPdf } from '../utils/annotationPdfLib'
 import type { FormField, FormCreationTool } from '../types/forms'
 import { readFormFieldsFromPdf, writeFormToBytes, flattenFormToBytes } from '../utils/formPdfLib'
+import type { OcrWord } from '../utils/ocrUtils'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.mjs',
@@ -112,6 +113,9 @@ interface PdfStore {
   formCreationTool: FormCreationTool | null
   formsPanelOpen: boolean
 
+  // ── OCR ──────────────────────────────────────────────────────────────────────
+  ocrData: Map<number, OcrWord[]>
+
   // ── Security ─────────────────────────────────────────────────────────────────
   encryptionSettings: { userPassword: string; ownerPassword: string; permissions: number } | null
 
@@ -155,6 +159,10 @@ interface PdfStore {
   setCustomStampDataUrl: (url: string | null) => void
   toggleAnnotationsPanel: () => void
   setOpenStickyNote: (id: string | null) => void
+
+  // ── OCR actions ──────────────────────────────────────────────────────────────
+  setOcrData: (pageNum: number, words: OcrWord[]) => void
+  clearOcrData: () => void
 
   // ── Security actions ─────────────────────────────────────────────────────────
   setEncryptionSettings: (s: { userPassword: string; ownerPassword: string; permissions: number } | null) => void
@@ -201,6 +209,9 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   formCreationTool: null,
   formsPanelOpen: false,
 
+  // ── OCR defaults ─────────────────────────────────────────────────────────
+  ocrData: new Map(),
+
   // ── Security defaults ────────────────────────────────────────────────────
   encryptionSettings: null,
 
@@ -225,6 +236,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
       searchOpen: false, searchQuery: '', searchMatches: [], activeMatchIndex: -1,
       selectedAnnotationId: null, openStickyNoteId: null, activeTool: null,
       formMode: false, formCreationTool: null, encryptionSettings: null,
+      ocrData: new Map(),
     })
     loadAllPageText(pdfDoc).catch(() => {})
   },
@@ -481,4 +493,10 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     const flattened = await flattenFormToBytes(baked)
     await applyEdit(flattened)
   },
+
+  // ── OCR actions ──────────────────────────────────────────────────────────────
+  setOcrData: (pageNum, words) => set(s => ({
+    ocrData: new Map(s.ocrData).set(pageNum, words),
+  })),
+  clearOcrData: () => set({ ocrData: new Map() }),
 }))

@@ -983,3 +983,29 @@
   cursor: default;
   pointer-events: none;
 }
+
+/* ── OCR text layer ──────────────────────────────────────── */
+.ocr-text-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+}
+
+.ocr-text-layer span {
+  display: inline-block;
+  color: transparent;
+}
+
+.ocr-text-layer span::selection {
+  background: rgba(0, 100, 255, 0.25);
+  color: transparent;
+}
+
+.ocr-text-layer span.search-match {
+  background: rgba(255, 200, 0, 0.35);
+}
+
+.ocr-text-layer span.search-match-active {
+  background: rgba(255, 120, 0, 0.45);
+}

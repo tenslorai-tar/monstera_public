@@ -5,6 +5,7 @@ import { textCache } from '../utils/textCache'
 import type { SearchMatch } from '../store/usePdfStore'
 import AnnotationOverlay from './AnnotationOverlay'
 import FormOverlay from './FormOverlay'
+import OcrTextLayer from './OcrTextLayer'
 
 interface Props {
   pageNum: number
@@ -133,6 +134,12 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
             ref={textLayerRef}
             className="text-layer"
             style={{ pointerEvents: textLayerPointerEvents }}
+          />
+          <OcrTextLayer
+            pageNum={pageNum}
+            pageW={pageW}
+            pageH={pageH}
+            scale={scale}
           />
           <AnnotationOverlay
             pageNum={pageNum}

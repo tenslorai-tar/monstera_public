@@ -8,11 +8,12 @@ interface Props {
   onSplit: () => void
   onMetadata: () => void
   onSecurity: () => void
+  onOcr: () => void
 }
 
 const ZOOM_PRESETS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]
 
-export default function Toolbar({ onOpen, onMerge, onSplit, onMetadata, onSecurity }: Props) {
+export default function Toolbar({ onOpen, onMerge, onSplit, onMetadata, onSecurity, onOcr }: Props) {
   const fileName = usePdfStore(s => s.fileName)
   const numPages = usePdfStore(s => s.numPages)
   const currentPage = usePdfStore(s => s.currentPage)
@@ -126,6 +127,9 @@ export default function Toolbar({ onOpen, onMerge, onSplit, onMetadata, onSecuri
               title="Password protection and permissions"
             >
               🔒 Security
+            </button>
+            <button className="toolbar-btn" onClick={onOcr} title="Run OCR to make scanned pages searchable">
+              🔍 OCR
             </button>
             <div className="toolbar-sep" />
             <button
