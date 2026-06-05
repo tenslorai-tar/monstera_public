@@ -109,14 +109,44 @@ Monstera PDF Editor/
 
 ### Phase 3 — Text & Search
 - [ ] Find/Replace (replace not yet implemented)
-- [ ] Copy selected text to clipboard (works natively via text layer — verify)
+- [x] Copy selected text to clipboard (works natively via text layer)
 
-### Phase 4 — Annotations
-- [ ] Highlight annotation tool
-- [ ] Sticky note / comment tool
-- [ ] Freehand draw tool
-- [ ] Annotation list panel
-- [ ] Save annotations back to PDF (pdf-lib)
+### Phase 4 — Annotations ✅
+- [x] Highlight, underline, strikethrough text markup — select text with tool active, mouseup captures selection
+- [x] Freehand ink / pen drawing — click-drag on page canvas
+- [x] Shapes: rectangle, ellipse, line, arrow — click-drag to draw
+- [x] Text box — drag to define area, type in inline textarea, blur/Enter to commit
+- [x] Sticky note / comment — click to place; popup shows editable text
+- [x] Stamps: Approved, Draft, Confidential, Rejected, Custom image — single click to place
+- [x] Eraser tool — click any annotation to delete it
+- [x] Select tool — click to select (highlight border); Delete key removes selected
+- [x] Color, opacity, line-width, font-size controls in annotation toolbar
+- [x] Annotations panel (≡ Panel button) — lists all annotations by page, click to jump
+- [x] Annotations saved as real PDF annotation objects (pdf-lib) on Ctrl+S / Save As
+- [x] Annotations loaded back when PDF is reopened (PDF.js getAnnotations)
+- [x] Annotations survive page operations (delete, rotate, reorder) via baked-bytes path
+- [x] PDF.js native annotation rendering disabled — overlay renders all annotations
+
+**How to test each feature:**
+| Feature | Steps |
+|---|---|
+| **Highlight** | Select "H" tool → click-drag over text in PDF → yellow highlight appears |
+| **Underline** | Select "U" tool → click-drag over text → underline appears |
+| **Strikethrough** | Select "S" tool → click-drag over text → strikethrough appears |
+| **Ink** | Select ✏ tool → click-drag freely on page → freehand stroke drawn |
+| **Rectangle** | Select □ tool → click-drag → rectangle outline drawn |
+| **Ellipse** | Select ○ tool → click-drag → ellipse outline drawn |
+| **Line** | Select ╱ tool → click-drag → line drawn |
+| **Arrow** | Select → tool → click-drag → arrow with arrowhead |
+| **Text Box** | Select T tool → click-drag box area → type text → click outside to commit |
+| **Sticky Note** | Select 📌 tool → click on page → yellow popup appears; type note |
+| **Stamp** | Select ⬡ tool, pick stamp type in dropdown → click on page → stamp appears |
+| **Erase** | Select ⌫ tool → click any annotation → it disappears |
+| **Select** | Select ↖ tool or no tool → click annotation → blue highlight; press Delete |
+| **Color** | Pick color in toolbar color swatch → affects next annotation drawn |
+| **Panel** | Click "≡ Panel" → right panel lists all annotations; click to jump to page |
+| **Persist** | Add annotations → Ctrl+S → reopen file → annotations still present |
+| **Page ops** | Add annotations → delete/rotate page → save → reopen → annotations on correct pages |
 
 ### Phase 5 — Forms
 - [ ] Render AcroForm fields (PDF.js)

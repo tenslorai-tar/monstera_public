@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import Toolbar from './components/Toolbar'
+import AnnotationToolbar from './components/AnnotationToolbar'
 import PdfViewer from './components/PdfViewer'
 import SearchPanel from './components/SearchPanel'
 import StartScreen from './components/StartScreen'
@@ -37,6 +38,7 @@ export default function App() {
         onMerge={ops.mergePdfs}
         onSplit={() => setSplitOpen(true)}
       />
+      {hasPdf && <AnnotationToolbar />}
       {hasPdf ? (
         <div className="content-area">
           <PdfViewer />

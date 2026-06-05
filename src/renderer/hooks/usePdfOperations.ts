@@ -3,43 +3,40 @@ import { usePdfStore } from '../store/usePdfStore'
 import * as pdfEdits from '../utils/pdfEdits'
 
 export function usePdfOperations() {
-  const pdfBytes = usePdfStore(s => s.pdfBytes)
   const numPages = usePdfStore(s => s.numPages)
   const fileName = usePdfStore(s => s.fileName)
   const applyEdit = usePdfStore(s => s.applyEdit)
+  const getBakedBytes = usePdfStore(s => s.getBakedBytes)
 
-  const requireBytes = (): Uint8Array => {
-    if (!pdfBytes) throw new Error('No document loaded')
-    return pdfBytes
-  }
+  const requireBytes = async (): Promise<Uint8Array> => getBakedBytes()
 
   const deletePages = useCallback(async (pageNums: number[]) => {
     if (pageNums.length === numPages) return  // can't delete all pages
-    applyEdit(await pdfEdits.deletePages(requireBytes(), pageNums))
-  }, [pdfBytes, numPages, applyEdit])
+    applyEdit(await pdfEdits.deletePages(await requireBytes(), pageNums))
+  }, [numPages, applyEdit, getBakedBytes])
 
   const rotatePages = useCallback(async (pageNums: number[], deg: 90 | 180 | 270) => {
-    applyEdit(await pdfEdits.rotatePages(requireBytes(), pageNums, deg))
-  }, [pdfBytes, applyEdit])
+    applyEdit(await pdfEdits.rotatePages(await requireBytes(), pageNums, deg))
+  }, [applyEdit, getBakedBytes])
 
   const reorderPage = useCallback(async (fromIndex: number, toIndex: number) => {
-    applyEdit(await pdfEdits.reorderPage(requireBytes(), fromIndex, toIndex))
-  }, [pdfBytes, applyEdit])
+    applyEdit(await pdfEdits.reorderPage(await requireBytes(), fromIndex, toIndex))
+  }, [applyEdit, getBakedBytes])
 
   const duplicatePage = useCallback(async (pageNum: number) => {
-    applyEdit(await pdfEdits.duplicatePage(requireBytes(), pageNum))
-  }, [pdfBytes, applyEdit])
+    applyEdit(await pdfEdits.duplicatePage(await requireBytes(), pageNum))
+  }, [applyEdit, getBakedBytes])
 
   const insertBlankPage = useCallback(async (afterPageNum: number) => {
-    applyEdit(await pdfEdits.insertBlankPage(requireBytes(), afterPageNum))
-  }, [pdfBytes, applyEdit])
+    applyEdit(await pdfEdits.insertBlankPage(await requireBytes(), afterPageNum))
+  }, [applyEdit, getBakedBytes])
 
   const insertFromPdf = useCallback(async (afterPageNum: number) => {
     const path = await window.electronAPI.openFileDialog()
     if (!path) return
     const srcBuf = await window.electronAPI.readFileBytes(path)
-    applyEdit(await pdfEdits.insertPdfPages(requireBytes(), new Uint8Array(srcBuf), afterPageNum))
-  }, [pdfBytes, applyEdit])
+    applyEdit(await pdfEdits.insertPdfPages(await requireBytes(), new Uint8Array(srcBuf), afterPageNum))
+  }, [applyEdit, getBakedBytes])
 
   const insertFromImage = useCallback(async (afterPageNum: number) => {
     const path = await window.electronAPI.openImageFile()
@@ -48,18 +45,18 @@ export function usePdfOperations() {
       window.electronAPI.readFileBytes(path),
       window.electronAPI.getMimeType(path),
     ])
-    applyEdit(await pdfEdits.insertImagePage(requireBytes(), new Uint8Array(imgBuf), mime, afterPageNum))
-  }, [pdfBytes, applyEdit])
+    applyEdit(await pdfEdits.insertImagePage(await requireBytes(), new Uint8Array(imgBuf), mime, afterPageNum))
+  }, [applyEdit, getBakedBytes])
 
   const extractPages = useCallback(async (pageNums: number[]) => {
-    const bytes = requireBytes()
+    const bytes = await requireBytes()
     const stem = fileName.replace(/\.pdf$/i, '')
     const defaultName = `${stem}_pages${pageNums.join('-')}.pdf`
     const savePath = await window.electronAPI.saveFileDialog(defaultName)
     if (!savePath) return
     const out = await pdfEdits.extractPages(bytes, pageNums)
     await window.electronAPI.writeFile(savePath, out.slice(0).buffer)
-  }, [pdfBytes, fileName])
+  }, [fileName, getBakedBytes])
 
   const mergePdfs = useCallback(async () => {
     const paths = await window.electronAPI.openMultipleFiles()
@@ -67,11 +64,11 @@ export function usePdfOperations() {
     const others = await Promise.all(paths.map(p =>
       window.electronAPI.readFileBytes(p).then(b => new Uint8Array(b))
     ))
-    applyEdit(await pdfEdits.mergePdfs([requireBytes(), ...others]))
-  }, [pdfBytes, applyEdit])
+    applyEdit(await pdfEdits.mergePdfs([await requireBytes(), ...others]))
+  }, [applyEdit, getBakedBytes])
 
   const splitByRanges = useCallback(async (ranges: number[][]) => {
-    const bytes = requireBytes()
+    const bytes = await requireBytes()
     const stem = fileName.replace(/\.pdf$/i, '')
     if (ranges.length === 1) {
       const savePath = await window.electronAPI.saveFileDialog(`${stem}_split.pdf`)
@@ -88,10 +85,10 @@ export function usePdfOperations() {
       bytes: b.slice(0).buffer as ArrayBuffer,
     }))
     await window.electronAPI.writeBytesToDir(dir, files)
-  }, [pdfBytes, fileName])
+  }, [fileName, getBakedBytes])
 
   const splitOnePerPage = useCallback(async () => {
-    const bytes = requireBytes()
+    const bytes = await requireBytes()
     const stem = fileName.replace(/\.pdf$/i, '')
     const dir = await window.electronAPI.chooseDirectory()
     if (!dir) return
@@ -101,7 +98,7 @@ export function usePdfOperations() {
       bytes: b.slice(0).buffer as ArrayBuffer,
     }))
     await window.electronAPI.writeBytesToDir(dir, files)
-  }, [pdfBytes, fileName])
+  }, [fileName, getBakedBytes])
 
   return {
     deletePages,

@@ -3,6 +3,7 @@ import { TextLayer } from 'pdfjs-dist'
 import { usePdfStore } from '../store/usePdfStore'
 import { textCache } from '../utils/textCache'
 import type { SearchMatch } from '../store/usePdfStore'
+import AnnotationOverlay from './AnnotationOverlay'
 
 interface Props {
   pageNum: number
@@ -16,21 +17,17 @@ function applyHighlights(
 ) {
   const spans = Array.from(textLayerEl.querySelectorAll<HTMLElement>('span'))
   spans.forEach(s => s.classList.remove('search-match', 'search-match-active'))
-
   if (pageMatches.length === 0) return
   const cache = textCache.get(pageMatches[0]?.pageNum ?? -1)
   if (!cache) return
-
   const { itemOffsets, itemLengths } = cache
   for (const match of pageMatches) {
     const isActive = match === activeMatch
     const matchEnd = match.matchStart + match.matchLen
     for (let i = 0; i < itemOffsets.length; i++) {
-      const iStart = itemOffsets[i]
-      const iEnd = iStart + itemLengths[i]
-      if (iStart < matchEnd && iEnd > match.matchStart && i < spans.length) {
+      const iStart = itemOffsets[i], iEnd = iStart + itemLengths[i]
+      if (iStart < matchEnd && iEnd > match.matchStart && i < spans.length)
         spans[i].classList.add(isActive ? 'search-match-active' : 'search-match')
-      }
     }
   }
 }
@@ -41,6 +38,7 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
   const pageSizes = usePdfStore(s => s.pageSizes)
   const searchMatches = usePdfStore(s => s.searchMatches)
   const activeMatchIndex = usePdfStore(s => s.activeMatchIndex)
+  const activeTool = usePdfStore(s => s.activeTool)
 
   const [inView, setInView] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -49,10 +47,15 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
   const renderGenRef = useRef(0)
 
   const pageSize = pageSizes[pageNum - 1]
-  const pageWidth = pageSize ? pageSize.width * scale : 612 * scale
-  const pageHeight = pageSize ? pageSize.height * scale : 792 * scale
+  const pageW = pageSize?.width ?? 612
+  const pageH = pageSize?.height ?? 792
+  const pageWidth = pageW * scale
+  const pageHeight = pageH * scale
 
-  // Observe when page enters/leaves the scroll viewport
+  // Text layer pointer-events: allow selection for markup tools, passthrough otherwise
+  const isMarkupTool = activeTool === 'highlight' || activeTool === 'underline' || activeTool === 'strikethrough'
+  const textLayerPointerEvents = isMarkupTool ? 'auto' : (activeTool ? 'none' : 'auto')
+
   useEffect(() => {
     const el = wrapperRef.current
     if (!el || !scrollRoot) return
@@ -64,7 +67,6 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
     return () => obs.disconnect()
   }, [scrollRoot])
 
-  // Render canvas + text layer when in view or scale changes
   useEffect(() => {
     if (!inView || !pdfDoc) return
     const canvas = canvasRef.current
@@ -83,10 +85,10 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
       canvas.width = viewport.width
       canvas.height = viewport.height
 
-      await page.render({ canvasContext: ctx, viewport }).promise
+      // annotationMode: 0 = DISABLE — our overlay handles annotation rendering
+      await page.render({ canvasContext: ctx, viewport, annotationMode: 0 }).promise
       if (cancelled || gen !== renderGenRef.current) return
 
-      // Re-render text layer
       textDiv.innerHTML = ''
       textDiv.style.width = `${viewport.width}px`
       textDiv.style.height = `${viewport.height}px`
@@ -98,7 +100,6 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
       await textLayer.render()
       if (cancelled || gen !== renderGenRef.current) { textLayer.cancel(); return }
 
-      // Apply search highlights after text layer settles
       const pageMatches = searchMatches.filter(m => m.pageNum === pageNum)
       const activeMatch = activeMatchIndex >= 0 ? searchMatches[activeMatchIndex] : null
       const activeOnPage = activeMatch?.pageNum === pageNum ? activeMatch : null
@@ -108,7 +109,6 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
     return () => { cancelled = true }
   }, [inView, pdfDoc, pageNum, scale]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-apply highlights when search results change (text layer already rendered)
   useEffect(() => {
     const textDiv = textLayerRef.current
     if (!textDiv || textDiv.children.length === 0) return
@@ -128,7 +128,17 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
       {inView ? (
         <>
           <canvas ref={canvasRef} className="pdf-page-canvas" />
-          <div ref={textLayerRef} className="text-layer" />
+          <div
+            ref={textLayerRef}
+            className="text-layer"
+            style={{ pointerEvents: textLayerPointerEvents }}
+          />
+          <AnnotationOverlay
+            pageNum={pageNum}
+            scale={scale}
+            pageW={pageW}
+            pageH={pageH}
+          />
         </>
       ) : (
         <div className="pdf-page-placeholder" />

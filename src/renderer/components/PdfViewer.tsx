@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react'
 import { usePdfStore, PAGE_GAP } from '../store/usePdfStore'
 import PdfPage from './PdfPage'
 import Sidebar from './Sidebar'
+import AnnotationsPanel from './AnnotationsPanel'
 
 export default function PdfViewer() {
   const numPages = usePdfStore(s => s.numPages)
@@ -11,6 +12,7 @@ export default function PdfViewer() {
   const setContainerSize = usePdfStore(s => s.setContainerSize)
   const setScrollToPage = usePdfStore(s => s.setScrollToPage)
 
+  const annotationsPanelOpen = usePdfStore(s => s.annotationsPanelOpen)
   const scrollRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<HTMLDivElement>(null)
 
@@ -97,6 +99,7 @@ export default function PdfViewer() {
           ))}
         </div>
       </div>
+      {annotationsPanelOpen && <AnnotationsPanel />}
     </div>
   )
 }
