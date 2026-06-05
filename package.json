@@ -2,7 +2,7 @@
   "name": "monstera-pdf-editor",
   "version": "0.1.0",
   "description": "Personal-use desktop PDF editor",
-  "main": "dist-electron/main.js",
+  "main": "dist-electron/main/main.js",
   "author": "Personal Use",
   "private": true,
   "scripts": {
