@@ -20,6 +20,8 @@ if (!window.electronAPI) {
     mupdfApplyRedactions: emptyBuf, mupdfGetOutline: emptyArr, mupdfWriteOutline: emptyBuf,
     pdfSign: emptyBuf, pdfVerifySignatures: emptyArr,
     exportToDocx: emptyBuf, setWindowTitle: noop, printWindow: noop,
+    onMenuAction: () => {},
+    removeMenuActionListener: () => {},
   }
 }
 

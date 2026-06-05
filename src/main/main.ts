@@ -1,10 +1,184 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron'
 import path from 'path'
 import fs from 'fs'
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
 let mainWin: BrowserWindow | null = null
+
+function buildAppMenu(win: BrowserWindow): Menu {
+  const send = (action: string) => () => {
+    if (!win.isDestroyed()) win.webContents.send('menu:action', action)
+  }
+  return Menu.buildFromTemplate([
+    {
+      label: 'File',
+      submenu: [
+        { label: 'Open…',               accelerator: 'CmdOrCtrl+O',       click: send('open') },
+        { type: 'separator' },
+        { label: 'Close Document',       accelerator: 'CmdOrCtrl+W',       click: send('close') },
+        { label: 'Save',                 accelerator: 'CmdOrCtrl+S',        click: send('save') },
+        { label: 'Save As…',             accelerator: 'CmdOrCtrl+Shift+S', click: send('saveAs') },
+        { type: 'separator' },
+        { label: 'Document Properties…', click: send('metadata') },
+        { label: 'Document Security…',   click: send('security') },
+        { type: 'separator' },
+        { label: 'Print…',               accelerator: 'CmdOrCtrl+P',       click: send('print') },
+        { type: 'separator' },
+        { label: 'Exit', role: 'quit' as const },
+      ],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { label: 'Undo',       accelerator: 'CmdOrCtrl+Z',       click: send('undo') },
+        { label: 'Redo',       accelerator: 'CmdOrCtrl+Y',       click: send('redo') },
+        { type: 'separator' },
+        { label: 'Cut',        role: 'cut'       as const },
+        { label: 'Copy',       role: 'copy'      as const },
+        { label: 'Paste',      role: 'paste'     as const },
+        { label: 'Select All', role: 'selectAll' as const },
+        { type: 'separator' },
+        { label: 'Find…',                accelerator: 'CmdOrCtrl+F', click: send('find') },
+        { label: 'Find & Replace…',      accelerator: 'CmdOrCtrl+H', click: send('findReplace') },
+        { type: 'separator' },
+        { label: 'Preferences…',         accelerator: 'CmdOrCtrl+,', click: send('settings') },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { label: 'Zoom In',         accelerator: 'CmdOrCtrl+=',        click: send('zoomIn') },
+        { label: 'Zoom Out',        accelerator: 'CmdOrCtrl+-',        click: send('zoomOut') },
+        { label: 'Fit Page',        accelerator: 'CmdOrCtrl+0',        click: send('fitPage') },
+        { label: 'Fit Width',       accelerator: 'CmdOrCtrl+Shift+W', click: send('fitWidth') },
+        { label: 'Actual Size (100%)',                                  click: send('zoom100') },
+        { type: 'separator' },
+        { label: 'Thumbnail Sidebar',  accelerator: 'F4', click: send('toggleSidebar') },
+        { label: 'Bookmarks Panel',    accelerator: 'F5', click: send('toggleBookmarks') },
+        { label: 'Annotations Panel',  accelerator: 'F6', click: send('toggleAnnotationsPanel') },
+        { label: 'Forms Panel',        accelerator: 'F7', click: send('toggleFormsPanel') },
+        { type: 'separator' },
+        { label: 'Full Screen',        accelerator: 'F11', click: () => { win.setFullScreen(!win.isFullScreen()) } },
+        { type: 'separator' },
+        { label: 'Toggle Dark / Light Theme', click: send('toggleTheme') },
+      ],
+    },
+    {
+      label: 'Comment',
+      submenu: [
+        { label: 'Select Annotations',  click: send('tool:select') },
+        { label: 'Erase Annotation',    click: send('tool:eraser') },
+        { type: 'separator' },
+        { label: 'Highlight Text',      click: send('tool:highlight') },
+        { label: 'Underline Text',      click: send('tool:underline') },
+        { label: 'Strikethrough Text',  click: send('tool:strikethrough') },
+        { type: 'separator' },
+        { label: 'Typewriter',          click: send('tool:typewriter') },
+        { label: 'Text Box',            click: send('tool:textbox') },
+        { label: 'Sticky Note',         click: send('tool:stickynote') },
+        { type: 'separator' },
+        { label: 'Rectangle',           click: send('tool:rectangle') },
+        { label: 'Ellipse',             click: send('tool:ellipse') },
+        { label: 'Line',                click: send('tool:line') },
+        { label: 'Arrow',               click: send('tool:arrow') },
+        { label: 'Freehand Drawing',    click: send('tool:ink') },
+        { type: 'separator' },
+        { label: 'Stamp',               click: send('tool:stamp') },
+        { type: 'separator' },
+        { label: 'Mark for Redaction',  click: send('tool:redact') },
+        { label: 'Apply All Redactions', click: send('applyRedactions') },
+        { type: 'separator' },
+        { label: 'Annotations Panel',   click: send('toggleAnnotationsPanel') },
+      ],
+    },
+    {
+      label: 'Organize',
+      submenu: [
+        {
+          label: 'Insert Pages',
+          submenu: [
+            { label: 'Blank Page Before Current', click: send('insertBlankBefore') },
+            { label: 'Blank Page After Current',  click: send('insertBlankAfter') },
+            { label: 'From PDF File…',            click: send('insertFromPdf') },
+            { label: 'From Image…',               click: send('insertFromImage') },
+          ],
+        },
+        { label: 'Delete Selected Pages',    click: send('deletePages') },
+        { label: 'Extract Selected Pages',   click: send('extractPages') },
+        { label: 'Duplicate Selected Pages', click: send('duplicatePages') },
+        { type: 'separator' },
+        {
+          label: 'Rotate Pages',
+          submenu: [
+            { label: 'Clockwise 90°',          click: send('rotateCW') },
+            { label: 'Counter-Clockwise 90°',  click: send('rotateCCW') },
+            { label: '180°',                   click: send('rotate180') },
+          ],
+        },
+        { type: 'separator' },
+        { label: 'Merge Documents…',  click: send('merge') },
+        { label: 'Split Document…',   click: send('split') },
+        { type: 'separator' },
+        { label: 'Reverse Page Order', click: send('reverseOrder') },
+      ],
+    },
+    {
+      label: 'Forms',
+      submenu: [
+        { label: 'Toggle Form Editing Mode', click: send('toggleFormMode') },
+        { type: 'separator' },
+        { label: 'Text Field',      click: send('formTool:form-text') },
+        { label: 'Checkbox',        click: send('formTool:form-checkbox') },
+        { label: 'Signature Field', click: send('formTool:form-signature') },
+        { type: 'separator' },
+        { label: 'Flatten Form Fields', click: send('flattenForm') },
+        { label: 'Reset Form',          click: send('resetForm') },
+        { type: 'separator' },
+        { label: 'Form Fields Panel',   click: send('toggleFormsPanel') },
+      ],
+    },
+    {
+      label: 'Tools',
+      submenu: [
+        { label: 'Document Properties…', click: send('metadata') },
+        { label: 'Document Security…',   click: send('security') },
+        { type: 'separator' },
+        {
+          label: 'Digital Signatures',
+          submenu: [
+            { label: 'Sign Document…',     click: send('digitalSign') },
+            { label: 'Verify Signatures…', click: send('digitalSign') },
+          ],
+        },
+        { type: 'separator' },
+        { label: 'Run OCR…',   click: send('ocr') },
+        { label: 'Export…',    click: send('export') },
+        { type: 'separator' },
+        { label: 'Preferences…', accelerator: 'CmdOrCtrl+,', click: send('settings') },
+      ],
+    },
+    {
+      label: 'Help',
+      submenu: [
+        { label: 'Keyboard Shortcuts', accelerator: 'F1', click: send('shortcuts') },
+        { type: 'separator' },
+        {
+          label: 'About Monstera PDF Editor',
+          click: () => {
+            dialog.showMessageBox(win, {
+              type: 'info',
+              title: 'About Monstera PDF Editor',
+              message: 'Monstera PDF Editor',
+              detail: 'Version 1.0.0\n\nA professional-grade PDF editing solution.\n\nBuilt with Electron, React, PDF.js, pdf-lib, and MuPDF WASM.\n\nDesigned for professionals who demand precision.',
+              buttons: ['OK'],
+            })
+          },
+        },
+      ],
+    },
+  ])
+}
 
 function createWindow(): void {
   mainWin = new BrowserWindow({
@@ -31,6 +205,8 @@ function createWindow(): void {
   }
 
   mainWin.on('closed', () => { mainWin = null })
+
+  Menu.setApplicationMenu(buildAppMenu(mainWin))
 }
 
 app.whenReady().then(() => {

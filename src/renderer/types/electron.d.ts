@@ -46,6 +46,8 @@ declare global {
 
       setWindowTitle: (title: string) => Promise<void>
       printWindow: () => Promise<void>
+      onMenuAction: (callback: (action: string) => void) => void
+      removeMenuActionListener: () => void
     }
   }
 }

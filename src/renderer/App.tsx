@@ -1,6 +1,7 @@
 import { useCallback, useState, useEffect, useRef } from 'react'
-import Toolbar from './components/Toolbar'
-import AnnotationToolbar from './components/AnnotationToolbar'
+import RibbonToolbar from './components/RibbonToolbar'
+import StatusBar from './components/StatusBar'
+import LeftPalette from './components/LeftPalette'
 import PdfViewer from './components/PdfViewer'
 import SearchPanel from './components/SearchPanel'
 import StartScreen from './components/StartScreen'
@@ -24,20 +25,21 @@ import './styles/app.css'
 type PasswordPromptState = { path: string; name: string } | null
 
 export default function App() {
-  const loadPdf       = usePdfStore(s => s.loadPdf)
-  const numPages      = usePdfStore(s => s.numPages)
-  const annotations   = usePdfStore(s => s.annotations)
-  const applyRedactions  = usePdfStore(s => s.applyRedactions)
+  const loadPdf              = usePdfStore(s => s.loadPdf)
+  const closePdf             = usePdfStore(s => s.closePdf)
+  const numPages             = usePdfStore(s => s.numPages)
+  const annotations          = usePdfStore(s => s.annotations)
+  const applyRedactions      = usePdfStore(s => s.applyRedactions)
   const setCustomStampDataUrl = usePdfStore(s => s.setCustomStampDataUrl)
-  const setStampName  = usePdfStore(s => s.setStampName)
-  const setActiveTool = usePdfStore(s => s.setActiveTool)
-  const isDirty       = usePdfStore(s => s.isDirty)
-  const fileName      = usePdfStore(s => s.fileName)
-  const setZoomMode   = usePdfStore(s => s.setZoomMode)
-  const setScale      = usePdfStore(s => s.setScale)
-  const save          = usePdfStore(s => s.save)
+  const setStampName         = usePdfStore(s => s.setStampName)
+  const setActiveTool        = usePdfStore(s => s.setActiveTool)
+  const isDirty              = usePdfStore(s => s.isDirty)
+  const fileName             = usePdfStore(s => s.fileName)
+  const setZoomMode          = usePdfStore(s => s.setZoomMode)
+  const setScale             = usePdfStore(s => s.setScale)
+  const save                 = usePdfStore(s => s.save)
 
-  const { settings }   = useSettingsStore()
+  const { settings, updateSettings } = useSettingsStore()
   const { recentFiles, addRecentFile, removeRecentFile } = useRecentFiles()
   const ops = usePdfOperations()
 
@@ -62,7 +64,6 @@ export default function App() {
   // ── Open file ────────────────────────────────────────────────────────────────
 
   const openFile = useCallback(async (filePath?: string, password?: string) => {
-    // Guard: button onClick passes a MouseEvent as first arg — ignore non-strings
     const resolvedPath = typeof filePath === 'string' ? filePath
       : await window.electronAPI.openFileDialog()
     if (!resolvedPath) return
@@ -72,7 +73,6 @@ export default function App() {
       const name = resolvedPath.split(/[\\/]/).pop() ?? resolvedPath
       await loadPdf(bytes, resolvedPath, name, password)
       addRecentFile(resolvedPath, name)
-      // Apply default zoom from settings
       const dz = settings.defaultZoom
       if (dz === 'fit-width' || dz === 'fit-page') setZoomMode(dz)
       else setScale(dz as number)
@@ -91,7 +91,6 @@ export default function App() {
       } else {
         const msg = err?.message ?? 'Unknown error'
         setOpenError(`Could not open file: ${msg}`)
-        console.error('Failed to open PDF:', e)
       }
     }
   }, [loadPdf, addRecentFile, settings.defaultZoom, setZoomMode, setScale])
@@ -119,6 +118,75 @@ export default function App() {
     window.electronAPI.setWindowTitle(title).catch(() => {})
   }, [fileName, isDirty])
 
+  // ── Native menu actions ──────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!window.electronAPI.onMenuAction) return
+    window.electronAPI.onMenuAction((action: string) => {
+      const s = usePdfStore.getState()
+      const sel = [...s.selectedPages]
+      switch (action) {
+        case 'open':         openFile(); break
+        case 'close':        s.closePdf(); break
+        case 'save':         if (s.isDirty) s.save(); break
+        case 'saveAs':       s.saveAs(); break
+        case 'undo':         s.undo(); break
+        case 'redo':         s.redo(); break
+        case 'print':        window.electronAPI.printWindow().catch(() => {}); break
+        case 'metadata':     setMetadataOpen(true); break
+        case 'security':     setSecurityOpen(true); break
+        case 'ocr':          setOcrOpen(true); break
+        case 'digitalSign':  setDigitalSignOpen(true); break
+        case 'settings':     setSettingsOpen(true); break
+        case 'shortcuts':    setShortcutsOpen(true); break
+        case 'export':       setExportOpen(true); break
+        case 'split':        setSplitOpen(true); break
+        case 'find':         s.setSearchOpen(true); break
+        case 'findReplace':  s.setSearchOpen(true); break
+        case 'merge':        ops.mergePdfs(); break
+        case 'toggleSidebar':          s.toggleSidebar(); break
+        case 'toggleBookmarks':        s.toggleBookmarksPanel(); break
+        case 'toggleAnnotationsPanel': s.toggleAnnotationsPanel(); break
+        case 'toggleFormsPanel':       s.toggleFormsPanel(); break
+        case 'toggleTheme':
+          updateSettings({ theme: settings.theme === 'dark' ? 'light' : 'dark' }); break
+        case 'zoomIn':   s.setScale(Math.min(5,    Math.round((s.scale + 0.25) * 100) / 100)); break
+        case 'zoomOut':  s.setScale(Math.max(0.1,  Math.round((s.scale - 0.25) * 100) / 100)); break
+        case 'fitPage':  s.setZoomMode('fit-page'); break
+        case 'fitWidth': s.setZoomMode('fit-width'); break
+        case 'zoom100':  s.setScale(1); break
+        case 'insertBlankBefore': ops.insertBlankPage(s.currentPage - 1); break
+        case 'insertBlankAfter':  ops.insertBlankPage(s.currentPage); break
+        case 'insertFromPdf':   ops.insertFromPdf(s.currentPage); break
+        case 'insertFromImage': ops.insertFromImage(s.currentPage); break
+        case 'deletePages':    if (sel.length > 0) ops.deletePages(sel); break
+        case 'extractPages':   if (sel.length > 0) ops.extractPages(sel); break
+        case 'duplicatePages': if (sel.length > 0) ops.duplicatePage(sel[0]); break
+        case 'rotateCW':   if (sel.length > 0) ops.rotatePages(sel, 90); break
+        case 'rotateCCW':  if (sel.length > 0) ops.rotatePages(sel, 270); break
+        case 'rotate180':  if (sel.length > 0) ops.rotatePages(sel, 180); break
+        case 'reverseOrder': ops.reversePages(); break
+        case 'toggleFormMode': s.setFormMode(!s.formMode); break
+        case 'flattenForm':    s.flattenForm(); break
+        case 'applyRedactions': setRedactConfirmOpen(true); break
+        default:
+          if (action.startsWith('tool:')) {
+            const tool = action.slice(5) as Parameters<typeof s.setActiveTool>[0]
+            s.setActiveTool(s.activeTool === tool ? null : tool)
+          } else if (action.startsWith('formTool:')) {
+            const tool = action.slice(9) as Parameters<typeof s.setFormCreationTool>[0]
+            s.setFormCreationTool(s.formCreationTool === tool ? null : tool)
+            if (!s.formMode) s.setFormMode(true)
+          }
+          break
+      }
+    })
+    return () => {
+      if (window.electronAPI.removeMenuActionListener)
+        window.electronAPI.removeMenuActionListener()
+    }
+  }, [openFile, ops, settings.theme, updateSettings])
+
   // ── Keyboard shortcuts ───────────────────────────────────────────────────────
 
   useKeyboardShortcuts({
@@ -135,10 +203,16 @@ export default function App() {
     await applyRedactions()
   }
 
+  // ── Organize op helpers ──────────────────────────────────────────────────────
+  const selectedPages = usePdfStore(s => s.selectedPages)
+  const currentPage   = usePdfStore(s => s.currentPage)
+  const selList = [...selectedPages]
+
   return (
     <div className="app">
-      <Toolbar
+      <RibbonToolbar
         onOpen={openFile}
+        onClose={closePdf}
         onMerge={ops.mergePdfs}
         onSplit={() => setSplitOpen(true)}
         onMetadata={() => setMetadataOpen(true)}
@@ -148,20 +222,29 @@ export default function App() {
         onSettings={() => setSettingsOpen(true)}
         onShortcuts={() => setShortcutsOpen(true)}
         onPrint={() => window.electronAPI.printWindow().catch(() => {})}
+        onExport={() => setExportOpen(true)}
+        onRequestRedactConfirm={() => setRedactConfirmOpen(true)}
+        onOpenSignaturePad={() => setSignaturePadOpen(true)}
+        onInsertBlankBefore={() => ops.insertBlankPage(currentPage - 1)}
+        onInsertBlankAfter={() => ops.insertBlankPage(currentPage)}
+        onInsertFromPdf={() => ops.insertFromPdf(currentPage)}
+        onInsertFromImage={() => ops.insertFromImage(currentPage)}
+        onDeletePages={() => { if (selList.length > 0) ops.deletePages(selList) }}
+        onExtractPages={() => { if (selList.length > 0) ops.extractPages(selList) }}
+        onDuplicatePages={() => { if (selList.length > 0) ops.duplicatePage(selList[0]) }}
+        onRotateCW={() => { if (selList.length > 0) ops.rotatePages(selList, 90) }}
+        onRotateCCW={() => { if (selList.length > 0) ops.rotatePages(selList, 270) }}
+        onRotate180={() => { if (selList.length > 0) ops.rotatePages(selList, 180) }}
+        onReverseOrder={ops.reversePages}
       />
 
-      {hasPdf && (
-        <AnnotationToolbar
-          onRequestRedactConfirm={() => setRedactConfirmOpen(true)}
-          onOpenSignaturePad={() => setSignaturePadOpen(true)}
-          onOpenExport={() => setExportOpen(true)}
-        />
-      )}
-
       {hasPdf ? (
-        <div className="content-area">
-          <PdfViewer />
-          <SearchPanel />
+        <div className="main-row">
+          <LeftPalette />
+          <div className="content-area">
+            <PdfViewer />
+            <SearchPanel />
+          </div>
         </div>
       ) : (
         <StartScreen
@@ -174,7 +257,9 @@ export default function App() {
         />
       )}
 
-      {/* ── Dialogs ──────────────────────────────────────────────────── */}
+      <StatusBar />
+
+      {/* ── Dialogs ──────────────────────────────────────────────────────── */}
       {splitOpen && (
         <SplitDialog
           numPages={numPages}
@@ -186,12 +271,12 @@ export default function App() {
           onClose={() => setSplitOpen(false)}
         />
       )}
-      {metadataOpen  && <MetadataDialog   onClose={() => setMetadataOpen(false)} />}
-      {securityOpen  && <PasswordDialog   onClose={() => setSecurityOpen(false)} />}
-      {ocrOpen       && <OcrDialog        onClose={() => setOcrOpen(false)} />}
-      {exportOpen    && <ExportDialog     onClose={() => setExportOpen(false)} />}
-      {settingsOpen  && <SettingsDialog   onClose={() => setSettingsOpen(false)} />}
-      {shortcutsOpen && <ShortcutsDialog  onClose={() => setShortcutsOpen(false)} />}
+      {metadataOpen   && <MetadataDialog   onClose={() => setMetadataOpen(false)} />}
+      {securityOpen   && <PasswordDialog   onClose={() => setSecurityOpen(false)} />}
+      {ocrOpen        && <OcrDialog        onClose={() => setOcrOpen(false)} />}
+      {exportOpen     && <ExportDialog     onClose={() => setExportOpen(false)} />}
+      {settingsOpen   && <SettingsDialog   onClose={() => setSettingsOpen(false)} />}
+      {shortcutsOpen  && <ShortcutsDialog  onClose={() => setShortcutsOpen(false)} />}
       {digitalSignOpen && <DigitalSignDialog onClose={() => setDigitalSignOpen(false)} />}
 
       {signaturePadOpen && (
@@ -214,7 +299,7 @@ export default function App() {
         />
       )}
 
-      {/* ── Password prompt ───────────────────────────────────────────── */}
+      {/* ── Password prompt ───────────────────────────────────────────────── */}
       {passwordPrompt && (
         <div className="modal-overlay">
           <div className="modal-box" style={{ width: 400 }}>

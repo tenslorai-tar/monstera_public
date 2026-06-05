@@ -189,6 +189,9 @@ interface PdfStore {
   setRadioSelected: (groupName: string, exportValue: string) => void
   toggleFormsPanel: () => void
   flattenForm: () => Promise<void>
+
+  closePdf: () => void
+  clearAnnotations: () => void
 }
 
 export const usePdfStore = create<PdfStore>((set, get) => ({
@@ -541,4 +544,21 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     ocrData: new Map(s.ocrData).set(pageNum, words),
   })),
   clearOcrData: () => set({ ocrData: new Map() }),
+
+  // ── Document lifecycle ────────────────────────────────────────────────────────
+  closePdf: () => {
+    clearTextCache()
+    set({
+      pdfDoc: null, pdfBytes: null, numPages: 0, filePath: '', fileName: '',
+      pageSizes: [], isDirty: false, undoStack: [], redoStack: [],
+      selectedPages: new Set(), currentPage: 1,
+      searchOpen: false, searchQuery: '', searchMatches: [], activeMatchIndex: -1,
+      annotations: [], activeTool: null, selectedAnnotationId: null, openStickyNoteId: null,
+      formFields: [], formMode: false, formCreationTool: null, formsPanelOpen: false,
+      bookmarks: [], bookmarksPanelOpen: false, annotationsPanelOpen: false,
+      encryptionSettings: null, ocrData: new Map(),
+    })
+  },
+
+  clearAnnotations: () => set({ annotations: [] }),
 }))

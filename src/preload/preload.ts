@@ -71,4 +71,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   printWindow: (): Promise<void> =>
     ipcRenderer.invoke('window:print'),
+
+  onMenuAction: (callback: (action: string) => void): void => {
+    ipcRenderer.on('menu:action', (_event, action: string) => callback(action))
+  },
+
+  removeMenuActionListener: (): void => {
+    ipcRenderer.removeAllListeners('menu:action')
+  },
 })

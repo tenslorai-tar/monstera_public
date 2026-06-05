@@ -100,6 +100,10 @@ export function usePdfOperations() {
     await window.electronAPI.writeBytesToDir(dir, files)
   }, [fileName, getBakedBytes])
 
+  const reversePages = useCallback(async () => {
+    applyEdit(await pdfEdits.reversePages(await requireBytes()))
+  }, [applyEdit, getBakedBytes])
+
   return {
     deletePages,
     rotatePages,
@@ -112,5 +116,6 @@ export function usePdfOperations() {
     mergePdfs,
     splitByRanges,
     splitOnePerPage,
+    reversePages,
   }
 }

@@ -49,6 +49,17 @@ export async function duplicatePage(bytes: Uint8Array, pageNum: number): Promise
   return doc.save()
 }
 
+export async function reversePages(bytes: Uint8Array): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const order = Array.from({ length: count }, (_, i) => count - 1 - i)
+  const newDoc = await PDFDocument.create()
+  copyMeta(doc, newDoc)
+  const pages = await newDoc.copyPages(doc, order)
+  pages.forEach(p => newDoc.addPage(p))
+  return newDoc.save()
+}
+
 // afterPageNum = 0 means insert before page 1
 export async function insertBlankPage(bytes: Uint8Array, afterPageNum: number): Promise<Uint8Array> {
   const doc = await PDFDocument.load(bytes)
