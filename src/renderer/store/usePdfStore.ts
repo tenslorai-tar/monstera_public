@@ -9,6 +9,22 @@ import { readFormFieldsFromPdf, writeFormToBytes, flattenFormToBytes } from '../
 import type { OcrWord } from '../utils/ocrUtils'
 import type { BookmarkItem } from '../types/bookmarks'
 
+export interface LayerItem {
+  id: string
+  name: string
+  visible: boolean
+}
+
+export interface NamedDest {
+  name: string
+  pageNum: number
+}
+
+// OCG config is not Zustand-serializable — store as a module-level ref
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _ocgConfig: any = null
+export function getOcgConfig() { return _ocgConfig }
+
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.mjs',
   import.meta.url
@@ -118,6 +134,18 @@ interface PdfStore {
   bookmarks: BookmarkItem[]
   bookmarksPanelOpen: boolean
 
+  // ── Layers (Optional Content Groups) ─────────────────────────────────────────
+  layers: LayerItem[]
+  layersPanelOpen: boolean
+  layerRevision: number   // increments on toggle to trigger page re-renders
+
+  // ── Named Destinations ────────────────────────────────────────────────────────
+  namedDests: NamedDest[]
+  namedDestsPanelOpen: boolean
+
+  // ── Links Panel ──────────────────────────────────────────────────────────────
+  linksPanelOpen: boolean
+
   // ── OCR ──────────────────────────────────────────────────────────────────────
   ocrData: Map<number, OcrWord[]>
 
@@ -171,6 +199,18 @@ interface PdfStore {
   renameBookmark: (id: string, title: string) => void
   setBookmarks: (items: BookmarkItem[]) => void
   toggleBookmarksPanel: () => void
+
+  // ── Layer actions ─────────────────────────────────────────────────────────────
+  setLayers: (layers: LayerItem[]) => void
+  toggleLayerVisibility: (id: string) => void
+  toggleLayersPanel: () => void
+
+  // ── Named destination actions ─────────────────────────────────────────────────
+  setNamedDests: (dests: NamedDest[]) => void
+  toggleNamedDestsPanel: () => void
+
+  // ── Links panel action ────────────────────────────────────────────────────────
+  toggleLinksPanel: () => void
 
   // ── OCR actions ──────────────────────────────────────────────────────────────
   setOcrData: (pageNum: number, words: OcrWord[]) => void
@@ -229,6 +269,18 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   bookmarks: [],
   bookmarksPanelOpen: false,
 
+  // ── Layer defaults ───────────────────────────────────────────────────────
+  layers: [],
+  layersPanelOpen: false,
+  layerRevision: 0,
+
+  // ── Named destination defaults ───────────────────────────────────────────
+  namedDests: [],
+  namedDestsPanelOpen: false,
+
+  // ── Links panel default ──────────────────────────────────────────────────
+  linksPanelOpen: false,
+
   // ── OCR defaults ─────────────────────────────────────────────────────────
   ocrData: new Map(),
 
@@ -257,6 +309,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
       selectedAnnotationId: null, openStickyNoteId: null, activeTool: null,
       formMode: false, formCreationTool: null, encryptionSettings: null,
       ocrData: new Map(), bookmarks: [], bookmarksPanelOpen: false,
+      layers: [], namedDests: [], layerRevision: 0,
     })
     loadAllPageText(pdfDoc).catch(() => {})
     // Load bookmarks (outline) from PDF in background
@@ -265,6 +318,32 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
         .then(items => set({ bookmarks: items }))
         .catch(() => {})
     }
+    // Load layers (OCG) from PDF.js
+    pdfDoc.getOptionalContentConfig().then(ocgConfig => {
+      _ocgConfig = ocgConfig
+      const groups = ocgConfig?.getGroups?.() ?? null
+      const layerItems: LayerItem[] = []
+      if (groups) {
+        for (const [id, group] of (groups as Map<string, {name: string; visible?: boolean}>).entries()) {
+          layerItems.push({ id, name: group.name ?? id, visible: group.visible !== false })
+        }
+      }
+      set({ layers: layerItems })
+    }).catch(() => { _ocgConfig = null })
+    // Load named destinations from PDF.js
+    pdfDoc.getDestinations().then(async (dests) => {
+      const namedItems: NamedDest[] = []
+      for (const [name, dest] of Object.entries(dests)) {
+        try {
+          const destArray = Array.isArray(dest) ? dest : null
+          if (destArray && destArray[0] && typeof destArray[0] === 'object') {
+            const pageIdx = await pdfDoc.getPageIndex(destArray[0] as Parameters<typeof pdfDoc.getPageIndex>[0])
+            namedItems.push({ name, pageNum: pageIdx + 1 })
+          }
+        } catch { /* skip unresolvable */ }
+      }
+      set({ namedDests: namedItems })
+    }).catch(() => {})
   },
 
   reloadWithBytes: async (bytes) => {
@@ -540,6 +619,30 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   setBookmarks: (items) => set({ bookmarks: items, isDirty: true }),
   toggleBookmarksPanel: () => set(s => ({ bookmarksPanelOpen: !s.bookmarksPanelOpen })),
 
+  // ── Layer actions ─────────────────────────────────────────────────────────────
+  setLayers: (layers) => set({ layers }),
+  toggleLayerVisibility: (id) => {
+    const { layers, layerRevision } = get()
+    const layer = layers.find(l => l.id === id)
+    if (!layer) return
+    const newVisible = !layer.visible
+    if (_ocgConfig) {
+      try { _ocgConfig.setVisibility(id, newVisible) } catch {}
+    }
+    set({
+      layers: layers.map(l => l.id === id ? { ...l, visible: newVisible } : l),
+      layerRevision: layerRevision + 1,
+    })
+  },
+  toggleLayersPanel: () => set(s => ({ layersPanelOpen: !s.layersPanelOpen })),
+
+  // ── Named destination actions ──────────────────────────────────────────────────
+  setNamedDests: (dests) => set({ namedDests: dests }),
+  toggleNamedDestsPanel: () => set(s => ({ namedDestsPanelOpen: !s.namedDestsPanelOpen })),
+
+  // ── Links panel action ─────────────────────────────────────────────────────────
+  toggleLinksPanel: () => set(s => ({ linksPanelOpen: !s.linksPanelOpen })),
+
   // ── OCR actions ──────────────────────────────────────────────────────────────
   setOcrData: (pageNum, words) => set(s => ({
     ocrData: new Map(s.ocrData).set(pageNum, words),
@@ -548,13 +651,13 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
 
   // ── Flatten annotations: bake to PDF bytes, clear in-memory list ────────────
   flattenAnnotations: async () => {
-    const { getBakedBytes, pdfBytes, formFields } = get()
+    const { getBakedBytes, formFields } = get()
     const baked = await getBakedBytes()
     // Reload with baked bytes but clear annotations so overlay is empty
     // (annotations are now embedded as PDF annotation objects in baked)
     const { pdfDoc, numPages, pageSizes } = await buildPdfDoc(baked)
     const { filePath, fileName, scale, zoomMode, sidebarOpen, currentPage,
-            containerWidth, containerHeight, annotationsPanelOpen, formsPanelOpen } = get()
+            annotationsPanelOpen, formsPanelOpen } = get()
     clearTextCache()
     set({
       pdfDoc, pdfBytes: baked, numPages, pageSizes, annotations: [],
@@ -571,6 +674,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   // ── Document lifecycle ────────────────────────────────────────────────────────
   closePdf: () => {
     clearTextCache()
+    _ocgConfig = null
     set({
       pdfDoc: null, pdfBytes: null, numPages: 0, filePath: '', fileName: '',
       pageSizes: [], isDirty: false, undoStack: [], redoStack: [],
@@ -579,6 +683,8 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
       annotations: [], activeTool: null, selectedAnnotationId: null, openStickyNoteId: null,
       formFields: [], formMode: false, formCreationTool: null, formsPanelOpen: false,
       bookmarks: [], bookmarksPanelOpen: false, annotationsPanelOpen: false,
+      layers: [], layersPanelOpen: false, layerRevision: 0,
+      namedDests: [], namedDestsPanelOpen: false, linksPanelOpen: false,
       encryptionSettings: null, ocrData: new Map(),
     })
   },

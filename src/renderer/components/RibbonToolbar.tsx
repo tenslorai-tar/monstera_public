@@ -110,6 +110,14 @@ export default function RibbonToolbar(props: Props) {
   const toggleFormsPanel  = usePdfStore(s => s.toggleFormsPanel)
   const flattenForm       = usePdfStore(s => s.flattenForm)
   const addAnnotation     = usePdfStore(s => s.addAnnotation)
+  const toggleLinksPanel  = usePdfStore(s => s.toggleLinksPanel)
+  const toggleLayersPanel = usePdfStore(s => s.toggleLayersPanel)
+  const toggleNamedDestsPanel = usePdfStore(s => s.toggleNamedDestsPanel)
+  const linksPanelOpen    = usePdfStore(s => s.linksPanelOpen)
+  const layersPanelOpen   = usePdfStore(s => s.layersPanelOpen)
+  const namedDestsPanelOpen = usePdfStore(s => s.namedDestsPanelOpen)
+  const layers            = usePdfStore(s => s.layers)
+  const namedDests        = usePdfStore(s => s.namedDests)
 
   const { settings, updateSettings } = useSettingsStore()
   const theme = settings.theme
@@ -439,6 +447,22 @@ export default function RibbonToolbar(props: Props) {
               <span className="rbn-ctrl-val">pt</span>
             </div>
           )}
+        </div>
+      </Group>
+
+      <Group label="Links">
+        <LBtn icon="🔗" label="Link" active={activeTool === 'link'} onClick={() => toggle('link')} title="Create a link — drag a rectangle, then enter URL or page number" />
+        <div className="rbn-stack">
+          <SBtn icon="≡" label="Links" active={linksPanelOpen} onClick={toggleLinksPanel} title="Links panel — list and edit all links" />
+        </div>
+      </Group>
+
+      <Group label="Navigation">
+        <div className="rbn-stack">
+          <SBtn icon="📂" label="Layers" active={layersPanelOpen} onClick={toggleLayersPanel}
+            disabled={layers.length === 0} title={layers.length > 0 ? 'Layers panel — toggle OCG layer visibility' : 'No layers in this document'} />
+          <SBtn icon="⚓" label="Dests" active={namedDestsPanelOpen} onClick={toggleNamedDestsPanel}
+            disabled={namedDests.length === 0} title={namedDests.length > 0 ? 'Named destinations panel' : 'No named destinations in this document'} />
         </div>
       </Group>
 

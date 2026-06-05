@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { TextLayer } from 'pdfjs-dist'
-import { usePdfStore } from '../store/usePdfStore'
+import { usePdfStore, getOcgConfig } from '../store/usePdfStore'
 import { textCache } from '../utils/textCache'
 import type { SearchMatch } from '../store/usePdfStore'
 import AnnotationOverlay from './AnnotationOverlay'
@@ -41,6 +41,7 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
   const searchMatches = usePdfStore(s => s.searchMatches)
   const activeMatchIndex = usePdfStore(s => s.activeMatchIndex)
   const activeTool = usePdfStore(s => s.activeTool)
+  const layerRevision = usePdfStore(s => s.layerRevision)
 
   const [inView, setInView] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -87,8 +88,14 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
       canvas.width = viewport.width
       canvas.height = viewport.height
 
+      const ocgConfig = getOcgConfig()
       // annotationMode: 0 = DISABLE — our overlay handles annotation rendering
-      await page.render({ canvasContext: ctx, viewport, annotationMode: 0 }).promise
+      await page.render({
+        canvasContext: ctx,
+        viewport,
+        annotationMode: 0,
+        ...(ocgConfig ? { optionalContentConfigPromise: Promise.resolve(ocgConfig) } : {}),
+      }).promise
       if (cancelled || gen !== renderGenRef.current) return
 
       textDiv.innerHTML = ''
@@ -109,7 +116,7 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
     })()
 
     return () => { cancelled = true }
-  }, [inView, pdfDoc, pageNum, scale]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [inView, pdfDoc, pageNum, scale, layerRevision]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const textDiv = textLayerRef.current

@@ -166,6 +166,9 @@ export default function App() {
         case 'toggleBookmarks':        s.toggleBookmarksPanel(); break
         case 'toggleAnnotationsPanel': s.toggleAnnotationsPanel(); break
         case 'toggleFormsPanel':       s.toggleFormsPanel(); break
+        case 'toggleLinksPanel':       s.toggleLinksPanel(); break
+        case 'toggleLayersPanel':      s.toggleLayersPanel(); break
+        case 'toggleNamedDestsPanel':  s.toggleNamedDestsPanel(); break
         case 'toggleTheme':
           updateSettings({ theme: settings.theme === 'dark' ? 'light' : 'dark' }); break
         case 'zoomIn':   s.setScale(Math.min(5,    Math.round((s.scale + 0.25) * 100) / 100)); break

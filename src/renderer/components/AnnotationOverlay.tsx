@@ -5,7 +5,7 @@ import type {
   Annotation, HighlightAnn, InkAnn,
   ShapeAnn, TextBoxAnn, StickyNoteAnn, StampAnn, RedactAnn,
   TypewriterAnn, TextEditAnn, PlacedImageAnn,
-  CalloutAnn, CloudAnn, PolyAnn, CaretAnn, MeasureAnn,
+  CalloutAnn, CloudAnn, PolyAnn, CaretAnn, MeasureAnn, LinkAnn,
 } from '../types/annotations'
 
 interface Props {
@@ -27,6 +27,7 @@ type DrawPhase =
   | { k: 'callout-size'; sx: number; sy: number; cx: number; cy: number }
   | { k: 'callout-edit'; x: number; y: number; w: number; h: number; text: string; tipSvgX: number; tipSvgY: number }
   | { k: 'poly'; pts: Array<[number, number]>; curX: number; curY: number }
+  | { k: 'link-pending'; x1: number; y1: number; x2: number; y2: number; href: string; destPage: string }
 
 type ImageDrag =
   | { k: 'idle' }
@@ -344,6 +345,10 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
         addAnnotation({ id: newId(), pageNum, type: 'redact', color: '#000000', opacity: 1,
           x1, y1, x2, y2, createdAt: Date.now() } as RedactAnn)
         setDraw({ k: 'idle' }); return
+      }
+      if (activeTool === 'link') {
+        setDraw({ k: 'link-pending', x1, y1, x2, y2, href: '', destPage: '' })
+        return
       }
       addAnnotation({
         id: newId(), pageNum, type: activeTool as ShapeAnn['type'],
@@ -848,6 +853,28 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       )
     }
 
+    if (ann.type === 'link') {
+      const a = ann as LinkAnn
+      const [svgX1, svgY1] = toSvg(Math.min(a.x1, a.x2), Math.max(a.y1, a.y2))
+      const [svgX2, svgY2] = toSvg(Math.max(a.x1, a.x2), Math.min(a.y1, a.y2))
+      const label = a.href ? (a.href.length > 28 ? a.href.slice(0, 25) + '…' : a.href)
+        : a.destPage != null ? `Page ${a.destPage}` : 'Link'
+      return (
+        <g key={a.id} onClick={e => handleAnnotClick(a, e)} style={annStyle(a)}>
+          <rect x={svgX1} y={svgY1} width={svgX2 - svgX1} height={svgY2 - svgY1}
+            fill={a.color} fillOpacity={sel ? 0.25 : 0.12}
+            stroke={a.color} strokeWidth={sel ? 2 : 1.5} strokeOpacity={0.8}
+            strokeDasharray={sel ? '6,3' : undefined} />
+          {svgY2 - svgY1 > 14 && svgX2 - svgX1 > 30 && (
+            <text x={svgX1 + 4} y={svgY1 + 12} fontSize={10} fill={a.color} fillOpacity={0.9}
+              fontFamily="monospace" pointerEvents="none">
+              {label}
+            </text>
+          )}
+        </g>
+      )
+    }
+
     return null
   }
 
@@ -914,6 +941,9 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       const x = Math.min(sx, cx), y = Math.min(sy, cy)
       const w = Math.abs(cx - sx), h = Math.abs(cy - sy)
       const sw = toolLineWidth * scale
+      if (activeTool === 'link')
+        return <rect x={x} y={y} width={w} height={h}
+          fill="rgba(0,100,255,0.08)" stroke="#0064ff" strokeWidth={1.5} strokeDasharray="4,3" />
       if (activeTool === 'redact')
         return <rect x={x} y={y} width={w} height={h}
           fill="rgba(255,40,40,0.18)" stroke="#ff4444" strokeWidth={1.5} strokeDasharray="4,3" />
@@ -1054,10 +1084,72 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
     )
   }
 
+  const commitLink = () => {
+    if (draw.k !== 'link-pending') return
+    const { x1, y1, x2, y2, href, destPage } = draw
+    const trimHref = href.trim()
+    const pageNum_ = parseInt(destPage, 10)
+    if (!trimHref && isNaN(pageNum_)) { setDraw({ k: 'idle' }); return }
+    const ann: LinkAnn = {
+      id: newId(), type: 'link', pageNum,
+      color: '#0055cc', opacity: 0.3, createdAt: Date.now(),
+      x1, y1, x2, y2,
+      ...(trimHref ? { href: trimHref } : { destPage: pageNum_ }),
+    }
+    addAnnotation(ann)
+    setDraw({ k: 'idle' })
+  }
+
+  const renderLinkPending = () => {
+    if (draw.k !== 'link-pending') return null
+    const [svgX1, svgY1] = toSvg(Math.min(draw.x1, draw.x2), Math.max(draw.y1, draw.y2))
+    const [svgX2, svgY2] = toSvg(Math.max(draw.x1, draw.x2), Math.min(draw.y1, draw.y2))
+    const formW = 280, formH = 130
+    const fx = Math.min(svgX1, W - formW - 8), fy = Math.max(8, svgY1 - formH - 8)
+    return (
+      <>
+        <rect x={svgX1} y={svgY1} width={svgX2 - svgX1} height={svgY2 - svgY1}
+          fill="rgba(0,85,204,0.12)" stroke="#0055cc" strokeWidth={1.5} strokeDasharray="4,3" />
+        <foreignObject x={fx} y={fy} width={formW} height={formH} style={{ pointerEvents: 'all' }}>
+          <div style={{ background: 'var(--bg-secondary, #2a2a2a)', border: '1px solid var(--border, #444)',
+            borderRadius: 6, padding: 10, display: 'flex', flexDirection: 'column', gap: 6,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.5)', fontSize: 12, color: 'var(--text, #e0e0e0)' }}>
+            <div style={{ fontWeight: 600, marginBottom: 2 }}>Add Link</div>
+            <input type="text" placeholder="URL (https://…)"
+              value={draw.href}
+              onChange={e => setDraw(d => ({ ...(d as any), href: e.target.value } as DrawPhase))}
+              autoFocus
+              style={{ background: 'var(--bg-primary, #1e1e1e)', color: 'inherit', border: '1px solid var(--border, #555)',
+                borderRadius: 4, padding: '3px 6px', fontSize: 12, outline: 'none', width: '100%', boxSizing: 'border-box' }}
+              onKeyDown={e => { if (e.key === 'Enter') commitLink(); if (e.key === 'Escape') setDraw({ k: 'idle' }) }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ whiteSpace: 'nowrap', fontSize: 11, opacity: 0.7 }}>or page:</span>
+              <input type="number" placeholder="page #" min={1}
+                value={draw.destPage}
+                onChange={e => setDraw(d => ({ ...(d as any), destPage: e.target.value } as DrawPhase))}
+                style={{ background: 'var(--bg-primary, #1e1e1e)', color: 'inherit', border: '1px solid var(--border, #555)',
+                  borderRadius: 4, padding: '3px 6px', fontSize: 12, outline: 'none', width: 80, boxSizing: 'border-box' }}
+                onKeyDown={e => { if (e.key === 'Enter') commitLink(); if (e.key === 'Escape') setDraw({ k: 'idle' }) }} />
+            </div>
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+              <button onClick={() => setDraw({ k: 'idle' })}
+                style={{ padding: '3px 10px', fontSize: 11, background: 'transparent', border: '1px solid var(--border, #555)',
+                  borderRadius: 4, color: 'inherit', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={commitLink}
+                style={{ padding: '3px 10px', fontSize: 11, background: '#0055cc', border: 'none',
+                  borderRadius: 4, color: '#fff', cursor: 'pointer' }}>OK</button>
+            </div>
+          </div>
+        </foreignObject>
+      </>
+    )
+  }
+
   // ── Pointer events setup ─────────────────────────────────────────────────
 
   const svgPointerEvents: React.CSSProperties['pointerEvents'] =
     isDragDrawTool || isTextEditTool || isCalloutTool || isPolyTool || isCaretTool || imgDrag.k !== 'idle'
+      || draw.k === 'link-pending'
       ? 'all'
       : isMarkupTool ? 'none' : 'all'
 
@@ -1091,6 +1183,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
         {renderTypewriterEdit()}
         {renderTextEditBox()}
         {renderCalloutEdit()}
+        {renderLinkPending()}
         {/* Poly drawing: hint for first click */}
         {draw.k === 'poly' && draw.pts.length > 0 && (
           <text x={draw.curX + 8} y={draw.curY - 6} fill={toolColor} fontSize={10}

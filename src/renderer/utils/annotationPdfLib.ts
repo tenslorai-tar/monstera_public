@@ -4,7 +4,7 @@ import type {
   Annotation, HighlightAnn, InkAnn, ShapeAnn,
   TextBoxAnn, StickyNoteAnn, StampAnn, RedactAnn,
   TypewriterAnn, TextEditAnn, PlacedImageAnn,
-  CalloutAnn, CloudAnn, PolyAnn, CaretAnn, MeasureAnn,
+  CalloutAnn, CloudAnn, PolyAnn, CaretAnn, MeasureAnn, LinkAnn,
 } from '../types/annotations'
 import { hexToRgb01, rgb255ToHex, newId } from './annotationUtils'
 
@@ -327,6 +327,44 @@ function writeMeasure(doc: PDFDocument, a: MeasureAnn) {
   }
 }
 
+function writeLink(doc: PDFDocument, a: LinkAnn) {
+  const x1 = Math.min(a.x1, a.x2), y1 = Math.min(a.y1, a.y2)
+  const x2 = Math.max(a.x1, a.x2), y2 = Math.max(a.y1, a.y2)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let action: any
+  if (a.href) {
+    action = doc.context.obj({
+      Type: PDFName.of('Action'),
+      S: PDFName.of('URI'),
+      URI: PDFString.of(a.href),
+    })
+  } else if (a.destPage != null) {
+    const pIdx = a.destPage - 1
+    const pCount = doc.getPageCount()
+    if (pIdx < 0 || pIdx >= pCount) return
+    const pageRef = doc.getPage(pIdx).ref
+    action = doc.context.obj({
+      Type: PDFName.of('Action'),
+      S: PDFName.of('GoTo'),
+      D: doc.context.obj([pageRef, PDFName.of('XYZ'), PDFNumber.of(0), PDFNumber.of(9999), PDFNumber.of(0)]),
+    })
+  } else {
+    return
+  }
+  registerAnnot(doc, a.pageNum - 1, {
+    Type: PDFName.of('Annot'),
+    Subtype: PDFName.of('Link'),
+    Rect: doc.context.obj([x1, y1, x2, y2]),
+    A: action,
+    Border: doc.context.obj([PDFNumber.of(0), PDFNumber.of(0), PDFNumber.of(1)]),
+    C: mkC(doc, a.color || '#0000ff'),
+    CA: PDFNumber.of(a.opacity),
+    NM: PDFString.of(NM_PREFIX + a.id),
+    F: PDFNumber.of(4),
+    H: PDFName.of('I'),
+  })
+}
+
 function dataUrlToBytes(dataUrl: string): { bytes: Uint8Array; mime: string } {
   const [header, b64] = dataUrl.split(',')
   const mime = header.replace('data:', '').replace(';base64', '')
@@ -392,6 +430,8 @@ export async function writeAnnotationsToPdf(
         writeCaret(doc, ann as CaretAnn); break
       case 'measure-distance': case 'measure-area': case 'measure-perimeter':
         writeMeasure(doc, ann as MeasureAnn); break
+      case 'link':
+        writeLink(doc, ann as LinkAnn); break
       case 'placed-image':
         break  // handled above via content stream
     }
@@ -524,6 +564,20 @@ export async function readAnnotationsFromPdf(
           case 'Caret': {
             const [x1, y1, x2, y2] = a.rect as number[]
             result.push({ ...base, type: 'caret', x: x1, y: y1, width: x2 - x1, height: y2 - y1 } as CaretAnn)
+            break
+          }
+          case 'Link': {
+            const [x1, y1, x2, y2] = a.rect as number[]
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const url: string | undefined = (a as any).url || (a as any).unsafeUrl || undefined
+            result.push({
+              ...base,
+              type: 'link',
+              color: base.color !== '#ffff00' ? base.color : '#0000ff',
+              opacity: 0.3,
+              x1, y1, x2, y2,
+              href: url,
+            } as LinkAnn)
             break
           }
         }

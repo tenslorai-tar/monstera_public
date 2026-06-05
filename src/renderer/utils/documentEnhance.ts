@@ -1,16 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, degrees } from 'pdf-lib'
-import type { PDFDocument as PDFDocumentType } from 'pdf-lib'
 import { PDFName } from 'pdf-lib'
 import { hexToRgb01 } from './annotationUtils'
-
-function copyMeta(src: PDFDocumentType, dst: PDFDocumentType): void {
-  const t = src.getTitle(); if (t) dst.setTitle(t)
-  const a = src.getAuthor(); if (a) dst.setAuthor(a)
-  const s = src.getSubject(); if (s) dst.setSubject(s)
-  const k = src.getKeywords(); if (k) dst.setKeywords(k.split(',').map(x => x.trim()))
-  const c = src.getCreator(); if (c) dst.setCreator(c)
-  dst.setModificationDate(new Date())
-}
 
 function resolvePages(pages: 'all' | number[], total: number): number[] {
   if (pages === 'all') return Array.from({ length: total }, (_, i) => i + 1)

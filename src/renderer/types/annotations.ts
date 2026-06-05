@@ -8,6 +8,7 @@ export type AnnotationTool =
   | 'redact'
   | 'typewriter' | 'text-edit' | 'place-image'
   | 'measure-distance' | 'measure-area' | 'measure-perimeter'
+  | 'link'
 
 export type StampName = 'Approved' | 'Draft' | 'Confidential' | 'Rejected' | 'Custom'
 
@@ -127,8 +128,17 @@ export interface MeasureAnn extends AnnBase {
   unit: string    // unit string: 'pt', 'mm', 'in', etc.
 }
 
+/** Link annotation: clickable rectangle → URL or internal page destination */
+export interface LinkAnn extends AnnBase {
+  type: 'link'
+  x1: number; y1: number; x2: number; y2: number
+  href?: string       // URI action (external URL)
+  destPage?: number   // GoTo action (1-indexed page number)
+}
+
 export type Annotation =
   | HighlightAnn | InkAnn | ShapeAnn
   | TextBoxAnn | StickyNoteAnn | StampAnn | RedactAnn
   | TypewriterAnn | TextEditAnn | PlacedImageAnn
   | CalloutAnn | CloudAnn | PolyAnn | CaretAnn | MeasureAnn
+  | LinkAnn

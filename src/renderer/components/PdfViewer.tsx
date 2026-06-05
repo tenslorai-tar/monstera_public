@@ -5,6 +5,9 @@ import Sidebar from './Sidebar'
 import AnnotationsPanel from './AnnotationsPanel'
 import FormsPanel from './FormsPanel'
 import BookmarksPanel from './BookmarksPanel'
+import LinksPanel from './LinksPanel'
+import LayersPanel from './LayersPanel'
+import NamedDestsPanel from './NamedDestsPanel'
 
 export default function PdfViewer() {
   const numPages = usePdfStore(s => s.numPages)
@@ -17,6 +20,9 @@ export default function PdfViewer() {
   const annotationsPanelOpen = usePdfStore(s => s.annotationsPanelOpen)
   const formsPanelOpen = usePdfStore(s => s.formsPanelOpen)
   const bookmarksPanelOpen = usePdfStore(s => s.bookmarksPanelOpen)
+  const linksPanelOpen = usePdfStore(s => s.linksPanelOpen)
+  const layersPanelOpen = usePdfStore(s => s.layersPanelOpen)
+  const namedDestsPanelOpen = usePdfStore(s => s.namedDestsPanelOpen)
   const scrollRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<HTMLDivElement>(null)
 
@@ -106,6 +112,9 @@ export default function PdfViewer() {
       {annotationsPanelOpen && <AnnotationsPanel />}
       {formsPanelOpen && <FormsPanel />}
       {bookmarksPanelOpen && <BookmarksPanel />}
+      {linksPanelOpen && <LinksPanel />}
+      {layersPanelOpen && <LayersPanel />}
+      {namedDestsPanelOpen && <NamedDestsPanel />}
     </div>
   )
 }
