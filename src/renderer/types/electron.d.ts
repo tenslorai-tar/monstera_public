@@ -43,6 +43,9 @@ declare global {
       }>>
 
       exportToDocx: (bytes: ArrayBuffer, fileName: string) => Promise<ArrayBuffer>
+
+      setWindowTitle: (title: string) => Promise<void>
+      printWindow: () => Promise<void>
     }
   }
 }

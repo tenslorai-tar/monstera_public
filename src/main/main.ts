@@ -4,14 +4,17 @@ import fs from 'fs'
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
+let mainWin: BrowserWindow | null = null
+
 function createWindow(): void {
-  const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    minWidth: 800,
+  mainWin = new BrowserWindow({
+    width: 1400,
+    height: 900,
+    minWidth: 900,
     minHeight: 600,
     title: 'Monstera PDF Editor',
     backgroundColor: '#1e1e1e',
+    icon: path.join(__dirname, '../../assets/icons/icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
@@ -21,11 +24,13 @@ function createWindow(): void {
   })
 
   if (isDev) {
-    win.loadURL('http://localhost:5173')
-    win.webContents.openDevTools()
+    mainWin.loadURL('http://localhost:5173')
+    // mainWin.webContents.openDevTools()   // uncomment to debug renderer
   } else {
-    win.loadFile(path.join(__dirname, '../../dist/index.html'))
+    mainWin.loadFile(path.join(__dirname, '../../dist/index.html'))
   }
+
+  mainWin.on('closed', () => { mainWin = null })
 }
 
 app.whenReady().then(() => {
@@ -37,6 +42,17 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+// ── Window title ──────────────────────────────────────────────────────────────
+ipcMain.handle('window:setTitle', (_event, title: string) => {
+  mainWin?.setTitle(title)
+})
+
+// ── Print ─────────────────────────────────────────────────────────────────────
+ipcMain.handle('window:print', () => {
+  if (!mainWin) return
+  mainWin.webContents.print({ silent: false, printBackground: true }, () => {})
 })
 
 // ── File read ────────────────────────────────────────────────────────────────

@@ -272,12 +272,52 @@ Monstera PDF Editor/
 | **Verify** | Open a signed PDF → "🔏 Sign" → "✅ Verify" tab → "Check Signatures" → see signer name and cert validity |
 | **Verify with Adobe** | Sign a PDF → open the saved copy in Adobe Acrobat → signature panel shows valid signature |
 
-### Phase 10 — Polish & UX
-- [ ] Dark/light theme toggle
-- [ ] Customizable toolbar
-- [ ] Print support
-- [ ] Auto-updater (electron-updater, self-hosted or local)
-- [ ] Keyboard shortcut reference panel
+### Phase 10 — Polish & UX ✅
+- [x] Dark/light theme toggle — ☀/🌙 button in toolbar; CSS variables via `data-theme` attribute; persisted in settings
+- [x] App settings dialog (Ctrl+,) — default zoom, theme, OCR language, autosave interval, page number badges; stored in `localStorage`
+- [x] Autosave — configurable interval (1/2/5/10/30 min or off); silently overwrites file when dirty
+- [x] Keyboard shortcut reference panel (F1) — full two-column reference with all shortcuts
+- [x] Print support (Ctrl+P) — triggers Electron native print dialog via `webContents.print()`
+- [x] Find & Replace — expand search bar with ▶ toggle; replace works on text annotations (textbox, typewriter, stickynote); original PDF stream replacement noted as requiring native MuPDF
+- [x] Robust error handling — corrupt/unreadable file shows inline error on start screen; password-protected files show password prompt with clear error feedback; all errors caught and displayed
+- [x] Window title sync — title bar shows `filename — Monstera PDF Editor` with ● dirty indicator
+- [x] Start screen improvements — feature grid, keyboard hint, open error display
+- [x] Default zoom applied on file open — respects `defaultZoom` setting
+- [x] Home/End keys — jump to first/last page
+- [ ] Auto-updater (electron-updater) — not needed for personal use
+- [ ] Customizable toolbar — deferred; toolbar is fixed but complete
+
+**How to test:**
+| Feature | Steps |
+|---|---|
+| **Theme toggle** | Click ☀ or 🌙 in toolbar top-right → UI switches between dark and light |
+| **Settings** | Ctrl+, or ⚙ button → change zoom default, theme, OCR lang, autosave → Apply |
+| **Autosave** | Settings → set autosave to 1 min → edit PDF → wait → file auto-saves |
+| **Shortcuts** | F1 or ? button → full keyboard reference dialog |
+| **Print** | Open PDF → Ctrl+P or 🖨 Print → system print dialog appears |
+| **Find & Replace** | Ctrl+F → click ▶ arrow → type in Replace field → "1" replaces current, "All" replaces all annotations |
+| **Error handling** | Try to open a corrupt file → error shown on start screen; open encrypted PDF → password dialog |
+| **Window title** | Open any PDF → title bar shows filename; make edit → ● appears |
+
+---
+
+## Build Commands
+
+```bash
+# Development (live reload)
+npm run dev
+
+# Production build (Vite + TypeScript compile only — no installer)
+npm run build:vite && npm run build:electron
+
+# Full installer build (NSIS + portable .exe) — run when ready to package
+npm run build
+```
+
+## Output locations (after `npm run build`)
+- Installer: `release\Monstera PDF Editor Setup 0.1.0.exe`
+- Portable:  `release\Monstera PDF Editor 0.1.0.exe`
+- Unpacked:  `release\win-unpacked\Monstera PDF Editor.exe`
 
 ### Phase 11 — Export ✅
 - [x] Export pages to PNG or JPEG — choose pages (range or "all"), DPI (72–300), format, quality; each page saved as separate file to a chosen folder

@@ -65,4 +65,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   exportToDocx: (bytes: ArrayBuffer, fileName: string): Promise<ArrayBuffer> =>
     ipcRenderer.invoke('export:toDocx', bytes, fileName),
+
+  setWindowTitle: (title: string): Promise<void> =>
+    ipcRenderer.invoke('window:setTitle', title),
+
+  printWindow: (): Promise<void> =>
+    ipcRenderer.invoke('window:print'),
 })

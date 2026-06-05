@@ -4,16 +4,32 @@
   padding: 0;
 }
 
+/* ── Dark theme (default) ─────────────────────────────── */
 :root {
-  --bg-primary: #1e1e1e;
+  --bg-primary:   #1e1e1e;
   --bg-secondary: #252526;
-  --bg-toolbar: #2d2d2d;
-  --border: #3e3e3e;
+  --bg-toolbar:   #2d2d2d;
+  --bg-hover:     rgba(255, 255, 255, 0.06);
+  --border:       #3e3e3e;
   --text-primary: #d4d4d4;
-  --text-muted: #858585;
-  --accent: #4a9eff;
+  --text-muted:   #858585;
+  --accent:       #4a9eff;
   --accent-hover: #6ab0ff;
-  --bg-hover: rgba(255, 255, 255, 0.06);
+  --shadow:       rgba(0, 0, 0, 0.5);
+}
+
+/* ── Light theme ─────────────────────────────────────── */
+[data-theme="light"] {
+  --bg-primary:   #f0f0f0;
+  --bg-secondary: #e8e8e8;
+  --bg-toolbar:   #ffffff;
+  --bg-hover:     rgba(0, 0, 0, 0.06);
+  --border:       #d0d0d0;
+  --text-primary: #1a1a1a;
+  --text-muted:   #666666;
+  --accent:       #1a73e8;
+  --accent-hover: #1558b0;
+  --shadow:       rgba(0, 0, 0, 0.18);
 }
 
 html, body, #root {
@@ -27,4 +43,5 @@ body {
   background: var(--bg-primary);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
+  transition: background 0.15s, color 0.15s;
 }
