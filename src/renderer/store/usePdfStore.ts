@@ -190,6 +190,7 @@ interface PdfStore {
   toggleFormsPanel: () => void
   flattenForm: () => Promise<void>
 
+  flattenAnnotations: () => Promise<void>
   closePdf: () => void
   clearAnnotations: () => void
 }
@@ -544,6 +545,28 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     ocrData: new Map(s.ocrData).set(pageNum, words),
   })),
   clearOcrData: () => set({ ocrData: new Map() }),
+
+  // ── Flatten annotations: bake to PDF bytes, clear in-memory list ────────────
+  flattenAnnotations: async () => {
+    const { getBakedBytes, pdfBytes, formFields } = get()
+    const baked = await getBakedBytes()
+    // Reload with baked bytes but clear annotations so overlay is empty
+    // (annotations are now embedded as PDF annotation objects in baked)
+    const { pdfDoc, numPages, pageSizes } = await buildPdfDoc(baked)
+    const { filePath, fileName, scale, zoomMode, sidebarOpen, currentPage,
+            containerWidth, containerHeight, annotationsPanelOpen, formsPanelOpen } = get()
+    clearTextCache()
+    set({
+      pdfDoc, pdfBytes: baked, numPages, pageSizes, annotations: [],
+      formFields, filePath, fileName, scale, zoomMode, sidebarOpen,
+      annotationsPanelOpen, formsPanelOpen,
+      currentPage: Math.min(currentPage, numPages),
+      selectedPages: new Set(), isDirty: true,
+      searchOpen: false, searchQuery: '', searchMatches: [], activeMatchIndex: -1,
+      selectedAnnotationId: null, openStickyNoteId: null,
+    })
+    loadAllPageText(pdfDoc).catch(() => {})
+  },
 
   // ── Document lifecycle ────────────────────────────────────────────────────────
   closePdf: () => {

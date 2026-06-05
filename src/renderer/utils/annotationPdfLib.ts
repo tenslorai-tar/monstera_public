@@ -4,6 +4,7 @@ import type {
   Annotation, HighlightAnn, InkAnn, ShapeAnn,
   TextBoxAnn, StickyNoteAnn, StampAnn, RedactAnn,
   TypewriterAnn, TextEditAnn, PlacedImageAnn,
+  CalloutAnn, CloudAnn, PolyAnn, CaretAnn, MeasureAnn,
 } from '../types/annotations'
 import { hexToRgb01, rgb255ToHex, newId } from './annotationUtils'
 
@@ -217,6 +218,115 @@ function writeStamp(doc: PDFDocument, a: StampAnn) {
   })
 }
 
+function writeCallout(doc: PDFDocument, a: CalloutAnn) {
+  const x2 = a.x + a.width, y2 = a.y + a.height
+  registerAnnot(doc, a.pageNum - 1, {
+    Type: PDFName.of('Annot'),
+    Subtype: PDFName.of('FreeText'),
+    Rect: doc.context.obj([a.x, a.y, x2, y2]),
+    Contents: PDFString.of(a.text),
+    DA: PDFString.of(`/Helvetica ${a.fontSize} Tf`),
+    BS: doc.context.obj({ W: PDFNumber.of(a.lineWidth) }),
+    C: mkC(doc, a.color),
+    CA: PDFNumber.of(a.opacity),
+    CL: doc.context.obj([a.tipX, a.tipY, a.x, (a.y + y2) / 2]),
+    IT: PDFName.of('FreeTextCallout'),
+    NM: PDFString.of(NM_PREFIX + a.id),
+    F: PDFNumber.of(4),
+  })
+}
+
+function writeCloud(doc: PDFDocument, a: CloudAnn) {
+  if (a.points.length < 2) return
+  const allX = a.points.map(p => p[0]), allY = a.points.map(p => p[1])
+  registerAnnot(doc, a.pageNum - 1, {
+    Type: PDFName.of('Annot'),
+    Subtype: PDFName.of('Polygon'),
+    Rect: doc.context.obj([
+      Math.min(...allX) - 4, Math.min(...allY) - 4,
+      Math.max(...allX) + 4, Math.max(...allY) + 4,
+    ]),
+    Vertices: doc.context.obj(a.points.flat()),
+    BS: doc.context.obj({ W: PDFNumber.of(a.lineWidth) }),
+    BE: doc.context.obj({ S: PDFName.of('C'), I: PDFNumber.of(1) }),
+    C: mkC(doc, a.color),
+    CA: PDFNumber.of(a.opacity),
+    NM: PDFString.of(NM_PREFIX + a.id),
+    F: PDFNumber.of(4),
+  })
+}
+
+function writePoly(doc: PDFDocument, a: PolyAnn) {
+  if (a.points.length < 2) return
+  const allX = a.points.map(p => p[0]), allY = a.points.map(p => p[1])
+  registerAnnot(doc, a.pageNum - 1, {
+    Type: PDFName.of('Annot'),
+    Subtype: PDFName.of(a.type === 'polygon' ? 'Polygon' : 'PolyLine'),
+    Rect: doc.context.obj([
+      Math.min(...allX) - 4, Math.min(...allY) - 4,
+      Math.max(...allX) + 4, Math.max(...allY) + 4,
+    ]),
+    Vertices: doc.context.obj(a.points.flat()),
+    BS: doc.context.obj({ W: PDFNumber.of(a.lineWidth) }),
+    C: mkC(doc, a.color),
+    CA: PDFNumber.of(a.opacity),
+    NM: PDFString.of(NM_PREFIX + a.id),
+    F: PDFNumber.of(4),
+  })
+}
+
+function writeCaret(doc: PDFDocument, a: CaretAnn) {
+  registerAnnot(doc, a.pageNum - 1, {
+    Type: PDFName.of('Annot'),
+    Subtype: PDFName.of('Caret'),
+    Rect: doc.context.obj([a.x, a.y, a.x + a.width, a.y + a.height]),
+    C: mkC(doc, a.color),
+    CA: PDFNumber.of(a.opacity),
+    NM: PDFString.of(NM_PREFIX + a.id),
+    F: PDFNumber.of(4),
+  })
+}
+
+function writeMeasure(doc: PDFDocument, a: MeasureAnn) {
+  if (a.points.length < 2) return
+  const allX = a.points.map(p => p[0]), allY = a.points.map(p => p[1])
+  const isLine = a.type === 'measure-distance'
+  if (isLine) {
+    const [p0, p1] = a.points
+    registerAnnot(doc, a.pageNum - 1, {
+      Type: PDFName.of('Annot'),
+      Subtype: PDFName.of('Line'),
+      Rect: doc.context.obj([
+        Math.min(...allX) - 5, Math.min(...allY) - 5,
+        Math.max(...allX) + 5, Math.max(...allY) + 5,
+      ]),
+      L: doc.context.obj([p0[0], p0[1], p1[0], p1[1]]),
+      Contents: PDFString.of(a.label),
+      BS: doc.context.obj({ W: PDFNumber.of(a.lineWidth) }),
+      C: mkC(doc, a.color),
+      CA: PDFNumber.of(a.opacity),
+      NM: PDFString.of(NM_PREFIX + a.id),
+      F: PDFNumber.of(4),
+    })
+  } else {
+    registerAnnot(doc, a.pageNum - 1, {
+      Type: PDFName.of('Annot'),
+      Subtype: PDFName.of('Polygon'),
+      Rect: doc.context.obj([
+        Math.min(...allX) - 4, Math.min(...allY) - 4,
+        Math.max(...allX) + 4, Math.max(...allY) + 4,
+      ]),
+      Vertices: doc.context.obj(a.points.flat()),
+      Contents: PDFString.of(a.label),
+      BS: doc.context.obj({ W: PDFNumber.of(a.lineWidth) }),
+      C: mkC(doc, a.color),
+      CA: PDFNumber.of(a.opacity),
+      NM: PDFString.of(NM_PREFIX + a.id),
+      F: PDFNumber.of(4),
+    })
+  }
+}
+
 function dataUrlToBytes(dataUrl: string): { bytes: Uint8Array; mime: string } {
   const [header, b64] = dataUrl.split(',')
   const mime = header.replace('data:', '').replace(';base64', '')
@@ -272,6 +382,16 @@ export async function writeAnnotationsToPdf(
         writeTypewriter(doc, ann as TypewriterAnn); break
       case 'text-edit':
         writeTextEdit(doc, ann as TextEditAnn); break
+      case 'callout':
+        writeCallout(doc, ann as CalloutAnn); break
+      case 'cloud':
+        writeCloud(doc, ann as CloudAnn); break
+      case 'polygon': case 'polyline':
+        writePoly(doc, ann as PolyAnn); break
+      case 'caret':
+        writeCaret(doc, ann as CaretAnn); break
+      case 'measure-distance': case 'measure-area': case 'measure-perimeter':
+        writeMeasure(doc, ann as MeasureAnn); break
       case 'placed-image':
         break  // handled above via content stream
     }
@@ -374,6 +494,36 @@ export async function readAnnotationsFromPdf(
           case 'Redact': {
             const [x1, y1, x2, y2] = a.rect as number[]
             result.push({ ...base, type: 'redact', x1, y1, x2, y2 } as RedactAnn)
+            break
+          }
+          case 'Polygon': {
+            const rawVerts: number[] = Array.isArray((a as any).vertices) ? (a as any).vertices : []
+            const pts: Array<[number,number]> = []
+            for (let vi = 0; vi + 1 < rawVerts.length; vi += 2) pts.push([rawVerts[vi], rawVerts[vi+1]])
+            if (pts.length >= 2) {
+              const isCloud = (a as any).borderEffect?.style === 'C'
+              const isMeasure = typeof a.contents === 'string' && (a.contents.includes(' pt') || a.contents.includes(' mm') || a.contents.includes(' in'))
+              if (isCloud) {
+                result.push({ ...base, type: 'cloud', points: pts, lineWidth: a.borderStyle?.width ?? 2 } as CloudAnn)
+              } else if (isMeasure) {
+                result.push({ ...base, type: 'measure-perimeter', points: pts, lineWidth: a.borderStyle?.width ?? 2, label: a.contents || '', unit: 'pt' } as MeasureAnn)
+              } else {
+                result.push({ ...base, type: 'polygon', points: pts, lineWidth: a.borderStyle?.width ?? 2 } as PolyAnn)
+              }
+            }
+            break
+          }
+          case 'PolyLine': {
+            const rawVerts: number[] = Array.isArray((a as any).vertices) ? (a as any).vertices : []
+            const pts: Array<[number,number]> = []
+            for (let vi = 0; vi + 1 < rawVerts.length; vi += 2) pts.push([rawVerts[vi], rawVerts[vi+1]])
+            if (pts.length >= 2)
+              result.push({ ...base, type: 'polyline', points: pts, lineWidth: a.borderStyle?.width ?? 2 } as PolyAnn)
+            break
+          }
+          case 'Caret': {
+            const [x1, y1, x2, y2] = a.rect as number[]
+            result.push({ ...base, type: 'caret', x: x1, y: y1, width: x2 - x1, height: y2 - y1 } as CaretAnn)
             break
           }
         }

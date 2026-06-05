@@ -34,6 +34,9 @@ interface Props {
   onRotateCCW: () => void
   onRotate180: () => void
   onReverseOrder: () => void
+  onCommentStyles: () => void
+  onSummarizeComments: () => void
+  onFlattenAnnotations: () => void
 }
 
 const ZOOM_PRESETS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]
@@ -45,6 +48,7 @@ export default function RibbonToolbar(props: Props) {
     onSettings, onShortcuts, onPrint, onExport, onRequestRedactConfirm, onOpenSignaturePad,
     onInsertBlankBefore, onInsertBlankAfter, onInsertFromPdf, onInsertFromImage,
     onDeletePages, onExtractPages, onDuplicatePages, onRotateCW, onRotateCCW, onRotate180, onReverseOrder,
+    onCommentStyles, onSummarizeComments, onFlattenAnnotations,
   } = props
 
   const [activeTab, setActiveTab] = useState<RibbonTab>('home')
@@ -116,8 +120,10 @@ export default function RibbonToolbar(props: Props) {
   const zoomPct  = Math.round(scale * 100)
   const hasSel   = selectedPages.size > 0
   const pendingRedact = annotations.filter(a => a.type === 'redact').length
-  const showLineWidth = ['ink','rectangle','ellipse','line','arrow'].includes(activeTool ?? '')
-  const showFontSize  = ['textbox','typewriter'].includes(activeTool ?? '')
+  const showLineWidth = ['ink','rectangle','ellipse','line','arrow',
+    'polygon','polyline','cloud','callout',
+    'measure-distance','measure-area','measure-perimeter'].includes(activeTool ?? '')
+  const showFontSize  = ['textbox','typewriter','callout'].includes(activeTool ?? '')
 
   const toggle     = (t: AnnotationTool) => setActiveTool(activeTool === t ? null : t)
   const toggleFTool= (t: FormCreationTool) => setFormCreationTool(formCreationTool === t ? null : t)
@@ -342,12 +348,17 @@ export default function RibbonToolbar(props: Props) {
           <SBtn icon="○" label="Ellipse" active={activeTool === 'ellipse'} onClick={() => toggle('ellipse')} title="Ellipse / circle" />
           <SBtn icon="╱" label="Line" active={activeTool === 'line'} onClick={() => toggle('line')} title="Line" />
           <SBtn icon="→" label="Arrow" active={activeTool === 'arrow'} onClick={() => toggle('arrow')} title="Arrow" />
+          <SBtn icon="⬠" label="Polygon" active={activeTool === 'polygon'} onClick={() => toggle('polygon')} title="Polygon — click points, DblClick to finish" />
+          <SBtn icon="〰" label="Polyline" active={activeTool === 'polyline'} onClick={() => toggle('polyline')} title="Polyline — click points, DblClick to finish" />
+          <SBtn icon="☁" label="Cloud" active={activeTool === 'cloud'} onClick={() => toggle('cloud')} title="Cloud annotation — click points, DblClick to finish" />
+          <SBtn icon="⌃" label="Caret" active={activeTool === 'caret'} onClick={() => toggle('caret')} title="Caret insertion mark — single click to place" />
         </div>
       </Group>
 
       <Group label="Add Text">
         <LBtn icon={<span style={{ fontFamily:'monospace', fontSize:16 }}>Ꭲ</span>} label="Typewriter" active={activeTool === 'typewriter'} onClick={() => toggle('typewriter')} title="Typewriter — click anywhere to type" />
         <LBtn icon="T" label="Text Box" active={activeTool === 'textbox'} onClick={() => toggle('textbox')} title="Text box — drag area then type" />
+        <LBtn icon="💬" label="Callout" active={activeTool === 'callout'} onClick={() => toggle('callout')} title="Callout — drag text box, leader arrow auto-placed" />
       </Group>
 
       <Group label="Notes">
@@ -425,10 +436,20 @@ export default function RibbonToolbar(props: Props) {
         </div>
       </Group>
 
+      <Group label="Measure">
+        <div className="rbn-stack">
+          <SBtn icon="↔" label="Distance" active={activeTool === 'measure-distance'} onClick={() => toggle('measure-distance')} title="Measure distance — click 2 points" />
+          <SBtn icon="⬡" label="Area" active={activeTool === 'measure-area'} onClick={() => toggle('measure-area')} title="Measure area — click points, DblClick to close" />
+          <SBtn icon="⬠" label="Perimeter" active={activeTool === 'measure-perimeter'} onClick={() => toggle('measure-perimeter')} title="Measure perimeter — click points, DblClick to close" />
+        </div>
+      </Group>
+
       <Group label="Manage">
         <div className="rbn-stack">
           <SBtn icon="≡" label="Panel" active={annotationsPanelOpen} onClick={toggleAnnotationsPanel} title="Annotations panel (F6)" />
-          <SBtn icon="⊞" label="Flatten" onClick={onExport} disabled={annotations.filter(a => a.type !== 'redact').length === 0} title="Export / flatten annotations" />
+          <SBtn icon="🎨" label="Styles" onClick={onCommentStyles} title="Save and reuse annotation style presets" />
+          <SBtn icon="📋" label="Summary" onClick={onSummarizeComments} disabled={annotations.length === 0} title="View comment summary and export to text" />
+          <SBtn icon="⊞" label="Flatten" onClick={onFlattenAnnotations} disabled={annotations.filter(a => a.type !== 'redact').length === 0} title="Commit annotations to PDF structure (clear overlays)" />
         </div>
       </Group>
     </>

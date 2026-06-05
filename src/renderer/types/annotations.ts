@@ -3,9 +3,11 @@ export type AnnotationTool =
   | 'highlight' | 'underline' | 'strikethrough'
   | 'ink'
   | 'rectangle' | 'ellipse' | 'line' | 'arrow'
-  | 'textbox' | 'stickynote' | 'stamp'
+  | 'polygon' | 'polyline' | 'cloud'
+  | 'textbox' | 'stickynote' | 'stamp' | 'callout' | 'caret'
   | 'redact'
   | 'typewriter' | 'text-edit' | 'place-image'
+  | 'measure-distance' | 'measure-area' | 'measure-perimeter'
 
 export type StampName = 'Approved' | 'Draft' | 'Confidential' | 'Rejected' | 'Custom'
 
@@ -19,26 +21,25 @@ export interface AnnBase {
 
 export interface HighlightAnn extends AnnBase {
   type: 'highlight' | 'underline' | 'strikethrough'
-  // Each quad: [x1,y1, x2,y2, x3,y3, x4,y4] upper-left/right, lower-left/right  (PDF pts)
   quads: number[][]
   selectedText: string
 }
 
 export interface InkAnn extends AnnBase {
   type: 'ink'
-  paths: Array<Array<[number, number]>>  // PDF pts
+  paths: Array<Array<[number, number]>>
   lineWidth: number
 }
 
 export interface ShapeAnn extends AnnBase {
   type: 'rectangle' | 'ellipse' | 'line' | 'arrow'
-  x1: number; y1: number; x2: number; y2: number  // PDF pts
+  x1: number; y1: number; x2: number; y2: number
   lineWidth: number
 }
 
 export interface TextBoxAnn extends AnnBase {
   type: 'textbox'
-  x: number; y: number          // bottom-left, PDF pts
+  x: number; y: number
   width: number; height: number
   text: string
   fontSize: number
@@ -46,13 +47,13 @@ export interface TextBoxAnn extends AnnBase {
 
 export interface StickyNoteAnn extends AnnBase {
   type: 'stickynote'
-  x: number; y: number  // PDF pts
+  x: number; y: number
   text: string
 }
 
 export interface StampAnn extends AnnBase {
   type: 'stamp'
-  x: number; y: number              // center, PDF pts
+  x: number; y: number
   width: number; height: number
   stampName: StampName
   imageDataUrl?: string
@@ -60,34 +61,74 @@ export interface StampAnn extends AnnBase {
 
 export interface RedactAnn extends AnnBase {
   type: 'redact'
-  x1: number; y1: number; x2: number; y2: number  // PDF pts
+  x1: number; y1: number; x2: number; y2: number
 }
 
-// Typewriter: click-to-place text, no box border, transparent background
 export interface TypewriterAnn extends AnnBase {
   type: 'typewriter'
-  x: number; y: number   // bottom-left, PDF pts
+  x: number; y: number
   text: string
   fontSize: number
 }
 
-// Text-edit: whiteout rect + replacement text (overlay approach — see CLAUDE.md)
 export interface TextEditAnn extends AnnBase {
   type: 'text-edit'
-  x: number; y: number; width: number; height: number  // PDF pts, bottom-left
+  x: number; y: number; width: number; height: number
   text: string
   fontSize: number
 }
 
-// Placed image: draggable/resizable image embedded in PDF content stream on save
 export interface PlacedImageAnn extends AnnBase {
   type: 'placed-image'
-  x: number; y: number          // bottom-left, PDF pts
-  width: number; height: number // PDF pts
-  dataUrl: string               // data:image/png;base64,... or jpeg
+  x: number; y: number
+  width: number; height: number
+  dataUrl: string
+}
+
+// ── Batch 2: New annotation types ────────────────────────────────────────────
+
+/** Callout: text box with a leader arrow pointing to a location on the page */
+export interface CalloutAnn extends AnnBase {
+  type: 'callout'
+  x: number; y: number; width: number; height: number  // text box, PDF pts (bottom-left)
+  text: string
+  fontSize: number
+  lineWidth: number
+  tipX: number; tipY: number   // arrow tip location, PDF pts
+}
+
+/** Cloud: polygon annotation with cloud-style bumpy border */
+export interface CloudAnn extends AnnBase {
+  type: 'cloud'
+  points: Array<[number, number]>  // PDF pts, polygon vertices (closed automatically)
+  lineWidth: number
+}
+
+/** Polygon or Polyline: multi-point shape annotation */
+export interface PolyAnn extends AnnBase {
+  type: 'polygon' | 'polyline'
+  points: Array<[number, number]>  // PDF pts
+  lineWidth: number
+}
+
+/** Caret: marks an insertion point or location in the document */
+export interface CaretAnn extends AnnBase {
+  type: 'caret'
+  x: number; y: number     // bottom-left, PDF pts
+  width: number; height: number
+}
+
+/** Measurement annotation: distance, area, or perimeter with computed label */
+export interface MeasureAnn extends AnnBase {
+  type: 'measure-distance' | 'measure-area' | 'measure-perimeter'
+  points: Array<[number, number]>  // PDF pts
+  lineWidth: number
+  label: string   // pre-computed display string, e.g. "42.3 pt"
+  unit: string    // unit string: 'pt', 'mm', 'in', etc.
 }
 
 export type Annotation =
   | HighlightAnn | InkAnn | ShapeAnn
   | TextBoxAnn | StickyNoteAnn | StampAnn | RedactAnn
   | TypewriterAnn | TextEditAnn | PlacedImageAnn
+  | CalloutAnn | CloudAnn | PolyAnn | CaretAnn | MeasureAnn

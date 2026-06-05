@@ -15,6 +15,8 @@ import DigitalSignDialog from './components/DigitalSignDialog'
 import ExportDialog from './components/ExportDialog'
 import SettingsDialog from './components/SettingsDialog'
 import ShortcutsDialog from './components/ShortcutsDialog'
+import CommentStylesPanel from './components/CommentStylesPanel'
+import SummarizeCommentsDialog from './components/SummarizeCommentsDialog'
 import { usePdfStore } from './store/usePdfStore'
 import { useSettingsStore } from './store/useSettingsStore'
 import { useRecentFiles } from './hooks/useRecentFiles'
@@ -30,6 +32,7 @@ export default function App() {
   const numPages             = usePdfStore(s => s.numPages)
   const annotations          = usePdfStore(s => s.annotations)
   const applyRedactions      = usePdfStore(s => s.applyRedactions)
+  const flattenAnnotations   = usePdfStore(s => s.flattenAnnotations)
   const setCustomStampDataUrl = usePdfStore(s => s.setCustomStampDataUrl)
   const setStampName         = usePdfStore(s => s.setStampName)
   const setActiveTool        = usePdfStore(s => s.setActiveTool)
@@ -53,6 +56,8 @@ export default function App() {
   const [exportOpen,        setExportOpen]         = useState(false)
   const [settingsOpen,      setSettingsOpen]       = useState(false)
   const [shortcutsOpen,     setShortcutsOpen]      = useState(false)
+  const [commentStylesOpen, setCommentStylesOpen]  = useState(false)
+  const [summarizeOpen,     setSummarizeOpen]       = useState(false)
 
   const [passwordPrompt,    setPasswordPrompt]     = useState<PasswordPromptState>(null)
   const [passwordError,     setPasswordError]      = useState('')
@@ -236,6 +241,9 @@ export default function App() {
         onRotateCCW={() => { if (selList.length > 0) ops.rotatePages(selList, 270) }}
         onRotate180={() => { if (selList.length > 0) ops.rotatePages(selList, 180) }}
         onReverseOrder={ops.reversePages}
+        onCommentStyles={() => setCommentStylesOpen(true)}
+        onSummarizeComments={() => setSummarizeOpen(true)}
+        onFlattenAnnotations={flattenAnnotations}
       />
 
       {hasPdf ? (
@@ -277,6 +285,8 @@ export default function App() {
       {exportOpen     && <ExportDialog     onClose={() => setExportOpen(false)} />}
       {settingsOpen   && <SettingsDialog   onClose={() => setSettingsOpen(false)} />}
       {shortcutsOpen  && <ShortcutsDialog  onClose={() => setShortcutsOpen(false)} />}
+      {commentStylesOpen && <CommentStylesPanel onClose={() => setCommentStylesOpen(false)} />}
+      {summarizeOpen     && <SummarizeCommentsDialog onClose={() => setSummarizeOpen(false)} />}
       {digitalSignOpen && <DigitalSignDialog onClose={() => setDigitalSignOpen(false)} />}
 
       {signaturePadOpen && (
