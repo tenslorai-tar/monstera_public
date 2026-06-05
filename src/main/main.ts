@@ -208,3 +208,125 @@ ipcMain.handle('mupdf:applyRedactions', async (_event, bytes: ArrayBuffer, areas
   const buf = doc.saveToBuffer('')
   return buf.asUint8Array().buffer
 })
+
+// ── Outline (Bookmarks) ───────────────────────────────────────────────────────
+
+interface BookmarkItem { id: string; title: string; pageNum: number }
+
+ipcMain.handle('mupdf:getOutline', async (_event, bytes: ArrayBuffer): Promise<BookmarkItem[]> => {
+  const mupdf = await getMupdf()
+  const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function flatten(items: any[], out: BookmarkItem[]): void {
+    if (!items) return
+    for (const item of items) {
+      out.push({
+        id: Math.random().toString(36).slice(2),
+        title: item.title ?? 'Untitled',
+        pageNum: (item.page ?? 0) + 1,  // mupdf page is 0-indexed
+      })
+      if (item.down) flatten(item.down, out)
+    }
+  }
+  const outline = doc.loadOutline()
+  const result: BookmarkItem[] = []
+  if (outline) flatten(outline, result)
+  return result
+})
+
+ipcMain.handle('mupdf:writeOutline', async (
+  _event,
+  bytes: ArrayBuffer,
+  bookmarks: BookmarkItem[]
+): Promise<ArrayBuffer> => {
+  const mupdf = await getMupdf()
+  const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
+  const iter = doc.outlineIterator()
+  while (iter.item() !== null) iter.delete()
+  for (const bm of bookmarks) {
+    iter.insert({ title: bm.title, uri: `#page=${bm.pageNum}`, open: false })
+  }
+  const outBuf = doc.saveToBuffer('')
+  return outBuf.asUint8Array().buffer
+})
+
+// ── Digital Signatures ────────────────────────────────────────────────────────
+
+interface SignerInfo { name: string; reason: string; location: string; contactInfo: string }
+
+interface SignatureVerifyResult {
+  signerName: string; signerOrg: string; reason: string; location: string
+  contactInfo: string; certValidFrom: string; certValidTo: string; certCurrentlyValid: boolean
+}
+
+ipcMain.handle('pdf:sign', async (
+  _event,
+  bytes: ArrayBuffer,
+  pfxPath: string,
+  pfxPassword: string,
+  info: SignerInfo
+): Promise<ArrayBuffer> => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { PDFDocument } = require('pdf-lib')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { SignPdf } = require('@signpdf/signpdf')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { P12Signer } = require('@signpdf/signer-p12')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { pdflibAddPlaceholder } = require('@signpdf/placeholder-pdf-lib')
+
+  const pfxBuffer = fs.readFileSync(pfxPath)
+  const pdfDoc = await PDFDocument.load(new Uint8Array(bytes))
+  await pdflibAddPlaceholder({
+    pdfDoc,
+    reason: info.reason || 'Approved',
+    contactInfo: info.contactInfo || '',
+    name: info.name || 'Signer',
+    location: info.location || '',
+  })
+  const preparedPdf = Buffer.from(await pdfDoc.save({ useObjectStreams: false }))
+  const signer = new P12Signer(pfxBuffer, { passphrase: pfxPassword })
+  const signedPdf = await new SignPdf().sign(preparedPdf, signer)
+  return signedPdf.buffer.slice(signedPdf.byteOffset, signedPdf.byteOffset + signedPdf.byteLength)
+})
+
+ipcMain.handle('pdf:verifySignatures', async (
+  _event,
+  bytes: ArrayBuffer
+): Promise<SignatureVerifyResult[]> => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { extractSignature } = require('@signpdf/utils')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const forge = require('node-forge')
+
+  const pdfBuf = Buffer.from(bytes)
+  const results: SignatureVerifyResult[] = []
+  try {
+    const extracted = extractSignature(pdfBuf)
+    if (!extracted?.signature) return results
+
+    const sigBuf = Buffer.from(extracted.signature, 'binary')
+    // Determine actual DER sequence length to strip null padding
+    let derLen = sigBuf.length
+    if (sigBuf[0] === 0x30) {
+      let li = sigBuf[1], off = 2
+      if (li & 0x80) { const n = li & 0x7f; li = 0; for (let i = 0; i < n; i++) li = (li << 8) | sigBuf[off++] }
+      derLen = off + li
+    }
+    const p7 = forge.pkcs7.messageFromAsn1(forge.asn1.fromDer(sigBuf.slice(0, derLen).toString('binary')))
+    for (const cert of (p7.certificates ?? [])) {
+      const now = new Date()
+      results.push({
+        signerName:         cert.subject.getField('CN')?.value ?? 'Unknown',
+        signerOrg:          cert.subject.getField('O')?.value  ?? '',
+        reason:             '',
+        location:           '',
+        contactInfo:        '',
+        certValidFrom:      cert.validity.notBefore.toISOString(),
+        certValidTo:        cert.validity.notAfter.toISOString(),
+        certCurrentlyValid: now >= cert.validity.notBefore && now <= cert.validity.notAfter,
+      })
+    }
+  } catch { /* not signed or unrecognised format */ }
+  return results
+})

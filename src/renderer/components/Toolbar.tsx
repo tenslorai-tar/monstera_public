@@ -9,17 +9,20 @@ interface Props {
   onMetadata: () => void
   onSecurity: () => void
   onOcr: () => void
+  onDigitalSign: () => void
 }
 
 const ZOOM_PRESETS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]
 
-export default function Toolbar({ onOpen, onMerge, onSplit, onMetadata, onSecurity, onOcr }: Props) {
+export default function Toolbar({ onOpen, onMerge, onSplit, onMetadata, onSecurity, onOcr, onDigitalSign }: Props) {
   const fileName = usePdfStore(s => s.fileName)
   const numPages = usePdfStore(s => s.numPages)
   const currentPage = usePdfStore(s => s.currentPage)
   const scale = usePdfStore(s => s.scale)
   const zoomMode = usePdfStore(s => s.zoomMode)
   const sidebarOpen = usePdfStore(s => s.sidebarOpen)
+  const bookmarksPanelOpen = usePdfStore(s => s.bookmarksPanelOpen)
+  const toggleBookmarksPanel = usePdfStore(s => s.toggleBookmarksPanel)
   const searchOpen = usePdfStore(s => s.searchOpen)
   const isDirty = usePdfStore(s => s.isDirty)
   const undoStack = usePdfStore(s => s.undoStack)
@@ -130,6 +133,17 @@ export default function Toolbar({ onOpen, onMerge, onSplit, onMetadata, onSecuri
             </button>
             <button className="toolbar-btn" onClick={onOcr} title="Run OCR to make scanned pages searchable">
               🔍 OCR
+            </button>
+            <button className="toolbar-btn" onClick={onDigitalSign} title="Digitally sign or verify signatures">
+              🔏 Sign
+            </button>
+            <div className="toolbar-sep" />
+            <button
+              className={`toolbar-btn${bookmarksPanelOpen ? ' toolbar-btn-active' : ''}`}
+              onClick={toggleBookmarksPanel}
+              title="Toggle bookmarks panel"
+            >
+              🔖 Bookmarks
             </button>
             <div className="toolbar-sep" />
             <button

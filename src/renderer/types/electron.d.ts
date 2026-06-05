@@ -30,6 +30,17 @@ declare global {
       mupdfApplyRedactions: (bytes: ArrayBuffer, areas: Array<{
         pageNum: number; x1: number; y1: number; x2: number; y2: number;
       }>) => Promise<ArrayBuffer>
+
+      mupdfGetOutline: (bytes: ArrayBuffer) => Promise<Array<{ id: string; title: string; pageNum: number }>>
+      mupdfWriteOutline: (bytes: ArrayBuffer, bookmarks: Array<{ id: string; title: string; pageNum: number }>) => Promise<ArrayBuffer>
+
+      pdfSign: (bytes: ArrayBuffer, pfxPath: string, pfxPassword: string, info: {
+        name: string; reason: string; location: string; contactInfo: string;
+      }) => Promise<ArrayBuffer>
+      pdfVerifySignatures: (bytes: ArrayBuffer) => Promise<Array<{
+        signerName: string; signerOrg: string; reason: string; location: string;
+        contactInfo: string; certValidFrom: string; certValidTo: string; certCurrentlyValid: boolean;
+      }>>
     }
   }
 }

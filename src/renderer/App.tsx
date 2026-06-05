@@ -9,6 +9,8 @@ import MetadataDialog from './components/MetadataDialog'
 import PasswordDialog from './components/PasswordDialog'
 import RedactConfirmDialog from './components/RedactConfirmDialog'
 import OcrDialog from './components/OcrDialog'
+import SignaturePad from './components/SignaturePad'
+import DigitalSignDialog from './components/DigitalSignDialog'
 import { usePdfStore } from './store/usePdfStore'
 import { useRecentFiles } from './hooks/useRecentFiles'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
@@ -22,6 +24,9 @@ export default function App() {
   const numPages = usePdfStore(s => s.numPages)
   const annotations = usePdfStore(s => s.annotations)
   const applyRedactions = usePdfStore(s => s.applyRedactions)
+  const setCustomStampDataUrl = usePdfStore(s => s.setCustomStampDataUrl)
+  const setStampName = usePdfStore(s => s.setStampName)
+  const setActiveTool = usePdfStore(s => s.setActiveTool)
   const { recentFiles, addRecentFile, removeRecentFile } = useRecentFiles()
   const ops = usePdfOperations()
 
@@ -30,6 +35,8 @@ export default function App() {
   const [securityOpen,        setSecurityOpen]        = useState(false)
   const [redactConfirmOpen,   setRedactConfirmOpen]   = useState(false)
   const [ocrOpen,             setOcrOpen]             = useState(false)
+  const [signaturePadOpen,    setSignaturePadOpen]    = useState(false)
+  const [digitalSignOpen,     setDigitalSignOpen]     = useState(false)
   const [passwordPrompt,      setPasswordPrompt]      = useState<PasswordPromptState>(null)
   const [passwordError,       setPasswordError]       = useState('')
   const [passwordInput,       setPasswordInput]       = useState('')
@@ -78,10 +85,12 @@ export default function App() {
         onMetadata={() => setMetadataOpen(true)}
         onSecurity={() => setSecurityOpen(true)}
         onOcr={() => setOcrOpen(true)}
+        onDigitalSign={() => setDigitalSignOpen(true)}
       />
       {hasPdf && (
         <AnnotationToolbar
           onRequestRedactConfirm={() => setRedactConfirmOpen(true)}
+          onOpenSignaturePad={() => setSignaturePadOpen(true)}
         />
       )}
       {hasPdf ? (
@@ -113,6 +122,18 @@ export default function App() {
       {metadataOpen && <MetadataDialog onClose={() => setMetadataOpen(false)} />}
       {securityOpen && <PasswordDialog onClose={() => setSecurityOpen(false)} />}
       {ocrOpen && <OcrDialog onClose={() => setOcrOpen(false)} />}
+      {signaturePadOpen && (
+        <SignaturePad
+          onClose={() => setSignaturePadOpen(false)}
+          onConfirm={dataUrl => {
+            setCustomStampDataUrl(dataUrl)
+            setStampName('Custom')
+            setActiveTool('stamp')
+            setSignaturePadOpen(false)
+          }}
+        />
+      )}
+      {digitalSignOpen && <DigitalSignDialog onClose={() => setDigitalSignOpen(false)} />}
       {redactConfirmOpen && (
         <RedactConfirmDialog
           count={pendingRedactCount}

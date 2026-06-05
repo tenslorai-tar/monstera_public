@@ -47,4 +47,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   mupdfApplyRedactions: (bytes: ArrayBuffer, areas: Array<{
     pageNum: number; x1: number; y1: number; x2: number; y2: number;
   }>): Promise<ArrayBuffer> => ipcRenderer.invoke('mupdf:applyRedactions', bytes, areas),
+
+  mupdfGetOutline: (bytes: ArrayBuffer): Promise<Array<{ id: string; title: string; pageNum: number }>> =>
+    ipcRenderer.invoke('mupdf:getOutline', bytes),
+
+  mupdfWriteOutline: (bytes: ArrayBuffer, bookmarks: Array<{ id: string; title: string; pageNum: number }>): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('mupdf:writeOutline', bytes, bookmarks),
+
+  pdfSign: (bytes: ArrayBuffer, pfxPath: string, pfxPassword: string, info: {
+    name: string; reason: string; location: string; contactInfo: string;
+  }): Promise<ArrayBuffer> => ipcRenderer.invoke('pdf:sign', bytes, pfxPath, pfxPassword, info),
+
+  pdfVerifySignatures: (bytes: ArrayBuffer): Promise<Array<{
+    signerName: string; signerOrg: string; reason: string; location: string;
+    contactInfo: string; certValidFrom: string; certValidTo: string; certCurrentlyValid: boolean;
+  }>> => ipcRenderer.invoke('pdf:verifySignatures', bytes),
 })

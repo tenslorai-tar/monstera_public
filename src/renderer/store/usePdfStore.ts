@@ -7,6 +7,7 @@ import { writeAnnotationsToPdf, readAnnotationsFromPdf } from '../utils/annotati
 import type { FormField, FormCreationTool } from '../types/forms'
 import { readFormFieldsFromPdf, writeFormToBytes, flattenFormToBytes } from '../utils/formPdfLib'
 import type { OcrWord } from '../utils/ocrUtils'
+import type { BookmarkItem } from '../types/bookmarks'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.mjs',
@@ -113,6 +114,10 @@ interface PdfStore {
   formCreationTool: FormCreationTool | null
   formsPanelOpen: boolean
 
+  // ── Bookmarks ────────────────────────────────────────────────────────────────
+  bookmarks: BookmarkItem[]
+  bookmarksPanelOpen: boolean
+
   // ── OCR ──────────────────────────────────────────────────────────────────────
   ocrData: Map<number, OcrWord[]>
 
@@ -159,6 +164,13 @@ interface PdfStore {
   setCustomStampDataUrl: (url: string | null) => void
   toggleAnnotationsPanel: () => void
   setOpenStickyNote: (id: string | null) => void
+
+  // ── Bookmark actions ─────────────────────────────────────────────────────────
+  addBookmark: (pageNum: number, title: string) => void
+  deleteBookmark: (id: string) => void
+  renameBookmark: (id: string, title: string) => void
+  setBookmarks: (items: BookmarkItem[]) => void
+  toggleBookmarksPanel: () => void
 
   // ── OCR actions ──────────────────────────────────────────────────────────────
   setOcrData: (pageNum: number, words: OcrWord[]) => void
@@ -209,6 +221,10 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   formCreationTool: null,
   formsPanelOpen: false,
 
+  // ── Bookmark defaults ────────────────────────────────────────────────────
+  bookmarks: [],
+  bookmarksPanelOpen: false,
+
   // ── OCR defaults ─────────────────────────────────────────────────────────
   ocrData: new Map(),
 
@@ -236,9 +252,15 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
       searchOpen: false, searchQuery: '', searchMatches: [], activeMatchIndex: -1,
       selectedAnnotationId: null, openStickyNoteId: null, activeTool: null,
       formMode: false, formCreationTool: null, encryptionSettings: null,
-      ocrData: new Map(),
+      ocrData: new Map(), bookmarks: [], bookmarksPanelOpen: false,
     })
     loadAllPageText(pdfDoc).catch(() => {})
+    // Load bookmarks (outline) from PDF in background
+    if (uint8.length > 0) {
+      window.electronAPI.mupdfGetOutline(uint8.buffer as ArrayBuffer)
+        .then(items => set({ bookmarks: items }))
+        .catch(() => {})
+    }
   },
 
   reloadWithBytes: async (bytes) => {
@@ -318,11 +340,12 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   },
 
   save: async () => {
-    const { filePath, pdfBytes, annotations, formFields, encryptionSettings } = get()
+    const { filePath, pdfBytes, annotations, formFields, encryptionSettings, bookmarks } = get()
     if (!pdfBytes || !filePath) return
     let baked = pdfBytes
     if (annotations.length > 0) baked = await writeAnnotationsToPdf(baked, annotations)
     if (formFields.length > 0) baked = await writeFormToBytes(baked, formFields)
+    baked = new Uint8Array(await window.electronAPI.mupdfWriteOutline(baked.buffer as ArrayBuffer, bookmarks))
     if (encryptionSettings) {
       baked = new Uint8Array(await window.electronAPI.mupdfEncrypt(baked.buffer as ArrayBuffer, encryptionSettings))
     }
@@ -333,13 +356,14 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   },
 
   saveAs: async () => {
-    const { fileName, pdfBytes, annotations, formFields, encryptionSettings } = get()
+    const { fileName, pdfBytes, annotations, formFields, encryptionSettings, bookmarks } = get()
     if (!pdfBytes) return
     const newPath = await window.electronAPI.saveFileDialog(fileName || 'document.pdf')
     if (!newPath) return
     let baked = pdfBytes
     if (annotations.length > 0) baked = await writeAnnotationsToPdf(baked, annotations)
     if (formFields.length > 0) baked = await writeFormToBytes(baked, formFields)
+    baked = new Uint8Array(await window.electronAPI.mupdfWriteOutline(baked.buffer as ArrayBuffer, bookmarks))
     if (encryptionSettings) {
       baked = new Uint8Array(await window.electronAPI.mupdfEncrypt(baked.buffer as ArrayBuffer, encryptionSettings))
     }
@@ -493,6 +517,22 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     const flattened = await flattenFormToBytes(baked)
     await applyEdit(flattened)
   },
+
+  // ── Bookmark actions ──────────────────────────────────────────────────────────
+  addBookmark: (pageNum, title) => set(s => ({
+    bookmarks: [...s.bookmarks, { id: Math.random().toString(36).slice(2), title, pageNum }],
+    isDirty: true,
+  })),
+  deleteBookmark: (id) => set(s => ({
+    bookmarks: s.bookmarks.filter(b => b.id !== id),
+    isDirty: true,
+  })),
+  renameBookmark: (id, title) => set(s => ({
+    bookmarks: s.bookmarks.map(b => b.id === id ? { ...b, title } : b),
+    isDirty: true,
+  })),
+  setBookmarks: (items) => set({ bookmarks: items, isDirty: true }),
+  toggleBookmarksPanel: () => set(s => ({ bookmarksPanelOpen: !s.bookmarksPanelOpen })),
 
   // ── OCR actions ──────────────────────────────────────────────────────────────
   setOcrData: (pageNum, words) => set(s => ({

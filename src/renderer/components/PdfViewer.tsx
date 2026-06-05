@@ -4,6 +4,7 @@ import PdfPage from './PdfPage'
 import Sidebar from './Sidebar'
 import AnnotationsPanel from './AnnotationsPanel'
 import FormsPanel from './FormsPanel'
+import BookmarksPanel from './BookmarksPanel'
 
 export default function PdfViewer() {
   const numPages = usePdfStore(s => s.numPages)
@@ -15,6 +16,7 @@ export default function PdfViewer() {
 
   const annotationsPanelOpen = usePdfStore(s => s.annotationsPanelOpen)
   const formsPanelOpen = usePdfStore(s => s.formsPanelOpen)
+  const bookmarksPanelOpen = usePdfStore(s => s.bookmarksPanelOpen)
   const scrollRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<HTMLDivElement>(null)
 
@@ -103,6 +105,7 @@ export default function PdfViewer() {
       </div>
       {annotationsPanelOpen && <AnnotationsPanel />}
       {formsPanelOpen && <FormsPanel />}
+      {bookmarksPanelOpen && <BookmarksPanel />}
     </div>
   )
 }

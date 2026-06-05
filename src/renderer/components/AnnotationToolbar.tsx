@@ -24,9 +24,9 @@ function ToolBtn({ active, title, children, onClick }: ToolBtnProps) {
   )
 }
 
-interface Props { onRequestRedactConfirm: () => void }
+interface Props { onRequestRedactConfirm: () => void; onOpenSignaturePad: () => void }
 
-export default function AnnotationToolbar({ onRequestRedactConfirm }: Props) {
+export default function AnnotationToolbar({ onRequestRedactConfirm, onOpenSignaturePad }: Props) {
   const activeTool = usePdfStore(s => s.activeTool)
   const toolColor = usePdfStore(s => s.toolColor)
   const toolOpacity = usePdfStore(s => s.toolOpacity)
@@ -127,6 +127,11 @@ export default function AnnotationToolbar({ onRequestRedactConfirm }: Props) {
         <ToolBtn tool="textbox" active={activeTool === 'textbox'} title="Text box" onClick={() => toggle('textbox')}>T</ToolBtn>
         <ToolBtn tool="stickynote" active={activeTool === 'stickynote'} title="Sticky note / Comment" onClick={() => toggle('stickynote')}>📌</ToolBtn>
         <ToolBtn tool="stamp" active={activeTool === 'stamp'} title="Stamp" onClick={() => toggle('stamp')}>⬡</ToolBtn>
+        <button
+          className="annot-tool-btn"
+          title="Place a visible signature image on the page"
+          onClick={onOpenSignaturePad}
+        >✍</button>
       </div>
 
       <div className="annot-sep" />

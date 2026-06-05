@@ -1009,3 +1009,61 @@
 .ocr-text-layer span.search-match-active {
   background: rgba(255, 120, 0, 0.45);
 }
+
+/* ── Bookmarks panel ─────────────────────────────────────── */
+.bookmark-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  cursor: grab;
+  font-size: 13px;
+  transition: background 0.1s;
+}
+.bookmark-item:hover { background: var(--bg-hover); }
+.bookmark-item.bookmark-active { background: rgba(var(--accent-rgb, 100,160,255), 0.12); }
+
+.bookmark-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.bookmark-title:hover { text-decoration: underline; }
+
+.bookmark-page {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 1px 5px;
+  background: var(--bg-toolbar);
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.bookmark-delete {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.bookmark-item:hover .bookmark-delete { opacity: 1; }
+.bookmark-delete:hover { color: #e55; }
+
+.bookmark-edit-input {
+  flex: 1;
+  background: var(--bg-toolbar);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 2px 4px;
+  outline: none;
+}

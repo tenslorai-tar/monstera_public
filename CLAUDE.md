@@ -218,7 +218,60 @@ Monstera PDF Editor/
 | **Verify redaction** | After applying, Ctrl+S → open in any PDF viewer → try to select/copy text in redacted area — nothing is there |
 | **Verify text extraction** | After saving, run `pdftotext file.pdf -` or open with PDF.js text layer — redacted text does not appear |
 
-### Phase 9 — Polish & UX
+### Phase 9 — Bookmarks & Signatures ✅
+
+#### Bookmarks / Document Outline
+- [x] View bookmarks — loaded from PDF outline on open (MuPDF `loadOutline`)
+- [x] Navigate — click any bookmark to scroll to that page
+- [x] Add bookmark — "+" button adds one for the current page with editable title
+- [x] Rename bookmark — double-click title to edit in place
+- [x] Delete bookmark — hover × button removes it
+- [x] Reorder bookmarks — drag-and-drop to change order
+- [x] Persist bookmarks — written into PDF outline on every Ctrl+S / Save As (MuPDF `outlineIterator`)
+
+**How to test:**
+| Feature | Steps |
+|---|---|
+| **View** | Open a PDF that has bookmarks (e.g. a technical manual) → click "🔖 Bookmarks" in toolbar → panel shows list |
+| **Navigate** | Click any bookmark → page scrolls to it |
+| **Add** | With a PDF open, navigate to any page → click "🔖 Bookmarks" → click "+" → type a name → press Enter |
+| **Rename** | Double-click a bookmark title → edit → press Enter or click away |
+| **Delete** | Hover over a bookmark → click × |
+| **Reorder** | Drag a bookmark row to a new position in the list |
+| **Persist** | Add/rename/delete bookmarks → Ctrl+S → reopen → changes are saved |
+
+#### Signatures
+
+##### Visible Signature (image stamp)
+- [x] Draw signature — freehand canvas in the "✍ Sig" toolbar button → modal
+- [x] Upload signature — upload any image as a signature
+- [x] Place on page — after capturing, click any page location to stamp it
+- [x] Persists in PDF — saved as an image annotation (same as custom stamp)
+
+**How to test:**
+| Feature | Steps |
+|---|---|
+| **Draw & place** | Open PDF → click "✍" in annotation toolbar → draw signature on canvas → "Use Signature" → click on page to stamp |
+| **Upload & place** | Click "✍" → "📁 Upload" tab → browse to a PNG/JPEG → "Use Signature" → click on page |
+| **Persist** | Place signature → Ctrl+S → reopen → signature is still on the page |
+
+##### Digital (Cryptographic) Signature
+- [x] Sign PDF with PFX/P12 certificate — browse for certificate file, enter password, fill signer info (name, reason, location, contact)
+- [x] Save signed copy — signed PDF saved as a separate file (original unchanged)
+- [x] Standard format — PKCS#7/CMS detached signature, compatible with Adobe Acrobat, Foxit, PDF readers
+- [x] Verify signatures — "✅ Verify" tab shows signer CN, organisation, cert validity dates
+- [ ] Cryptographic hash integrity check (certificate info shown; full byte-range hash verification planned)
+
+**Implementation note:** MuPDF WASM has no signing API. Digital signing uses `@signpdf/signpdf` + `@signpdf/signer-p12` (PKCS#7) in the Electron main process (Node.js), with `node-forge` for certificate parsing during verification.
+
+**How to test:**
+| Feature | Steps |
+|---|---|
+| **Sign** | Open PDF → click "🔏 Sign" in toolbar → "✒ Sign" tab → browse to a .pfx/.p12 → enter password → fill reason → "🔏 Sign & Save Copy" → pick output path |
+| **Verify** | Open a signed PDF → "🔏 Sign" → "✅ Verify" tab → "Check Signatures" → see signer name and cert validity |
+| **Verify with Adobe** | Sign a PDF → open the saved copy in Adobe Acrobat → signature panel shows valid signature |
+
+### Phase 10 — Polish & UX
 - [ ] Dark/light theme toggle
 - [ ] Customizable toolbar
 - [ ] Print support
