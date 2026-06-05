@@ -62,14 +62,16 @@ export default function App() {
   // ── Open file ────────────────────────────────────────────────────────────────
 
   const openFile = useCallback(async (filePath?: string, password?: string) => {
-    const path = filePath ?? await window.electronAPI.openFileDialog()
-    if (!path) return
+    // Guard: button onClick passes a MouseEvent as first arg — ignore non-strings
+    const resolvedPath = typeof filePath === 'string' ? filePath
+      : await window.electronAPI.openFileDialog()
+    if (!resolvedPath) return
     setOpenError('')
     try {
-      const bytes = await window.electronAPI.readFileBytes(path)
-      const name = path.split(/[\\/]/).pop() ?? path
-      await loadPdf(bytes, path, name, password)
-      addRecentFile(path, name)
+      const bytes = await window.electronAPI.readFileBytes(resolvedPath)
+      const name = resolvedPath.split(/[\\/]/).pop() ?? resolvedPath
+      await loadPdf(bytes, resolvedPath, name, password)
+      addRecentFile(resolvedPath, name)
       // Apply default zoom from settings
       const dz = settings.defaultZoom
       if (dz === 'fit-width' || dz === 'fit-page') setZoomMode(dz)
@@ -80,8 +82,8 @@ export default function App() {
     } catch (e: unknown) {
       const err = e as { code?: string; message?: string }
       if (err?.code === 'NeedsPassword') {
-        const name = (filePath ?? '').split(/[\\/]/).pop() ?? ''
-        setPasswordPrompt({ path: filePath ?? '', name })
+        const name = resolvedPath.split(/[\\/]/).pop() ?? ''
+        setPasswordPrompt({ path: resolvedPath, name })
         setPasswordError('')
         setPasswordInput('')
       } else if (err?.code === 'WrongPassword') {
