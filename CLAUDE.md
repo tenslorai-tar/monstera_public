@@ -148,11 +148,29 @@ Monstera PDF Editor/
 | **Persist** | Add annotations → Ctrl+S → reopen file → annotations still present |
 | **Page ops** | Add annotations → delete/rotate page → save → reopen → annotations on correct pages |
 
-### Phase 5 — Forms
-- [ ] Render AcroForm fields (PDF.js)
-- [ ] Fill in form fields
-- [ ] Flatten form to PDF (pdf-lib)
+### Phase 5 — Forms ✅
+- [x] Render AcroForm fields (PDF.js) — text, checkbox, radio, dropdown, list box, signature
+- [x] Fill in form fields — interactive HTML overlays per field type
+- [x] Flatten form to PDF (pdf-lib) — "⊞ Flatten" button bakes all values into page content
+- [x] Form field creation — draw new text fields, checkboxes, signature areas onto any page
+- [x] Forms panel — list all fields by page, click to jump, delete individual fields
 - [ ] Export form data (FDF / JSON)
+
+**How to test each feature:**
+| Feature | Steps |
+|---|---|
+| **Fill text field** | Open a PDF with AcroForm fields → click any text field → type value |
+| **Fill checkbox** | Open a form PDF → click a checkbox → it toggles checked/unchecked |
+| **Fill radio button** | Open a form PDF → click a radio button → it selects that option |
+| **Fill dropdown** | Open a form PDF → click a dropdown → pick an option |
+| **Fill listbox** | Open a form PDF → click options in a list box |
+| **Save filled form** | Fill fields → Ctrl+S → reopen → field values persist |
+| **Forms mode** | Click "📋 Forms" button in toolbar → form creation tools appear |
+| **Draw text field** | Forms mode → click T button → drag a rectangle on page → text field appears |
+| **Draw checkbox** | Forms mode → click ☑ button → drag a small square → checkbox appears |
+| **Draw signature** | Forms mode → click ✍ button → drag a rectangle → signature area appears |
+| **Flatten** | Fill fields → click "⊞ Flatten" → Ctrl+S → reopen → fields are baked into content |
+| **Forms panel** | Forms mode → click "≡ Fields" → panel lists all fields; click to jump |
 
 ### Phase 6 — OCR
 - [ ] Detect scanned (image-only) pages

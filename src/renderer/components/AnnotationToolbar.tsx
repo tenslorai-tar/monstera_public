@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import { usePdfStore } from '../store/usePdfStore'
 import type { AnnotationTool, StampName } from '../types/annotations'
+import type { FormCreationTool } from '../types/forms'
 
 const STAMP_NAMES: StampName[] = ['Approved', 'Draft', 'Confidential', 'Rejected', 'Custom']
 
@@ -31,6 +32,9 @@ export default function AnnotationToolbar() {
   const toolFontSize = usePdfStore(s => s.toolFontSize)
   const stampName = usePdfStore(s => s.stampName)
   const annotationsPanelOpen = usePdfStore(s => s.annotationsPanelOpen)
+  const formMode = usePdfStore(s => s.formMode)
+  const formCreationTool = usePdfStore(s => s.formCreationTool)
+  const formsPanelOpen = usePdfStore(s => s.formsPanelOpen)
 
   const setActiveTool = usePdfStore(s => s.setActiveTool)
   const setToolColor = usePdfStore(s => s.setToolColor)
@@ -40,11 +44,19 @@ export default function AnnotationToolbar() {
   const setStampName = usePdfStore(s => s.setStampName)
   const setCustomStampDataUrl = usePdfStore(s => s.setCustomStampDataUrl)
   const toggleAnnotationsPanel = usePdfStore(s => s.toggleAnnotationsPanel)
+  const setFormMode = usePdfStore(s => s.setFormMode)
+  const setFormCreationTool = usePdfStore(s => s.setFormCreationTool)
+  const toggleFormsPanel = usePdfStore(s => s.toggleFormsPanel)
+  const flattenForm = usePdfStore(s => s.flattenForm)
+  const formFields = usePdfStore(s => s.formFields)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const toggle = (tool: AnnotationTool) =>
     setActiveTool(activeTool === tool ? null : tool)
+
+  const toggleFormTool = (tool: FormCreationTool) =>
+    setFormCreationTool(formCreationTool === tool ? null : tool)
 
   const showLineWidth = activeTool === 'ink' ||
     activeTool === 'rectangle' || activeTool === 'ellipse' ||
@@ -183,7 +195,64 @@ export default function AnnotationToolbar() {
 
       <div className="annot-sep" style={{ marginLeft: 'auto' }} />
 
-      {/* ── Panel toggle ──────────────────────────────── */}
+      {/* ── Forms mode ────────────────────────────────── */}
+      <button
+        className={`annot-tool-btn${formMode ? ' annot-tool-active' : ''}`}
+        onClick={() => setFormMode(!formMode)}
+        title="Toggle form editing mode"
+        style={{ fontSize: 12 }}
+      >
+        📋 Forms
+      </button>
+
+      {formMode && (
+        <>
+          <div className="annot-sep" />
+          <div className="annot-group">
+            <button
+              className={`annot-tool-btn${formCreationTool === 'form-text' ? ' annot-tool-active' : ''}`}
+              title="Draw text field"
+              onClick={() => toggleFormTool('form-text')}
+            >
+              <span style={{ fontFamily: 'monospace', border: '1px solid currentColor', padding: '0 3px', borderRadius: 2, fontSize: 11 }}>T</span>
+            </button>
+            <button
+              className={`annot-tool-btn${formCreationTool === 'form-checkbox' ? ' annot-tool-active' : ''}`}
+              title="Draw checkbox"
+              onClick={() => toggleFormTool('form-checkbox')}
+            >
+              ☑
+            </button>
+            <button
+              className={`annot-tool-btn${formCreationTool === 'form-signature' ? ' annot-tool-active' : ''}`}
+              title="Draw signature field"
+              onClick={() => toggleFormTool('form-signature')}
+            >
+              ✍
+            </button>
+          </div>
+          <div className="annot-sep" />
+          <button
+            className="annot-tool-btn"
+            title="Flatten form — bake all field values into page content"
+            disabled={formFields.filter(f => !f.isNew).length === 0}
+            onClick={flattenForm}
+            style={{ fontSize: 11 }}
+          >
+            ⊞ Flatten
+          </button>
+          <button
+            className={`annot-tool-btn${formsPanelOpen ? ' annot-tool-active' : ''}`}
+            onClick={toggleFormsPanel}
+            title="Forms panel"
+          >
+            ≡ Fields
+          </button>
+        </>
+      )}
+
+      {/* ── Annotation panel toggle ────────────────────── */}
+      <div className="annot-sep" />
       <button
         className={`annot-tool-btn${annotationsPanelOpen ? ' annot-tool-active' : ''}`}
         onClick={toggleAnnotationsPanel}

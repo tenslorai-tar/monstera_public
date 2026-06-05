@@ -4,6 +4,8 @@ import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { textCache, clearTextCache, loadAllPageText } from '../utils/textCache'
 import type { Annotation, AnnotationTool, StampName } from '../types/annotations'
 import { writeAnnotationsToPdf, readAnnotationsFromPdf } from '../utils/annotationPdfLib'
+import type { FormField, FormCreationTool } from '../types/forms'
+import { readFormFieldsFromPdf, writeFormToBytes, flattenFormToBytes } from '../utils/formPdfLib'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.mjs',
@@ -88,6 +90,12 @@ interface PdfStore {
   annotationsPanelOpen: boolean
   openStickyNoteId: string | null
 
+  // ── Forms ────────────────────────────────────────────────────────────────────
+  formFields: FormField[]
+  formMode: boolean
+  formCreationTool: FormCreationTool | null
+  formsPanelOpen: boolean
+
   // ── Actions ─────────────────────────────────────────────────────────────────
   loadPdf: (bytes: ArrayBuffer, filePath: string, fileName: string) => Promise<void>
   reloadWithBytes: (bytes: Uint8Array) => Promise<void>
@@ -128,6 +136,16 @@ interface PdfStore {
   setCustomStampDataUrl: (url: string | null) => void
   toggleAnnotationsPanel: () => void
   setOpenStickyNote: (id: string | null) => void
+
+  // ── Form actions ─────────────────────────────────────────────────────────────
+  setFormMode: (mode: boolean) => void
+  setFormCreationTool: (tool: FormCreationTool | null) => void
+  addFormField: (field: FormField) => void
+  updateFormField: (id: string, patch: Partial<FormField>) => void
+  deleteFormField: (id: string) => void
+  setRadioSelected: (groupName: string, exportValue: string) => void
+  toggleFormsPanel: () => void
+  flattenForm: () => Promise<void>
 }
 
 export const usePdfStore = create<PdfStore>((set, get) => ({
@@ -154,6 +172,12 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   annotationsPanelOpen: false,
   openStickyNoteId: null,
 
+  // ── Form defaults ────────────────────────────────────────────────────────
+  formFields: [],
+  formMode: false,
+  formCreationTool: null,
+  formsPanelOpen: false,
+
   // ── Loaders ──────────────────────────────────────────────────────────────
 
   loadPdf: async (bytes, filePath, fileName) => {
@@ -165,13 +189,16 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
       ? get().scale
       : computeFitScale(zoomMode, pageSizes, containerWidth, containerHeight)
     let annotations: Annotation[] = []
+    let formFields: FormField[] = []
     try { annotations = await readAnnotationsFromPdf(pdfDoc, numPages) } catch {}
+    try { formFields = await readFormFieldsFromPdf(pdfDoc, numPages) } catch {}
     set({
-      pdfDoc, pdfBytes: uint8, numPages, filePath, fileName, pageSizes, annotations,
+      pdfDoc, pdfBytes: uint8, numPages, filePath, fileName, pageSizes, annotations, formFields,
       isDirty: false, undoStack: [], redoStack: [], selectedPages: new Set(),
       scale, currentPage: 1,
       searchOpen: false, searchQuery: '', searchMatches: [], activeMatchIndex: -1,
       selectedAnnotationId: null, openStickyNoteId: null, activeTool: null,
+      formMode: false, formCreationTool: null,
     })
     loadAllPageText(pdfDoc).catch(() => {})
   },
@@ -180,15 +207,17 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     clearTextCache()
     const { pdfDoc, numPages, pageSizes } = await buildPdfDoc(bytes)
     const { filePath, fileName, scale, zoomMode, sidebarOpen, currentPage,
-            containerWidth, containerHeight, annotationsPanelOpen } = get()
+            containerWidth, containerHeight, annotationsPanelOpen, formsPanelOpen } = get()
     const newScale = zoomMode === 'custom'
       ? scale
       : computeFitScale(zoomMode, pageSizes, containerWidth, containerHeight)
     let annotations: Annotation[] = []
+    let formFields: FormField[] = []
     try { annotations = await readAnnotationsFromPdf(pdfDoc, numPages) } catch {}
+    try { formFields = await readFormFieldsFromPdf(pdfDoc, numPages) } catch {}
     set({
-      pdfDoc, pdfBytes: bytes, numPages, pageSizes, annotations,
-      filePath, fileName, scale: newScale, zoomMode, sidebarOpen, annotationsPanelOpen,
+      pdfDoc, pdfBytes: bytes, numPages, pageSizes, annotations, formFields,
+      filePath, fileName, scale: newScale, zoomMode, sidebarOpen, annotationsPanelOpen, formsPanelOpen,
       currentPage: Math.min(currentPage, numPages),
       selectedPages: new Set(),
       searchOpen: false, searchQuery: '', searchMatches: [], activeMatchIndex: -1,
@@ -198,19 +227,24 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   },
 
   getBakedBytes: async () => {
-    const { pdfBytes, annotations } = get()
+    const { pdfBytes, annotations, formFields } = get()
     if (!pdfBytes) throw new Error('No document loaded')
-    if (annotations.length === 0) return pdfBytes
-    return writeAnnotationsToPdf(pdfBytes, annotations)
+    let bytes = pdfBytes
+    if (annotations.length > 0) bytes = await writeAnnotationsToPdf(bytes, annotations)
+    if (formFields.length > 0) bytes = await writeFormToBytes(bytes, formFields)
+    return bytes
   },
 
   // ── Edit ─────────────────────────────────────────────────────────────────
 
   applyEdit: async (newBytes) => {
-    const { pdfBytes, annotations, undoStack } = get()
-    let undoBytes = pdfBytes
-    if (pdfBytes && annotations.length > 0) {
-      try { undoBytes = await writeAnnotationsToPdf(pdfBytes, annotations) } catch {}
+    const { pdfBytes, annotations, formFields, undoStack } = get()
+    let undoBytes: Uint8Array | null = pdfBytes
+    if (pdfBytes) {
+      try {
+        if (annotations.length > 0) undoBytes = await writeAnnotationsToPdf(pdfBytes, annotations)
+        if (formFields.length > 0) undoBytes = await writeFormToBytes(undoBytes ?? pdfBytes, formFields)
+      } catch {}
     }
     const newUndo = undoBytes
       ? [...undoStack.slice(-(MAX_UNDO - 1)), undoBytes]
@@ -246,26 +280,35 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   },
 
   save: async () => {
-    const { filePath, pdfBytes, annotations } = get()
+    const { filePath, pdfBytes, annotations, formFields } = get()
     if (!pdfBytes || !filePath) return
-    const baked = annotations.length > 0
-      ? await writeAnnotationsToPdf(pdfBytes, annotations)
-      : pdfBytes
+    let baked = pdfBytes
+    if (annotations.length > 0) baked = await writeAnnotationsToPdf(baked, annotations)
+    if (formFields.length > 0) baked = await writeFormToBytes(baked, formFields)
     await window.electronAPI.writeFile(filePath, baked.slice(0).buffer)
-    set({ isDirty: false })
+    // Reload so new fields get persisted IDs and isNew → false
+    const hasNew = formFields.some(f => f.isNew)
+    if (hasNew) await get().reloadWithBytes(baked)
+    else set({ isDirty: false })
   },
 
   saveAs: async () => {
-    const { fileName, pdfBytes, annotations } = get()
+    const { fileName, pdfBytes, annotations, formFields } = get()
     if (!pdfBytes) return
     const newPath = await window.electronAPI.saveFileDialog(fileName || 'document.pdf')
     if (!newPath) return
-    const baked = annotations.length > 0
-      ? await writeAnnotationsToPdf(pdfBytes, annotations)
-      : pdfBytes
+    let baked = pdfBytes
+    if (annotations.length > 0) baked = await writeAnnotationsToPdf(baked, annotations)
+    if (formFields.length > 0) baked = await writeFormToBytes(baked, formFields)
     await window.electronAPI.writeFile(newPath, baked.slice(0).buffer)
     const newName = newPath.split(/[\\/]/).pop() ?? newPath
-    set({ filePath: newPath, fileName: newName, isDirty: false })
+    const hasNew = formFields.some(f => f.isNew)
+    if (hasNew) {
+      set({ filePath: newPath, fileName: newName })
+      await get().reloadWithBytes(baked)
+    } else {
+      set({ filePath: newPath, fileName: newName, isDirty: false })
+    }
   },
 
   // ── Selection ────────────────────────────────────────────────────────────
@@ -363,4 +406,32 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   setCustomStampDataUrl: (url) => set({ customStampDataUrl: url }),
   toggleAnnotationsPanel: () => set(s => ({ annotationsPanelOpen: !s.annotationsPanelOpen })),
   setOpenStickyNote: (id) => set({ openStickyNoteId: id }),
+
+  // ── Form actions ──────────────────────────────────────────────────────────
+  setFormMode: (mode) => set({ formMode: mode, formCreationTool: null }),
+  setFormCreationTool: (tool) => set({ formCreationTool: tool }),
+  addFormField: (field) => set(s => ({ formFields: [...s.formFields, field], isDirty: true })),
+  updateFormField: (id, patch) => set(s => ({
+    formFields: s.formFields.map(f => f.id === id ? { ...f, ...patch } as FormField : f),
+    isDirty: true,
+  })),
+  deleteFormField: (id) => set(s => ({
+    formFields: s.formFields.filter(f => f.id !== id),
+    isDirty: true,
+  })),
+  setRadioSelected: (groupName, exportValue) => set(s => ({
+    formFields: s.formFields.map(f =>
+      f.type === 'radio' && f.groupName === groupName
+        ? { ...f, selected: f.exportValue === exportValue }
+        : f
+    ),
+    isDirty: true,
+  })),
+  toggleFormsPanel: () => set(s => ({ formsPanelOpen: !s.formsPanelOpen })),
+  flattenForm: async () => {
+    const { getBakedBytes, applyEdit } = get()
+    const baked = await getBakedBytes()
+    const flattened = await flattenFormToBytes(baked)
+    await applyEdit(flattened)
+  },
 }))

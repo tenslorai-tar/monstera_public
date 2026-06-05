@@ -958,3 +958,28 @@
 }
 .annot-panel-item:hover .annot-panel-del { opacity: 1; }
 .annot-panel-del:hover { color: #f48771; background: var(--bg-hover); }
+
+/* ── Form overlay ────────────────────────────────────── */
+.form-overlay {
+  /* container is pointer-events: none; individual fields set their own */
+}
+
+/* Form field HTML inputs inside overlay inherit the base structure */
+.form-overlay input[type="text"],
+.form-overlay input[type="password"],
+.form-overlay textarea,
+.form-overlay select {
+  font-family: inherit;
+}
+
+.form-overlay input[type="checkbox"],
+.form-overlay input[type="radio"] {
+  cursor: pointer;
+}
+
+/* Flatten button disabled state */
+.annot-tool-btn:disabled {
+  opacity: 0.38;
+  cursor: default;
+  pointer-events: none;
+}
