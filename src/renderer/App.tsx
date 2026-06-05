@@ -17,6 +17,12 @@ import SettingsDialog from './components/SettingsDialog'
 import ShortcutsDialog from './components/ShortcutsDialog'
 import CommentStylesPanel from './components/CommentStylesPanel'
 import SummarizeCommentsDialog from './components/SummarizeCommentsDialog'
+import HeaderFooterDialog from './components/HeaderFooterDialog'
+import WatermarkDialog from './components/WatermarkDialog'
+import BackgroundDialog from './components/BackgroundDialog'
+import BatesDialog from './components/BatesDialog'
+import CropDialog from './components/CropDialog'
+import * as docEnhance from './utils/documentEnhance'
 import { usePdfStore } from './store/usePdfStore'
 import { useSettingsStore } from './store/useSettingsStore'
 import { useRecentFiles } from './hooks/useRecentFiles'
@@ -41,6 +47,8 @@ export default function App() {
   const setZoomMode          = usePdfStore(s => s.setZoomMode)
   const setScale             = usePdfStore(s => s.setScale)
   const save                 = usePdfStore(s => s.save)
+  const applyEdit            = usePdfStore(s => s.applyEdit)
+  const getBakedBytes        = usePdfStore(s => s.getBakedBytes)
 
   const { settings, updateSettings } = useSettingsStore()
   const { recentFiles, addRecentFile, removeRecentFile } = useRecentFiles()
@@ -58,6 +66,11 @@ export default function App() {
   const [shortcutsOpen,     setShortcutsOpen]      = useState(false)
   const [commentStylesOpen, setCommentStylesOpen]  = useState(false)
   const [summarizeOpen,     setSummarizeOpen]       = useState(false)
+  const [headerFooterOpen,  setHeaderFooterOpen]    = useState(false)
+  const [watermarkOpen,     setWatermarkOpen]       = useState(false)
+  const [backgroundOpen,    setBackgroundOpen]      = useState(false)
+  const [batesOpen,         setBatesOpen]           = useState(false)
+  const [cropOpen,          setCropOpen]            = useState(false)
 
   const [passwordPrompt,    setPasswordPrompt]     = useState<PasswordPromptState>(null)
   const [passwordError,     setPasswordError]      = useState('')
@@ -174,6 +187,11 @@ export default function App() {
         case 'toggleFormMode': s.setFormMode(!s.formMode); break
         case 'flattenForm':    s.flattenForm(); break
         case 'applyRedactions': setRedactConfirmOpen(true); break
+        case 'headerFooter':  setHeaderFooterOpen(true); break
+        case 'watermark':     setWatermarkOpen(true); break
+        case 'background':    setBackgroundOpen(true); break
+        case 'batesNumbers':  setBatesOpen(true); break
+        case 'cropPages':     setCropOpen(true); break
         default:
           if (action.startsWith('tool:')) {
             const tool = action.slice(5) as Parameters<typeof s.setActiveTool>[0]
@@ -244,6 +262,11 @@ export default function App() {
         onCommentStyles={() => setCommentStylesOpen(true)}
         onSummarizeComments={() => setSummarizeOpen(true)}
         onFlattenAnnotations={flattenAnnotations}
+        onHeaderFooter={() => setHeaderFooterOpen(true)}
+        onWatermark={() => setWatermarkOpen(true)}
+        onBackground={() => setBackgroundOpen(true)}
+        onBatesNumbers={() => setBatesOpen(true)}
+        onCropPages={() => setCropOpen(true)}
       />
 
       {hasPdf ? (
@@ -287,6 +310,51 @@ export default function App() {
       {shortcutsOpen  && <ShortcutsDialog  onClose={() => setShortcutsOpen(false)} />}
       {commentStylesOpen && <CommentStylesPanel onClose={() => setCommentStylesOpen(false)} />}
       {summarizeOpen     && <SummarizeCommentsDialog onClose={() => setSummarizeOpen(false)} />}
+
+      {headerFooterOpen && (
+        <HeaderFooterDialog
+          numPages={numPages} fileName={fileName}
+          onClose={() => setHeaderFooterOpen(false)}
+          onApply={async cfg => {
+            applyEdit(await docEnhance.addHeadersFooters(await getBakedBytes(), cfg))
+          }}
+        />
+      )}
+      {watermarkOpen && (
+        <WatermarkDialog
+          numPages={numPages}
+          onClose={() => setWatermarkOpen(false)}
+          onApply={async cfg => {
+            applyEdit(await docEnhance.addWatermark(await getBakedBytes(), cfg))
+          }}
+        />
+      )}
+      {backgroundOpen && (
+        <BackgroundDialog
+          numPages={numPages}
+          onClose={() => setBackgroundOpen(false)}
+          onApply={async cfg => {
+            applyEdit(await docEnhance.addBackground(await getBakedBytes(), cfg))
+          }}
+        />
+      )}
+      {batesOpen && (
+        <BatesDialog
+          numPages={numPages}
+          onClose={() => setBatesOpen(false)}
+          onApply={async cfg => {
+            applyEdit(await docEnhance.addBatesNumbers(await getBakedBytes(), cfg))
+          }}
+        />
+      )}
+      {cropOpen && (
+        <CropDialog
+          onClose={() => setCropOpen(false)}
+          onApply={async cfg => {
+            applyEdit(await docEnhance.cropPages(await getBakedBytes(), cfg))
+          }}
+        />
+      )}
       {digitalSignOpen && <DigitalSignDialog onClose={() => setDigitalSignOpen(false)} />}
 
       {signaturePadOpen && (

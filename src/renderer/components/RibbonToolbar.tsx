@@ -37,6 +37,11 @@ interface Props {
   onCommentStyles: () => void
   onSummarizeComments: () => void
   onFlattenAnnotations: () => void
+  onHeaderFooter: () => void
+  onWatermark: () => void
+  onBackground: () => void
+  onBatesNumbers: () => void
+  onCropPages: () => void
 }
 
 const ZOOM_PRESETS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]
@@ -49,6 +54,7 @@ export default function RibbonToolbar(props: Props) {
     onInsertBlankBefore, onInsertBlankAfter, onInsertFromPdf, onInsertFromImage,
     onDeletePages, onExtractPages, onDuplicatePages, onRotateCW, onRotateCCW, onRotate180, onReverseOrder,
     onCommentStyles, onSummarizeComments, onFlattenAnnotations,
+    onHeaderFooter, onWatermark, onBackground, onBatesNumbers, onCropPages,
   } = props
 
   const [activeTab, setActiveTab] = useState<RibbonTab>('home')
@@ -490,6 +496,16 @@ export default function RibbonToolbar(props: Props) {
           <SBtn icon="↻" label="Rotate 180°" onClick={onRotate180} disabled={!hasSel} title="Rotate selected pages 180°" />
         </div>
       </Group>
+
+      <Group label="Page Design">
+        <div className="rbn-stack">
+          <SBtn icon="📑" label="Header/Footer" onClick={onHeaderFooter} title="Add headers and footers to pages" />
+          <SBtn icon="💧" label="Watermark" onClick={onWatermark} title="Add a text watermark to pages" />
+          <SBtn icon="🎨" label="Background" onClick={onBackground} title="Add a color background to pages" />
+          <SBtn icon="🔢" label="Bates Nos." onClick={onBatesNumbers} title="Add Bates sequential numbering" />
+          <SBtn icon="✂" label="Crop" onClick={onCropPages} title="Crop pages by setting the visible area" />
+        </div>
+      </Group>
     </>
   )
 
@@ -572,6 +588,16 @@ export default function RibbonToolbar(props: Props) {
       <Group label="Digital Signatures">
         <LBtn icon="🔏" label="Sign" onClick={onDigitalSign} title="Sign document with a PFX/P12 certificate" />
         <LBtn icon="✅" label="Verify" onClick={onDigitalSign} title="Verify digital signatures in this document" />
+      </Group>
+
+      <Group label="Page Design">
+        <div className="rbn-stack">
+          <SBtn icon="📑" label="Header/Footer" onClick={onHeaderFooter} title="Add headers and footers" />
+          <SBtn icon="💧" label="Watermark" onClick={onWatermark} title="Add watermark text to pages" />
+          <SBtn icon="🎨" label="Background" onClick={onBackground} title="Set page background color" />
+          <SBtn icon="🔢" label="Bates Nos." onClick={onBatesNumbers} title="Add Bates numbering" />
+          <SBtn icon="✂" label="Crop" onClick={onCropPages} title="Crop page visible area" />
+        </div>
       </Group>
 
       <Group label="Preferences">

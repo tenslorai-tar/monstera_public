@@ -121,6 +121,17 @@ function buildAppMenu(win: BrowserWindow): Menu {
         { label: 'Split Document…',   click: send('split') },
         { type: 'separator' },
         { label: 'Reverse Page Order', click: send('reverseOrder') },
+        { type: 'separator' },
+        {
+          label: 'Page Design',
+          submenu: [
+            { label: 'Headers & Footers…', click: send('headerFooter') },
+            { label: 'Watermark…',          click: send('watermark') },
+            { label: 'Page Background…',    click: send('background') },
+            { label: 'Bates Numbering…',    click: send('batesNumbers') },
+            { label: 'Crop Page…',          click: send('cropPages') },
+          ],
+        },
       ],
     },
     {
