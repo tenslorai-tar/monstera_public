@@ -5,6 +5,7 @@ export type AnnotationTool =
   | 'rectangle' | 'ellipse' | 'line' | 'arrow'
   | 'textbox' | 'stickynote' | 'stamp'
   | 'redact'
+  | 'typewriter' | 'text-edit' | 'place-image'
 
 export type StampName = 'Approved' | 'Draft' | 'Confidential' | 'Rejected' | 'Custom'
 
@@ -62,6 +63,31 @@ export interface RedactAnn extends AnnBase {
   x1: number; y1: number; x2: number; y2: number  // PDF pts
 }
 
+// Typewriter: click-to-place text, no box border, transparent background
+export interface TypewriterAnn extends AnnBase {
+  type: 'typewriter'
+  x: number; y: number   // bottom-left, PDF pts
+  text: string
+  fontSize: number
+}
+
+// Text-edit: whiteout rect + replacement text (overlay approach — see CLAUDE.md)
+export interface TextEditAnn extends AnnBase {
+  type: 'text-edit'
+  x: number; y: number; width: number; height: number  // PDF pts, bottom-left
+  text: string
+  fontSize: number
+}
+
+// Placed image: draggable/resizable image embedded in PDF content stream on save
+export interface PlacedImageAnn extends AnnBase {
+  type: 'placed-image'
+  x: number; y: number          // bottom-left, PDF pts
+  width: number; height: number // PDF pts
+  dataUrl: string               // data:image/png;base64,... or jpeg
+}
+
 export type Annotation =
   | HighlightAnn | InkAnn | ShapeAnn
   | TextBoxAnn | StickyNoteAnn | StampAnn | RedactAnn
+  | TypewriterAnn | TextEditAnn | PlacedImageAnn

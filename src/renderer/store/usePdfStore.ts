@@ -351,7 +351,8 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     }
     await window.electronAPI.writeFile(filePath, baked.slice(0).buffer)
     const hasNew = formFields.some(f => f.isNew)
-    if (hasNew) await get().reloadWithBytes(baked)
+    const hasPlacedImages = annotations.some(a => a.type === 'placed-image')
+    if (hasNew || hasPlacedImages) await get().reloadWithBytes(baked)
     else set({ isDirty: false })
   },
 
@@ -370,7 +371,8 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     await window.electronAPI.writeFile(newPath, baked.slice(0).buffer)
     const newName = newPath.split(/[\\/]/).pop() ?? newPath
     const hasNew = formFields.some(f => f.isNew)
-    if (hasNew) {
+    const hasPlacedImages = annotations.some(a => a.type === 'placed-image')
+    if (hasNew || hasPlacedImages) {
       set({ filePath: newPath, fileName: newName })
       await get().reloadWithBytes(baked)
     } else {

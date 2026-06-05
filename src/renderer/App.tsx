@@ -11,6 +11,7 @@ import RedactConfirmDialog from './components/RedactConfirmDialog'
 import OcrDialog from './components/OcrDialog'
 import SignaturePad from './components/SignaturePad'
 import DigitalSignDialog from './components/DigitalSignDialog'
+import ExportDialog from './components/ExportDialog'
 import { usePdfStore } from './store/usePdfStore'
 import { useRecentFiles } from './hooks/useRecentFiles'
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
@@ -37,6 +38,7 @@ export default function App() {
   const [ocrOpen,             setOcrOpen]             = useState(false)
   const [signaturePadOpen,    setSignaturePadOpen]    = useState(false)
   const [digitalSignOpen,     setDigitalSignOpen]     = useState(false)
+  const [exportOpen,          setExportOpen]          = useState(false)
   const [passwordPrompt,      setPasswordPrompt]      = useState<PasswordPromptState>(null)
   const [passwordError,       setPasswordError]       = useState('')
   const [passwordInput,       setPasswordInput]       = useState('')
@@ -91,6 +93,7 @@ export default function App() {
         <AnnotationToolbar
           onRequestRedactConfirm={() => setRedactConfirmOpen(true)}
           onOpenSignaturePad={() => setSignaturePadOpen(true)}
+          onOpenExport={() => setExportOpen(true)}
         />
       )}
       {hasPdf ? (
@@ -134,6 +137,7 @@ export default function App() {
         />
       )}
       {digitalSignOpen && <DigitalSignDialog onClose={() => setDigitalSignOpen(false)} />}
+      {exportOpen && <ExportDialog onClose={() => setExportOpen(false)} />}
       {redactConfirmOpen && (
         <RedactConfirmDialog
           count={pendingRedactCount}

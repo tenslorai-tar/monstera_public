@@ -190,10 +190,11 @@ Monstera PDF Editor/
 | **Language selection** | In OCR dialog, change language to French/German/etc. before running |
 | **Page scope** | OCR dialog lets you choose: detected scanned pages only, or all pages |
 
-### Phase 7 — Advanced Editing (mupdf) ✅ (partial)
+### Phase 7 — Advanced Editing ✅ (partial)
 - [x] Redaction tool — mark areas with drag, apply permanently via MuPDF (content truly removed, not just covered)
-- [ ] Edit existing text in-place
-- [ ] Image extraction and replacement
+- [x] Edit existing text — overlay approach (cover + replace): drag to select any region, white rect covers original, type replacement text. **Not** true in-place font-matched editing — MuPDF WASM has no text-stream editing API; real in-place editing would require a native MuPDF build or a different library
+- [x] Typewriter tool — click anywhere on a page and type new text; no box border; saved as FreeText annotation
+- [x] Image insertion — insert PNG/JPEG onto any page, placed at page center; drag to move, drag corner handle to resize; deleted with eraser or select+Delete; baked into PDF content stream on save
 - [ ] Crop page
 
 ### Phase 8 — Security & Metadata ✅
@@ -277,3 +278,24 @@ Monstera PDF Editor/
 - [ ] Print support
 - [ ] Auto-updater (electron-updater, self-hosted or local)
 - [ ] Keyboard shortcut reference panel
+
+### Phase 11 — Export ✅
+- [x] Export pages to PNG or JPEG — choose pages (range or "all"), DPI (72–300), format, quality; each page saved as separate file to a chosen folder
+- [x] Extract all text to .txt — uses PDF.js getTextContent; one section per page; scanned pages without OCR produce no text
+- [x] PDF → Word (.docx) — best-effort text extraction via MuPDF + `docx` npm package. **Quality limitation:** layout, images, tables, columns, and exact fonts are NOT preserved. Output is a readable paragraph-per-paragraph text copy. For layout-faithful conversion, use Adobe Acrobat or a dedicated service.
+
+**How to test:**
+| Feature | Steps |
+|---|---|
+| **Export images** | Open PDF → annotation toolbar "↗ Export" → Images tab → set pages/format/DPI → Export Images → pick folder → files saved |
+| **Single page PNG** | Set Pages to "1", DPI to 150 → Export → folder has one file |
+| **JPEG quality** | Set Format to JPEG → Quality slider → smaller files at lower quality |
+| **Extract text** | Export → Text tab → Save as .txt → open file → text from each page |
+| **DOCX export** | Export → Word tab → read quality warning → Export to Word → open in Word → readable text, no layout |
+| **Typewriter** | Annotation toolbar → Ꭲ button → click anywhere on page → type → Enter or click away → text placed |
+| **Text-edit** | Annotation toolbar → ab→cd button → drag over existing text region → type replacement → blur → white rect covers original, new text on top |
+| **Insert image** | Annotation toolbar → 🖼 button → pick PNG/JPEG → image appears at page center |
+| **Move image** | Select/no tool → drag the placed image to reposition |
+| **Resize image** | Select image → drag the blue corner handle to resize |
+| **Delete image** | Eraser tool + click image, or select image + Delete key |
+| **Save images** | Place image → Ctrl+S → reopen → image is baked into PDF and renders via PDF.js |

@@ -86,10 +86,16 @@ ipcMain.handle('file:writeBytes', async (_event, filePath: string, bytes: ArrayB
 })
 
 ipcMain.handle('dialog:saveFile', async (_event, defaultPath: string) => {
-  const result = await dialog.showSaveDialog({
-    defaultPath,
-    filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
-  })
+  const ext = path.extname(defaultPath).toLowerCase().slice(1) || 'pdf'
+  const filterMap: Record<string, { name: string; extensions: string[] }> = {
+    pdf:  { name: 'PDF Files',  extensions: ['pdf']  },
+    txt:  { name: 'Text Files', extensions: ['txt']  },
+    docx: { name: 'Word Files', extensions: ['docx'] },
+    png:  { name: 'PNG Images', extensions: ['png']  },
+    jpg:  { name: 'JPEG Images', extensions: ['jpg', 'jpeg'] },
+  }
+  const filters = [filterMap[ext] ?? { name: 'Files', extensions: [ext] }]
+  const result = await dialog.showSaveDialog({ defaultPath, filters })
   return result.canceled ? null : result.filePath
 })
 
@@ -329,4 +335,54 @@ ipcMain.handle('pdf:verifySignatures', async (
     }
   } catch { /* not signed or unrecognised format */ }
   return results
+})
+
+// ── DOCX Export ───────────────────────────────────────────────────────────────
+// Approach: extract text via MuPDF page-by-page, build a Word document using the
+// `docx` npm package. Layout, images, tables, and font matching are NOT preserved —
+// this produces a readable text copy in DOCX format.
+
+ipcMain.handle('export:toDocx', async (_event, bytes: ArrayBuffer, _fileName: string): Promise<ArrayBuffer> => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { Document, Paragraph, TextRun, HeadingLevel, Packer } = require('docx')
+  const mupdf = await getMupdf()
+  const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
+  const numPages = doc.countPages()
+
+  const children: unknown[] = []
+
+  for (let i = 0; i < numPages; i++) {
+    const page = doc.loadPage(i)
+    // extractText returns a plain-text string from the page
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let rawText: string = ''
+    try { rawText = page.toStructuredText('preserve-whitespace').asText() } catch {
+      try { rawText = page.toStructuredText().asText() } catch { rawText = '' }
+    }
+
+    // Page separator heading
+    children.push(new Paragraph({
+      text: `Page ${i + 1}`,
+      heading: HeadingLevel.HEADING_2,
+      spacing: { before: 240, after: 80 },
+    }))
+
+    // Split into lines and create paragraphs, skipping blank runs
+    const lines = rawText.split('\n')
+    for (const line of lines) {
+      const trimmed = line.trim()
+      children.push(new Paragraph({
+        children: [new TextRun({ text: trimmed, size: 22 })],
+        spacing: { after: trimmed ? 80 : 20 },
+      }))
+    }
+  }
+
+  const wordDoc = new Document({
+    sections: [{ properties: {}, children }],
+    creator: 'Monstera PDF Editor',
+  })
+
+  const buf = await Packer.toBuffer(wordDoc)
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
 })

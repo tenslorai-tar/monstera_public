@@ -41,6 +41,8 @@ declare global {
         signerName: string; signerOrg: string; reason: string; location: string;
         contactInfo: string; certValidFrom: string; certValidTo: string; certCurrentlyValid: boolean;
       }>>
+
+      exportToDocx: (bytes: ArrayBuffer, fileName: string) => Promise<ArrayBuffer>
     }
   }
 }

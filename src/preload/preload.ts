@@ -62,4 +62,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     signerName: string; signerOrg: string; reason: string; location: string;
     contactInfo: string; certValidFrom: string; certValidTo: string; certCurrentlyValid: boolean;
   }>> => ipcRenderer.invoke('pdf:verifySignatures', bytes),
+
+  exportToDocx: (bytes: ArrayBuffer, fileName: string): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('export:toDocx', bytes, fileName),
 })

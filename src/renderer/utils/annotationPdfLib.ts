@@ -2,7 +2,8 @@ import { PDFDocument, PDFName, PDFNumber, PDFString, PDFBool, PDFArray } from 'p
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import type {
   Annotation, HighlightAnn, InkAnn, ShapeAnn,
-  TextBoxAnn, StickyNoteAnn, StampAnn, RedactAnn
+  TextBoxAnn, StickyNoteAnn, StampAnn, RedactAnn,
+  TypewriterAnn, TextEditAnn, PlacedImageAnn,
 } from '../types/annotations'
 import { hexToRgb01, rgb255ToHex, newId } from './annotationUtils'
 
@@ -151,6 +152,50 @@ function writeRedact(doc: PDFDocument, a: RedactAnn) {
   })
 }
 
+function writeTypewriter(doc: PDFDocument, a: TypewriterAnn) {
+  // Typewriter saves as FreeText with transparent background (no border, no fill)
+  registerAnnot(doc, a.pageNum - 1, {
+    Type: PDFName.of('Annot'),
+    Subtype: PDFName.of('FreeText'),
+    Rect: doc.context.obj([a.x, a.y, a.x + 400, a.y + a.fontSize * 2]),
+    Contents: PDFString.of(a.text),
+    DA: PDFString.of(`/Helvetica ${a.fontSize} Tf`),
+    BS: doc.context.obj({ W: PDFNumber.of(0) }),
+    C: mkC(doc, a.color),
+    CA: PDFNumber.of(a.opacity),
+    NM: PDFString.of(NM_PREFIX + a.id),
+    F: PDFNumber.of(4),
+  })
+}
+
+function writeTextEdit(doc: PDFDocument, a: TextEditAnn) {
+  // TextEdit: white-fill rect covers original text, FreeText with new content on top.
+  // Overlay approach — MuPDF WASM has no text stream editing API.
+  registerAnnot(doc, a.pageNum - 1, {
+    Type: PDFName.of('Annot'),
+    Subtype: PDFName.of('Square'),
+    Rect: doc.context.obj([a.x, a.y, a.x + a.width, a.y + a.height]),
+    IC: doc.context.obj([1, 1, 1]),  // white interior fill
+    BS: doc.context.obj({ W: PDFNumber.of(0) }),
+    C: doc.context.obj([1, 1, 1]),
+    CA: PDFNumber.of(1),
+    NM: PDFString.of(NM_PREFIX + a.id + '-cover'),
+    F: PDFNumber.of(4),
+  })
+  registerAnnot(doc, a.pageNum - 1, {
+    Type: PDFName.of('Annot'),
+    Subtype: PDFName.of('FreeText'),
+    Rect: doc.context.obj([a.x, a.y, a.x + a.width, a.y + a.height]),
+    Contents: PDFString.of(a.text),
+    DA: PDFString.of(`/Helvetica ${a.fontSize} Tf`),
+    BS: doc.context.obj({ W: PDFNumber.of(0) }),
+    C: mkC(doc, a.color),
+    CA: PDFNumber.of(a.opacity),
+    NM: PDFString.of(NM_PREFIX + a.id),
+    F: PDFNumber.of(4),
+  })
+}
+
 function writeStamp(doc: PDFDocument, a: StampAnn) {
   const nameMap: Record<string, string> = {
     Approved: 'Approved', Draft: 'Draft', Confidential: 'Confidential',
@@ -172,12 +217,40 @@ function writeStamp(doc: PDFDocument, a: StampAnn) {
   })
 }
 
+function dataUrlToBytes(dataUrl: string): { bytes: Uint8Array; mime: string } {
+  const [header, b64] = dataUrl.split(',')
+  const mime = header.replace('data:', '').replace(';base64', '')
+  const raw = atob(b64)
+  const bytes = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i)
+  return { bytes, mime }
+}
+
 export async function writeAnnotationsToPdf(
   bytes: Uint8Array,
   annotations: Annotation[]
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true })
   clearAll(doc)
+
+  // Placed images go into the content stream (not annotation array)
+  for (const ann of annotations) {
+    if (ann.type !== 'placed-image') continue
+    if (ann.pageNum < 1 || ann.pageNum > doc.getPageCount()) continue
+    const a = ann as PlacedImageAnn
+    const { bytes: imgBytes, mime } = dataUrlToBytes(a.dataUrl)
+    const embeddedImg = mime === 'image/png'
+      ? await doc.embedPng(imgBytes)
+      : await doc.embedJpg(imgBytes)
+    const page = doc.getPage(a.pageNum - 1)
+    page.drawImage(embeddedImg, {
+      x: a.x,
+      y: a.y,
+      width: a.width,
+      height: a.height,
+    })
+  }
+
   for (const ann of annotations) {
     if (ann.pageNum < 1 || ann.pageNum > doc.getPageCount()) continue
     switch (ann.type) {
@@ -195,6 +268,12 @@ export async function writeAnnotationsToPdf(
         writeStamp(doc, ann as StampAnn); break
       case 'redact':
         writeRedact(doc, ann as RedactAnn); break
+      case 'typewriter':
+        writeTypewriter(doc, ann as TypewriterAnn); break
+      case 'text-edit':
+        writeTextEdit(doc, ann as TextEditAnn); break
+      case 'placed-image':
+        break  // handled above via content stream
     }
   }
   return doc.save()
@@ -243,6 +322,8 @@ export async function readAnnotationsFromPdf(
             break
           }
           case 'Square': {
+            // Skip white-cover rects written by text-edit
+            if (rawId.endsWith('-cover')) break
             const [x1, y1, x2, y2] = a.rect as number[]
             result.push({ ...base, type: 'rectangle', x1, y1, x2, y2, lineWidth: a.borderStyle?.width ?? 2 })
             break

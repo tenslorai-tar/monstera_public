@@ -1,7 +1,8 @@
 import { useRef } from 'react'
 import { usePdfStore } from '../store/usePdfStore'
-import type { AnnotationTool, StampName } from '../types/annotations'
+import type { AnnotationTool, StampName, PlacedImageAnn } from '../types/annotations'
 import type { FormCreationTool } from '../types/forms'
+import { newId } from '../utils/annotationUtils'
 
 const STAMP_NAMES: StampName[] = ['Approved', 'Draft', 'Confidential', 'Rejected', 'Custom']
 
@@ -24,9 +25,13 @@ function ToolBtn({ active, title, children, onClick }: ToolBtnProps) {
   )
 }
 
-interface Props { onRequestRedactConfirm: () => void; onOpenSignaturePad: () => void }
+interface Props {
+  onRequestRedactConfirm: () => void
+  onOpenSignaturePad: () => void
+  onOpenExport: () => void
+}
 
-export default function AnnotationToolbar({ onRequestRedactConfirm, onOpenSignaturePad }: Props) {
+export default function AnnotationToolbar({ onRequestRedactConfirm, onOpenSignaturePad, onOpenExport }: Props) {
   const activeTool = usePdfStore(s => s.activeTool)
   const toolColor = usePdfStore(s => s.toolColor)
   const toolOpacity = usePdfStore(s => s.toolOpacity)
@@ -54,6 +59,11 @@ export default function AnnotationToolbar({ onRequestRedactConfirm, onOpenSignat
   const formFields = usePdfStore(s => s.formFields)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+
+  const currentPage = usePdfStore(s => s.currentPage)
+  const pageSizes = usePdfStore(s => s.pageSizes)
+  const addAnnotation = usePdfStore(s => s.addAnnotation)
 
   const toggle = (tool: AnnotationTool) =>
     setActiveTool(activeTool === tool ? null : tool)
@@ -78,6 +88,37 @@ export default function AnnotationToolbar({ onRequestRedactConfirm, onOpenSignat
     reader.onload = ev => setCustomStampDataUrl(ev.target?.result as string)
     reader.readAsDataURL(file)
     setStampName('Custom')
+  }
+
+  const handleInsertImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = ev => {
+      const dataUrl = ev.target?.result as string
+      const img = new Image()
+      img.onload = () => {
+        const ps = pageSizes[currentPage - 1]
+        if (!ps) return
+        // Place image at center of page, max 40% of page width
+        const maxW = ps.width * 0.4
+        const ratio = img.naturalHeight / img.naturalWidth
+        const w = Math.min(maxW, img.naturalWidth)
+        const h = w * ratio
+        const ann: PlacedImageAnn = {
+          id: newId(), type: 'placed-image', pageNum: currentPage,
+          color: '#000000', opacity: 1, createdAt: Date.now(),
+          x: (ps.width - w) / 2,
+          y: (ps.height - h) / 2,
+          width: w, height: h,
+          dataUrl,
+        }
+        addAnnotation(ann)
+      }
+      img.src = dataUrl
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ''
   }
 
   return (
@@ -133,6 +174,50 @@ export default function AnnotationToolbar({ onRequestRedactConfirm, onOpenSignat
           onClick={onOpenSignaturePad}
         >✍</button>
       </div>
+
+      <div className="annot-sep" />
+
+      {/* ── Text editing tools ─────────────────────────── */}
+      <div className="annot-group">
+        <ToolBtn tool="typewriter" active={activeTool === 'typewriter'}
+          title="Typewriter — click anywhere to type text (no box border)"
+          onClick={() => toggle('typewriter')}>
+          <span style={{ fontFamily: 'monospace', fontSize: 13 }}>Ꭲ</span>
+        </ToolBtn>
+        <ToolBtn tool="text-edit" active={activeTool === 'text-edit'}
+          title="Edit text — drag to select region, cover original with white, type replacement (overlay approach)"
+          onClick={() => toggle('text-edit')}>
+          <span style={{ position: 'relative', display: 'inline-block' }}>
+            <span style={{ textDecoration: 'line-through', opacity: 0.4, fontSize: 11 }}>ab</span>
+            <span style={{ fontSize: 11, marginLeft: 1 }}>cd</span>
+          </span>
+        </ToolBtn>
+      </div>
+
+      <div className="annot-sep" />
+
+      {/* ── Image insert ───────────────────────────────── */}
+      <div className="annot-group">
+        <button
+          className="annot-tool-btn"
+          title="Insert image — place a PNG or JPEG image on the current page"
+          onClick={() => imageInputRef.current?.click()}
+        >🖼</button>
+        <input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/jpg"
+          style={{ display: 'none' }} onChange={handleInsertImage} />
+      </div>
+
+      <div className="annot-sep" />
+
+      {/* ── Export ─────────────────────────────────────── */}
+      <button
+        className="annot-tool-btn"
+        title="Export — pages to PNG/JPEG, all text to .txt, or PDF to Word"
+        onClick={onOpenExport}
+        style={{ fontSize: 11 }}
+      >
+        ↗ Export
+      </button>
 
       <div className="annot-sep" />
 

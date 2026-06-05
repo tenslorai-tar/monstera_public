@@ -3,7 +3,8 @@ import { usePdfStore } from '../store/usePdfStore'
 import { canvasToPdf, pdfToCanvas, newId } from '../utils/annotationUtils'
 import type {
   Annotation, HighlightAnn, InkAnn,
-  ShapeAnn, TextBoxAnn, StickyNoteAnn, StampAnn, RedactAnn
+  ShapeAnn, TextBoxAnn, StickyNoteAnn, StampAnn, RedactAnn,
+  TypewriterAnn, TextEditAnn, PlacedImageAnn,
 } from '../types/annotations'
 
 interface Props {
@@ -15,10 +16,18 @@ interface Props {
 
 type DrawPhase =
   | { k: 'idle' }
-  | { k: 'shape'; sx: number; sy: number; cx: number; cy: number }   // SVG coords
-  | { k: 'ink'; cur: Array<[number, number]>; done: Array<Array<[number, number]>> }  // SVG coords
+  | { k: 'shape'; sx: number; sy: number; cx: number; cy: number }
+  | { k: 'ink'; cur: Array<[number, number]>; done: Array<Array<[number, number]>> }
   | { k: 'textbox-size'; sx: number; sy: number; cx: number; cy: number }
   | { k: 'textbox-edit'; x: number; y: number; w: number; h: number; text: string }
+  | { k: 'typewriter-edit'; x: number; y: number; text: string }
+  | { k: 'text-edit-size'; sx: number; sy: number; cx: number; cy: number }
+  | { k: 'text-edit-edit'; x: number; y: number; w: number; h: number; text: string }
+
+type ImageDrag =
+  | { k: 'idle' }
+  | { k: 'move'; id: string; startSvgX: number; startSvgY: number; origAnnX: number; origAnnY: number }
+  | { k: 'resize'; id: string; corner: 'br'; startSvgX: number; startSvgY: number; origW: number; origH: number }
 
 function StampShape({ color, stampName, w, h }: { color: string; stampName: string; w: number; h: number }) {
   return (
@@ -52,6 +61,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
 
   const svgRef = useRef<SVGSVGElement>(null)
   const [draw, setDraw] = useState<DrawPhase>({ k: 'idle' })
+  const [imgDrag, setImgDrag] = useState<ImageDrag>({ k: 'idle' })
 
   const W = pageW * scale
   const H = pageH * scale
@@ -59,12 +69,13 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   const pageAnnotations = annotations.filter(a => a.pageNum === pageNum)
 
   const isDrawingTool = activeTool !== null &&
-    !['select', 'eraser', 'highlight', 'underline', 'strikethrough'].includes(activeTool)
+    !['select', 'eraser', 'highlight', 'underline', 'strikethrough', 'typewriter', 'place-image'].includes(activeTool)
 
-  // Redact tool adds to the shape drawing family
   const isRedactTool = activeTool === 'redact'
   const isMarkupTool = activeTool === 'highlight' ||
     activeTool === 'underline' || activeTool === 'strikethrough'
+  const isTypewriterTool = activeTool === 'typewriter'
+  const isTextEditTool = activeTool === 'text-edit'
 
   // ── Coordinate helpers ──────────────────────────────────────────────────
 
@@ -81,7 +92,26 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
 
   // ── Mouse handlers for drawing tools ───────────────────────────────────
 
+  const handleTypewriterClick = (e: React.MouseEvent) => {
+    if (!isTypewriterTool) return
+    if (e.button !== 0) return
+    e.stopPropagation()
+    const [sx, sy] = getSvgXY(e)
+    if (draw.k === 'typewriter-edit') {
+      // Commit current and start new one at click position
+      commitTypewriter(draw.text)
+    }
+    setDraw({ k: 'typewriter-edit', x: sx, y: sy, text: '' })
+  }
+
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (isTextEditTool) {
+      if (e.button !== 0) return
+      e.stopPropagation()
+      const [sx, sy] = getSvgXY(e)
+      setDraw({ k: 'text-edit-size', sx, sy, cx: sx, cy: sy })
+      return
+    }
     if (!activeTool || !isDrawingTool) return
     if (e.button !== 0) return
     e.stopPropagation()
@@ -117,9 +147,35 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   }
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    // Handle image drag/resize
+    if (imgDrag.k === 'move') {
+      const [cx, cy] = getSvgXY(e)
+      const dSvgX = cx - imgDrag.startSvgX
+      const dSvgY = cy - imgDrag.startSvgY
+      // Convert SVG delta to PDF delta via scale factor (PDF y is inverted)
+      const dPdfX = dSvgX / scale
+      const dPdfY = -dSvgY / scale   // invert Y because PDF y goes up
+      updateAnnotation(imgDrag.id, {
+        x: imgDrag.origAnnX + dPdfX,
+        y: imgDrag.origAnnY + dPdfY,
+      } as Partial<PlacedImageAnn>)
+      return
+    }
+    if (imgDrag.k === 'resize') {
+      const [cx, cy] = getSvgXY(e)
+      const dSvgX = cx - imgDrag.startSvgX
+      const dSvgY = cy - imgDrag.startSvgY
+      // SVG y goes down, so dragging down (positive dSvgY) increases visual height
+      // PDF height increases when dragging down too (we keep bottom-left anchor fixed)
+      const newW = Math.max(20, imgDrag.origW + dSvgX / scale)
+      const newH = Math.max(20, imgDrag.origH + dSvgY / scale)
+      updateAnnotation(imgDrag.id, { width: newW, height: newH } as Partial<PlacedImageAnn>)
+      return
+    }
+
     if (draw.k === 'idle') return
     const [cx, cy] = getSvgXY(e)
-    if (draw.k === 'shape' || draw.k === 'textbox-size') {
+    if (draw.k === 'shape' || draw.k === 'textbox-size' || draw.k === 'text-edit-size') {
       setDraw(d => ({ ...d, cx, cy } as DrawPhase))
     } else if (draw.k === 'ink') {
       setDraw(d => ({
@@ -130,6 +186,10 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   }
 
   const handleMouseUp = (e: React.MouseEvent) => {
+    if (imgDrag.k !== 'idle') {
+      setImgDrag({ k: 'idle' })
+      return
+    }
     // Text markup via selection
     if (isMarkupTool) {
       commitTextSelection()
@@ -187,6 +247,16 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       const w = Math.abs(ex - draw.sx)
       const h = Math.abs(ey - draw.sy)
       setDraw({ k: 'textbox-edit', x: left, y: top, w, h, text: '' })
+    } else if (draw.k === 'text-edit-size') {
+      const minSize = 10
+      if (Math.abs(ex - draw.sx) < minSize || Math.abs(ey - draw.sy) < minSize) {
+        setDraw({ k: 'idle' }); return
+      }
+      const left = Math.min(draw.sx, ex)
+      const top = Math.min(draw.sy, ey)
+      const w = Math.abs(ex - draw.sx)
+      const h = Math.abs(ey - draw.sy)
+      setDraw({ k: 'text-edit-edit', x: left, y: top, w, h, text: '' })
     }
   }
 
@@ -258,6 +328,43 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       const [x2] = toPdf(draw.x + draw.w, draw.y)
       const ann: TextBoxAnn = {
         id: newId(), type: 'textbox', pageNum,
+        color: toolColor, opacity: toolOpacity,
+        x, y: y_bot, width: x2 - x, height: y_top - y_bot,
+        text, fontSize: toolFontSize, createdAt: Date.now(),
+      }
+      addAnnotation(ann)
+    }
+    setDraw({ k: 'idle' })
+  }
+
+  // ── Typewriter: click-to-place, no drag needed ──────────────────────────
+
+  const commitTypewriter = (text: string) => {
+    if (draw.k !== 'typewriter-edit') return
+    if (text.trim()) {
+      const [px] = toPdf(draw.x, draw.y)
+      const [, py_bot] = toPdf(draw.x, draw.y + toolFontSize * scale * 1.5)
+      const ann: TypewriterAnn = {
+        id: newId(), type: 'typewriter', pageNum,
+        color: toolColor, opacity: toolOpacity,
+        x: px, y: py_bot,
+        text, fontSize: toolFontSize, createdAt: Date.now(),
+      }
+      addAnnotation(ann)
+    }
+    setDraw({ k: 'idle' })
+  }
+
+  // ── Text-edit: drag region, whiteout + retype ───────────────────────────
+
+  const commitTextEdit = (text: string) => {
+    if (draw.k !== 'text-edit-edit') return
+    if (text.trim()) {
+      const [x, y_top] = toPdf(draw.x, draw.y)
+      const [, y_bot] = toPdf(draw.x, draw.y + draw.h)
+      const [x2] = toPdf(draw.x + draw.w, draw.y)
+      const ann: TextEditAnn = {
+        id: newId(), type: 'text-edit', pageNum,
         color: toolColor, opacity: toolOpacity,
         x, y: y_bot, width: x2 - x, height: y_top - y_bot,
         text, fontSize: toolFontSize, createdAt: Date.now(),
@@ -483,6 +590,89 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       )
     }
 
+    if (ann.type === 'typewriter') {
+      const a = ann as TypewriterAnn
+      const [svgX, svgY] = toSvg(a.x, a.y + a.fontSize * 1.5)
+      return (
+        <foreignObject key={a.id} x={svgX} y={svgY} width={W - svgX} height={a.fontSize * scale * 3}
+          onClick={e => handleAnnotClick(a, e)} style={annStyle(a)}>
+          <div style={{
+            fontSize: a.fontSize * scale, color: a.color, opacity: a.opacity,
+            fontFamily: 'sans-serif', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            border: sel ? '1px dashed #4a9eff' : 'none',
+            outline: 'none', padding: 2, boxSizing: 'border-box',
+          }}>
+            {a.text}
+          </div>
+        </foreignObject>
+      )
+    }
+
+    if (ann.type === 'text-edit') {
+      const a = ann as TextEditAnn
+      const [svgX, svgY_top] = toSvg(a.x, a.y + a.height)
+      const svgW = a.width * scale
+      const svgH = a.height * scale
+      return (
+        <g key={a.id} onClick={e => handleAnnotClick(a, e)} style={annStyle(a)}>
+          <rect x={svgX} y={svgY_top} width={svgW} height={svgH} fill="white" />
+          <foreignObject x={svgX} y={svgY_top} width={svgW} height={svgH}>
+            <div style={{
+              width: '100%', height: '100%', padding: 2,
+              fontSize: a.fontSize * scale, color: a.color, opacity: a.opacity,
+              fontFamily: 'sans-serif', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              border: sel ? '1px dashed #4a9eff' : '1px solid transparent',
+              boxSizing: 'border-box', background: 'white',
+            }}>
+              {a.text}
+            </div>
+          </foreignObject>
+        </g>
+      )
+    }
+
+    if (ann.type === 'placed-image') {
+      const a = ann as PlacedImageAnn
+      const [svgX, svgY_top] = toSvg(a.x, a.y + a.height)
+      const svgW = a.width * scale
+      const svgH = a.height * scale
+      return (
+        <g key={a.id}
+          onClick={e => { if (imgDrag.k === 'idle') handleAnnotClick(a, e) }}
+          style={{ cursor: activeTool === 'eraser' ? 'cell' : 'move', opacity: a.opacity }}
+        >
+          <image href={a.dataUrl} x={svgX} y={svgY_top} width={svgW} height={svgH}
+            onMouseDown={e => {
+              if (activeTool === 'eraser') return
+              e.stopPropagation()
+              setSelectedAnnotation(a.id)
+              const [sx, sy] = getSvgXY(e)
+              setImgDrag({ k: 'move', id: a.id, startSvgX: sx, startSvgY: sy, origAnnX: a.x, origAnnY: a.y })
+            }}
+          />
+          {sel && (
+            <>
+              <rect x={svgX - 1} y={svgY_top - 1} width={svgW + 2} height={svgH + 2}
+                fill="none" stroke="#4a9eff" strokeWidth={1.5} strokeDasharray="5,3" pointerEvents="none" />
+              {/* Resize handle bottom-right */}
+              <rect
+                x={svgX + svgW - 6} y={svgY_top + svgH - 6} width={12} height={12}
+                fill="#4a9eff" rx={2} style={{ cursor: 'nwse-resize' }}
+                onMouseDown={e => {
+                  e.stopPropagation()
+                  setImgDrag({
+                    k: 'resize', id: a.id, corner: 'br',
+                    startSvgX: getSvgXY(e)[0], startSvgY: getSvgXY(e)[1],
+                    origW: a.width, origH: a.height,
+                  })
+                }}
+              />
+            </>
+          )}
+        </g>
+      )
+    }
+
     return null
   }
 
@@ -498,6 +688,13 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   // ── Draw preview ────────────────────────────────────────────────────────
 
   const renderPreview = () => {
+    if (draw.k === 'text-edit-size') {
+      const { sx, sy, cx, cy } = draw
+      const x = Math.min(sx, cx), y = Math.min(sy, cy)
+      const w = Math.abs(cx - sx), h = Math.abs(cy - sy)
+      return <rect x={x} y={y} width={w} height={h}
+        fill="rgba(255,255,255,0.7)" stroke="#ff8800" strokeWidth={1.5} strokeDasharray="4,3" />
+    }
     if (draw.k === 'shape' || draw.k === 'textbox-size') {
       const { sx, sy, cx, cy } = draw
       const x = Math.min(sx, cx), y = Math.min(sy, cy)
@@ -616,9 +813,70 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
     )
   }
 
+  // ── Typewriter cursor overlay ─────────────────────────────────────────────
+
+  const renderTypewriterEdit = () => {
+    if (draw.k !== 'typewriter-edit') return null
+    const { x, y, text } = draw
+    const minW = 120
+    return (
+      <foreignObject x={x} y={y} width={Math.max(minW, W - x - 8)} height={toolFontSize * scale * 4}
+        style={{ pointerEvents: 'all' }}>
+        <input
+          type="text"
+          style={{
+            width: '100%', background: 'transparent', color: toolColor,
+            border: 'none', borderBottom: `2px solid ${toolColor}`,
+            outline: 'none', fontFamily: 'sans-serif',
+            fontSize: toolFontSize * scale, padding: 2,
+          }}
+          autoFocus
+          value={text}
+          onChange={e => setDraw(d => ({ ...(d as any), text: e.target.value } as DrawPhase))}
+          onBlur={e => commitTypewriter(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Escape') setDraw({ k: 'idle' })
+            if (e.key === 'Enter' && !e.shiftKey) { commitTypewriter((e.target as HTMLInputElement).value) }
+          }}
+          placeholder="Type here…"
+        />
+      </foreignObject>
+    )
+  }
+
+  // ── Text-edit region overlay ──────────────────────────────────────────────
+
+  const renderTextEditBox = () => {
+    if (draw.k !== 'text-edit-edit') return null
+    const { x, y, w, h } = draw
+    return (
+      <foreignObject x={x} y={y} width={w} height={h} style={{ pointerEvents: 'all' }}>
+        <textarea
+          style={{
+            width: '100%', height: '100%',
+            background: 'white', color: toolColor,
+            border: '2px solid #ff8800', outline: 'none',
+            resize: 'none', fontFamily: 'sans-serif',
+            fontSize: toolFontSize * scale,
+            padding: 4, boxSizing: 'border-box',
+          }}
+          autoFocus
+          value={draw.text}
+          onChange={e => setDraw(d => ({ ...(d as any), text: e.target.value } as DrawPhase))}
+          onBlur={e => commitTextEdit(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Escape') setDraw({ k: 'idle' }) }}
+          placeholder="Type replacement text…"
+        />
+      </foreignObject>
+    )
+  }
+
   // ── Pointer events setup ─────────────────────────────────────────────────
 
-  const svgPointerEvents = isDrawingTool ? 'all' : isMarkupTool ? 'none' : 'all'
+  const svgPointerEvents: React.CSSProperties['pointerEvents'] =
+    isDrawingTool || isTextEditTool || imgDrag.k !== 'idle' ? 'all' : isMarkupTool ? 'none' : 'all'
+
+  const needsMouseHandlers = isDrawingTool || isTextEditTool || imgDrag.k !== 'idle'
 
   return (
     <div
@@ -630,15 +888,20 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
         ref={svgRef}
         width={W} height={H}
         style={{ position: 'absolute', top: 0, left: 0, overflow: 'visible', pointerEvents: svgPointerEvents }}
-        onMouseDown={isDrawingTool ? handleMouseDown : undefined}
-        onMouseMove={isDrawingTool ? handleMouseMove : undefined}
-        onMouseUp={isDrawingTool ? handleMouseUp : undefined}
-        onClick={(!activeTool || activeTool === 'select' || activeTool === 'eraser') ? handleSvgClick : undefined}
+        onMouseDown={needsMouseHandlers ? handleMouseDown : isTypewriterTool ? handleTypewriterClick : undefined}
+        onMouseMove={needsMouseHandlers ? handleMouseMove : undefined}
+        onMouseUp={needsMouseHandlers ? handleMouseUp : undefined}
+        onClick={
+          isTypewriterTool ? handleTypewriterClick :
+          (!activeTool || activeTool === 'select' || activeTool === 'eraser') ? handleSvgClick : undefined
+        }
       >
         {pageAnnotations.map(renderAnn)}
         {renderPreview()}
         {renderStickyPopup()}
         {renderTextBoxEdit()}
+        {renderTypewriterEdit()}
+        {renderTextEditBox()}
       </svg>
     </div>
   )
