@@ -3,6 +3,7 @@ import { TextLayer } from 'pdfjs-dist'
 import { usePdfStore, getOcgConfig } from '../store/usePdfStore'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { textCache } from '../utils/textCache'
+import { hdRenderPage } from '../utils/pdfiumRender'
 import type { SearchMatch } from '../store/usePdfStore'
 import AnnotationOverlay from './AnnotationOverlay'
 import FormOverlay from './FormOverlay'
@@ -96,10 +97,9 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
         try {
           const bytes = usePdfStore.getState().pdfBytes
           if (bytes) {
-            const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
-            const img = await window.electronAPI.pdfiumRenderPage(ab, pageNum - 1, scale)
+            const img = await hdRenderPage(bytes, pageNum - 1, scale)
             if (cancelled || gen !== renderGenRef.current) return
-            if (img.width > 0 && img.data.byteLength === img.width * img.height * 4) {
+            if (img && img.width > 0 && img.data.byteLength === img.width * img.height * 4) {
               canvas.width = img.width
               canvas.height = img.height
               ctx.putImageData(new ImageData(new Uint8ClampedArray(img.data), img.width, img.height), 0, 0)

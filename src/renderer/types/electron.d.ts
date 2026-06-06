@@ -18,6 +18,13 @@ declare global {
         pageIndex: number,
         scale: number,
       ) => Promise<{ data: ArrayBuffer; width: number; height: number }>
+      pdfiumEnsureSession: (token: string, bytes: ArrayBuffer) => Promise<boolean>
+      pdfiumCloseSession: () => Promise<void>
+      pdfiumRenderSession: (
+        token: string,
+        pageIndex: number,
+        scale: number,
+      ) => Promise<{ stale: boolean; data?: ArrayBuffer; width?: number; height?: number }>
       pdfiumTextInRegion: (
         bytes: ArrayBuffer,
         pageIndex: number,

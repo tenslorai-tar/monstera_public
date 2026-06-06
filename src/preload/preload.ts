@@ -28,6 +28,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     scale: number,
   ): Promise<{ data: ArrayBuffer; width: number; height: number }> =>
     ipcRenderer.invoke('pdfium:renderPage', bytes, pageIndex, scale),
+  pdfiumEnsureSession: (token: string, bytes: ArrayBuffer): Promise<boolean> =>
+    ipcRenderer.invoke('pdfium:ensureSession', token, bytes),
+  pdfiumCloseSession: (): Promise<void> =>
+    ipcRenderer.invoke('pdfium:closeSession'),
+  pdfiumRenderSession: (
+    token: string,
+    pageIndex: number,
+    scale: number,
+  ): Promise<{ stale: boolean; data?: ArrayBuffer; width?: number; height?: number }> =>
+    ipcRenderer.invoke('pdfium:renderSession', token, pageIndex, scale),
   pdfiumTextInRegion: (
     bytes: ArrayBuffer,
     pageIndex: number,

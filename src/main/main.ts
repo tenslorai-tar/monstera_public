@@ -355,6 +355,24 @@ ipcMain.handle('file:getMimeType', async (_event, filePath: string) => {
 // ── PDFium engine — true in-place text editing ───────────────────────────────
 ipcMain.handle('pdfium:status', async () => ({ available: pdfium.isAvailable() }))
 
+ipcMain.handle('pdfium:ensureSession', async (_event, token: string, bytes: ArrayBuffer) =>
+  pdfium.ensureSession(token, Buffer.from(bytes)))
+
+ipcMain.handle('pdfium:closeSession', async () => { pdfium.closeSession() })
+
+ipcMain.handle('pdfium:renderSession', async (
+  _event, token: string, pageIndex: number, scale: number,
+) => {
+  const r = pdfium.renderInSession(token, pageIndex, scale)
+  if (r.stale || !r.data) return { stale: true }
+  return {
+    stale: false,
+    data: r.data.buffer.slice(r.data.byteOffset, r.data.byteOffset + r.data.byteLength),
+    width: r.width,
+    height: r.height,
+  }
+})
+
 ipcMain.handle('pdfium:renderPage', async (
   _event,
   bytes: ArrayBuffer,
