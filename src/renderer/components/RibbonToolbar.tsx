@@ -450,6 +450,11 @@ export default function RibbonToolbar(props: Props) {
         <LBtn icon="T" label="Text Box" active={activeTool === 'textbox'} onClick={() => toggle('textbox')} title="Text box — drag area then type" />
       </Group>
 
+      <Group label="Objects">
+        <LBtn icon="⬚" label="Edit Objects" active={activeTool === 'object-edit'} onClick={() => toggle('object-edit')}
+          title="Select any text, image or shape on the page — move, resize, recolour or delete it" />
+      </Group>
+
       <Group label="Content">
         <div className="rbn-stack">
           <SBtn icon={<span style={{ fontSize:10 }}>ab→cd</span>} label="Edit Text" active={activeTool === 'text-edit'} onClick={() => toggle('text-edit')} title="Click any text to edit it in place (font preserved), or drag to replace a region" />

@@ -159,7 +159,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   // Drag-based drawing tools (all except select, eraser, markup, typewriter, caret, poly)
   const isDragDrawTool = activeTool !== null &&
     !['select', 'eraser', 'highlight', 'underline', 'strikethrough',
-      'typewriter', 'place-image', 'caret', ...POLY_TOOLS].includes(activeTool)
+      'typewriter', 'place-image', 'caret', 'object-edit', ...POLY_TOOLS].includes(activeTool)
 
   // ── Coordinate helpers ──────────────────────────────────────────────────
 
@@ -1397,7 +1397,9 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   // fall through to the PDF.js text layer below, so the SVG overlay goes transparent.
   const textSelectMode = activeTool === null && !panMode
   const svgPointerEvents: React.CSSProperties['pointerEvents'] =
-    textSelectMode
+    activeTool === 'object-edit'
+      ? 'none'
+      : textSelectMode
       ? 'none'
       : isDragDrawTool || isTextEditTool || isCalloutTool || isPolyTool || isCaretTool || imgDrag.k !== 'idle'
         || draw.k === 'link-pending'

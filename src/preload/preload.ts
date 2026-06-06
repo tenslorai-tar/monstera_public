@@ -51,6 +51,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
     y: number,
   ): Promise<{ found: boolean; text: string; fontSize: number; color: string; x1: number; y1: number; x2: number; y2: number; fontData: ArrayBuffer; fontLoadable: boolean }> =>
     ipcRenderer.invoke('pdfium:textObjectAt', bytes, pageIndex, x, y),
+  pdfiumObjectAt: (
+    bytes: ArrayBuffer, pageIndex: number, x: number, y: number,
+  ): Promise<{ found: boolean; index: number; type: number; color: string; x1: number; y1: number; x2: number; y2: number }> =>
+    ipcRenderer.invoke('pdfium:objectAt', bytes, pageIndex, x, y),
+  pdfiumTransformObject: (
+    bytes: ArrayBuffer, pageIndex: number, index: number,
+    m: { a: number; b: number; c: number; d: number; e: number; f: number },
+  ): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('pdfium:transformObject', bytes, pageIndex, index, m),
+  pdfiumSetObjectFill: (
+    bytes: ArrayBuffer, pageIndex: number, index: number,
+    c: { r: number; g: number; b: number; a: number },
+  ): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('pdfium:setObjectFill', bytes, pageIndex, index, c),
+  pdfiumDeleteObject: (
+    bytes: ArrayBuffer, pageIndex: number, index: number,
+  ): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('pdfium:deleteObject', bytes, pageIndex, index),
   pdfiumEditText: (
     bytes: ArrayBuffer,
     pageIndex: number,

@@ -10,6 +10,7 @@ export type AnnotationTool =
   | 'measure-distance' | 'measure-area' | 'measure-perimeter'
   | 'link'
   | 'snapshot'
+  | 'object-edit'
 
 export type StampName = 'Approved' | 'Draft' | 'Confidential' | 'Rejected' | 'Custom'
   | 'Today' | 'Received' | 'Revised' | 'Void' | 'For Review'

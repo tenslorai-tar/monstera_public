@@ -409,6 +409,25 @@ ipcMain.handle('pdfium:textObjectAt', async (
   }
 })
 
+// ── Object editing ───────────────────────────────────────────────────────────
+const toAb = (b: Buffer): ArrayBuffer => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer
+
+ipcMain.handle('pdfium:objectAt', async (_e, bytes: ArrayBuffer, pageIndex: number, x: number, y: number) =>
+  pdfium.getObjectAt(Buffer.from(bytes), pageIndex, x, y))
+
+ipcMain.handle('pdfium:transformObject', async (
+  _e, bytes: ArrayBuffer, pageIndex: number, index: number,
+  m: { a: number; b: number; c: number; d: number; e: number; f: number },
+) => toAb(pdfium.transformObject(Buffer.from(bytes), pageIndex, index, m.a, m.b, m.c, m.d, m.e, m.f)))
+
+ipcMain.handle('pdfium:setObjectFill', async (
+  _e, bytes: ArrayBuffer, pageIndex: number, index: number,
+  c: { r: number; g: number; b: number; a: number },
+) => toAb(pdfium.setObjectFillColor(Buffer.from(bytes), pageIndex, index, c.r, c.g, c.b, c.a)))
+
+ipcMain.handle('pdfium:deleteObject', async (_e, bytes: ArrayBuffer, pageIndex: number, index: number) =>
+  toAb(pdfium.deleteObject(Buffer.from(bytes), pageIndex, index)))
+
 ipcMain.handle('pdfium:editText', async (
   _event,
   bytes: ArrayBuffer,

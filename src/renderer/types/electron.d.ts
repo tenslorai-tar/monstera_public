@@ -36,6 +36,20 @@ declare global {
         x: number,
         y: number,
       ) => Promise<{ found: boolean; text: string; fontSize: number; color: string; x1: number; y1: number; x2: number; y2: number; fontData: ArrayBuffer; fontLoadable: boolean }>
+      pdfiumObjectAt: (
+        bytes: ArrayBuffer, pageIndex: number, x: number, y: number,
+      ) => Promise<{ found: boolean; index: number; type: number; color: string; x1: number; y1: number; x2: number; y2: number }>
+      pdfiumTransformObject: (
+        bytes: ArrayBuffer, pageIndex: number, index: number,
+        m: { a: number; b: number; c: number; d: number; e: number; f: number },
+      ) => Promise<ArrayBuffer>
+      pdfiumSetObjectFill: (
+        bytes: ArrayBuffer, pageIndex: number, index: number,
+        c: { r: number; g: number; b: number; a: number },
+      ) => Promise<ArrayBuffer>
+      pdfiumDeleteObject: (
+        bytes: ArrayBuffer, pageIndex: number, index: number,
+      ) => Promise<ArrayBuffer>
       pdfiumEditText: (
         bytes: ArrayBuffer,
         pageIndex: number,

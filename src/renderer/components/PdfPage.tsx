@@ -6,6 +6,7 @@ import { textCache } from '../utils/textCache'
 import { hdRenderPage } from '../utils/pdfiumRender'
 import type { SearchMatch } from '../store/usePdfStore'
 import AnnotationOverlay from './AnnotationOverlay'
+import ObjectEditOverlay from './ObjectEditOverlay'
 import FormOverlay from './FormOverlay'
 import OcrTextLayer from './OcrTextLayer'
 import RulerOverlay from './RulerOverlay'
@@ -175,6 +176,12 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
             scale={scale}
           />
           <AnnotationOverlay
+            pageNum={pageNum}
+            scale={scale}
+            pageW={pageW}
+            pageH={pageH}
+          />
+          <ObjectEditOverlay
             pageNum={pageNum}
             scale={scale}
             pageW={pageW}
