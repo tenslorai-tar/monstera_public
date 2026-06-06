@@ -6,61 +6,64 @@
   padding: 0;
 }
 
-/* ── Dark theme (default) ──────────────────────────────── */
+/* ── Dark theme (default) — Forest Green ─────────────────── */
 :root {
-  --bg-primary:    #1a1b22;
-  --bg-secondary:  #20212a;
-  --bg-toolbar:    #26273200;
-  --bg-ribbon:     #262730;
-  --bg-ribbon-tab: #1e1f28;
-  --bg-hover:      rgba(255, 255, 255, 0.055);
-  --bg-active:     rgba(74, 158, 255, 0.14);
-  --border:        #32334a;
-  --border-light:  #3a3b55;
-  --text-primary:   #e4e6f0;
-  --text-secondary: #aeb2cc;
-  --text-muted:     #7a7e9a;
-  --text-dim:       #50536a;
-  --accent:        #4a9eff;
-  --accent-hover:  #6ab2ff;
-  --accent-dim:    rgba(74, 158, 255, 0.15);
-  --danger:        #f55;
-  --danger-dim:    rgba(255, 85, 85, 0.12);
-  --success:       #4caf50;
-  --warning:       #ff9800;
-  --shadow-sm:     0 1px 4px rgba(0, 0, 0, 0.35);
-  --shadow-md:     0 4px 16px rgba(0, 0, 0, 0.5);
-  --shadow-lg:     0 8px 40px rgba(0, 0, 0, 0.65);
-  --radius-sm:     3px;
-  --radius:        5px;
-  --radius-lg:     8px;
+  --bg-primary:    #0b1610;
+  --bg-secondary:  #101c15;
+  --bg-toolbar:    #0b1610;
+  --bg-ribbon:     #132019;
+  --bg-ribbon-tab: #0d1a12;
+  --bg-hover:      rgba(74, 222, 128, 0.08);
+  --bg-active:     rgba(74, 222, 128, 0.16);
+  --border:        #1c3024;
+  --border-light:  #274238;
+  --text-primary:  #ddeee5;
+  --text-secondary: #94bbaa;
+  --text-muted:    #5a8070;
+  --text-dim:      #304a3c;
+  --accent:        #4ade80;
+  --accent-hover:  #6beba0;
+  --accent-dim:    rgba(74, 222, 128, 0.16);
+  --danger:        #f87171;
+  --danger-dim:    rgba(248, 113, 113, 0.14);
+  --success:       #4ade80;
+  --warning:       #fbbf24;
+  --shadow-sm:     0 1px 4px rgba(0, 0, 0, 0.55);
+  --shadow-md:     0 4px 16px rgba(0, 0, 0, 0.7);
+  --shadow-lg:     0 8px 40px rgba(0, 0, 0, 0.85);
+  --radius-sm:     4px;
+  --radius:        6px;
+  --radius-lg:     10px;
 }
 
-/* ── Light theme ───────────────────────────────────────── */
+/* ── Light theme — Clean white + forest green ─────────────── */
 [data-theme="light"] {
-  --bg-primary:    #f0f2f7;
-  --bg-secondary:  #e8eaf2;
+  --bg-primary:    #f4f8f5;
+  --bg-secondary:  #ecf3ee;
   --bg-toolbar:    #ffffff;
   --bg-ribbon:     #ffffff;
-  --bg-ribbon-tab: #f4f5fb;
-  --bg-hover:      rgba(0, 0, 0, 0.05);
-  --bg-active:     rgba(37, 99, 235, 0.1);
-  --border:        #d0d4e8;
-  --border-light:  #c0c4dc;
-  --text-primary:   #1a1c2e;
-  --text-secondary: #3d4268;
-  --text-muted:     #6b7099;
-  --text-dim:       #9097b8;
-  --accent:        #2563eb;
-  --accent-hover:  #1d4ed8;
-  --accent-dim:    rgba(37, 99, 235, 0.12);
+  --bg-ribbon-tab: #f0f7f2;
+  --bg-hover:      rgba(22, 101, 52, 0.07);
+  --bg-active:     rgba(22, 101, 52, 0.13);
+  --border:        #ccddd4;
+  --border-light:  #b5cec4;
+  --text-primary:  #0d2119;
+  --text-secondary: #2a5a3c;
+  --text-muted:    #547868;
+  --text-dim:      #88aa98;
+  --accent:        #1a7a46;
+  --accent-hover:  #14623a;
+  --accent-dim:    rgba(26, 122, 70, 0.12);
   --danger:        #dc2626;
   --danger-dim:    rgba(220, 38, 38, 0.1);
-  --success:       #16a34a;
+  --success:       #15803d;
   --warning:       #d97706;
-  --shadow-sm:     0 1px 3px rgba(0, 0, 0, 0.12);
-  --shadow-md:     0 4px 12px rgba(0, 0, 0, 0.18);
-  --shadow-lg:     0 8px 32px rgba(0, 0, 0, 0.22);
+  --shadow-sm:     0 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-md:     0 4px 12px rgba(0, 0, 0, 0.15);
+  --shadow-lg:     0 8px 32px rgba(0, 0, 0, 0.18);
+  --radius-sm:     4px;
+  --radius:        6px;
+  --radius-lg:     10px;
 }
 
 html, body, #root {
@@ -76,3 +79,16 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+button, input, select, textarea {
+  font-family: inherit;
+}
+
+/* ── Scrollbars ───────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-light);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }

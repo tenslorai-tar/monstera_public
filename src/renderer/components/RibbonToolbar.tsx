@@ -777,7 +777,7 @@ export default function RibbonToolbar(props: Props) {
   const ToolsTab = () => (
     <>
       <Group label="Display">
-        <div className="rbn-stack">
+        <div className="rbn-grid2">
           <SBtn icon="🌙" label="Dark Pages" active={settings.darkPageMode}
             onClick={() => updateSettings({ darkPageMode: !settings.darkPageMode })}
             title="Invert page colors for comfortable night reading" />
@@ -846,7 +846,7 @@ export default function RibbonToolbar(props: Props) {
       </Group>
 
       <Group label="Edit & OCR">
-        <div className="rbn-stack">
+        <div className="rbn-grid2">
           <SBtn icon="✏" label="Ext Edit" onClick={onEditExternal}
             title="Export a page as PNG and open in an external image editor" />
           <SBtn icon="🔍" label="OCR Region" onClick={onOcrRegion}
@@ -859,7 +859,7 @@ export default function RibbonToolbar(props: Props) {
       </Group>
 
       <Group label="Document">
-        <div className="rbn-stack">
+        <div className="rbn-grid2">
           <SBtn icon="🏷" label="Tagged PDF" onClick={onTaggedPdf}
             title="View document structure (reading order) and set accessibility metadata" />
           <SBtn icon="📑" label="Layers" onClick={onImportToLayer}
@@ -881,7 +881,7 @@ export default function RibbonToolbar(props: Props) {
       </Group>
 
       <Group label="Standards">
-        <div className="rbn-stack">
+        <div className="rbn-grid2">
           <SBtn icon="📦" label="PDF/A" onClick={onPdfConvert}
             title="Convert to PDF/A archival format (ISO 19005) — requires Ghostscript" />
           <SBtn icon="🖨" label="PDF/X" onClick={onPdfConvert}
@@ -927,7 +927,31 @@ export default function RibbonToolbar(props: Props) {
       {/* ── Tab row ────────────────────────────────────────── */}
       <div className="ribbon-tabs">
         <div className="ribbon-logo">
-          <span className="ribbon-logo-icon">🌿</span>
+          <svg width="22" height="22" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="50" cy="50" r="48" fill="url(#logoGrad)" stroke="rgba(74,222,128,0.4)" strokeWidth="2"/>
+            <circle cx="38" cy="32" r="8" fill="rgba(255,255,255,0.15)"/>
+            {/* stem */}
+            <path d="M32 72 Q42 50 50 38 Q56 28 62 24" stroke="#5a8a2a" strokeWidth="5" strokeLinecap="round" fill="none"/>
+            {/* leaves */}
+            <ellipse cx="64" cy="22" rx="14" ry="9" transform="rotate(-30 64 22)" fill="url(#leafGrad1)"/>
+            <ellipse cx="56" cy="36" rx="13" ry="8" transform="rotate(20 56 36)" fill="url(#leafGrad2)"/>
+            <ellipse cx="44" cy="50" rx="12" ry="7" transform="rotate(-15 44 50)" fill="url(#leafGrad1)"/>
+            <ellipse cx="36" cy="62" rx="11" ry="6" transform="rotate(10 36 62)" fill="url(#leafGrad2)"/>
+            <defs>
+              <radialGradient id="logoGrad" cx="35%" cy="30%" r="65%">
+                <stop offset="0%" stopColor="#1f5c40"/>
+                <stop offset="100%" stopColor="#0a2a1c"/>
+              </radialGradient>
+              <linearGradient id="leafGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#c8f040"/>
+                <stop offset="100%" stopColor="#7ab820"/>
+              </linearGradient>
+              <linearGradient id="leafGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#a8e030"/>
+                <stop offset="100%" stopColor="#5a8a18"/>
+              </linearGradient>
+            </defs>
+          </svg>
           <span className="ribbon-logo-text">Monstera</span>
         </div>
 
