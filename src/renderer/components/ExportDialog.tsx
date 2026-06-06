@@ -154,20 +154,47 @@ export default function ExportDialog({ onClose }: Props) {
   const exportDocx = async () => {
     if (!pdfDoc || !pdfBytes) return
     setBusy(true)
-    setStatus('Building DOCX…')
     try {
-      const result = await window.electronAPI.exportToDocx(pdfBytes.buffer as ArrayBuffer, fileName)
+      const ab = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength) as ArrayBuffer
+      const loAvail = await window.electronAPI.libreofficeIsAvailable().catch(() => false)
+      let result: ArrayBuffer
+      let note: string
+      if (loAvail) {
+        setStatus('Converting via LibreOffice (layout-preserving)…')
+        result = await window.electronAPI.libreofficeExportDocx(ab)
+        note = '✓ DOCX saved — LibreOffice conversion with layout & editable text.'
+      } else {
+        setStatus('Building DOCX (text-only)…')
+        result = await window.electronAPI.exportToDocx(ab, fileName)
+        note = '✓ DOCX saved (text-only). Install LibreOffice for a layout-preserving conversion.'
+      }
       if (result) {
         const savePath = await window.electronAPI.saveFileDialog(`${baseName}.docx`)
-        if (savePath) {
-          await window.electronAPI.writeFile(savePath, result)
-          setStatus('✓ DOCX saved. Note: layout is text-only approximation, not a pixel-perfect copy.')
-        } else {
-          setStatus('Cancelled.')
-        }
+        if (savePath) { await window.electronAPI.writeFile(savePath, result); setStatus(note) }
+        else setStatus('Cancelled.')
       }
     } catch (e: any) {
       setStatus(`Error: ${e?.message ?? 'DOCX export failed'}`)
+    }
+    setBusy(false)
+  }
+
+  const exportPptx = async () => {
+    if (!pdfBytes) return
+    setBusy(true)
+    setStatus('Converting to PowerPoint via LibreOffice…')
+    try {
+      const ab = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength) as ArrayBuffer
+      if (!(await window.electronAPI.libreofficeIsAvailable().catch(() => false))) {
+        setStatus('PowerPoint export needs LibreOffice. Install it, then retry.')
+        setBusy(false); return
+      }
+      const result = await window.electronAPI.libreofficeExportPptx(ab)
+      const savePath = await window.electronAPI.saveFileDialog(`${baseName}.pptx`)
+      if (savePath) { await window.electronAPI.writeFile(savePath, result); setStatus('✓ PowerPoint saved (one slide per page).') }
+      else setStatus('Cancelled.')
+    } catch (e: any) {
+      setStatus(`Error: ${e?.message ?? 'PPTX export failed'}`)
     }
     setBusy(false)
   }
@@ -250,16 +277,15 @@ export default function ExportDialog({ onClose }: Props) {
         {tab === 'docx' && (
           <div>
             <div style={{
-              background: 'rgba(255,180,0,0.12)', border: '1px solid rgba(255,180,0,0.4)',
+              background: 'rgba(74,222,128,0.10)', border: '1px solid rgba(74,222,128,0.35)',
               borderRadius: 6, padding: '10px 14px', marginBottom: 12,
             }}>
-              <div style={{ fontWeight: 600, fontSize: 12, color: '#ffa500', marginBottom: 4 }}>⚠ Quality Limitation</div>
+              <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--accent)', marginBottom: 4 }}>Word & PowerPoint export</div>
               <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
-                True PDF→DOCX layout conversion is not possible with open-source Node.js libraries.
-                This export extracts text paragraph-by-paragraph and builds a readable Word document,
-                but <strong>layout, columns, tables, images, exact fonts, and precise spacing are not preserved</strong>.
-                Think of it as a "searchable text copy" in DOCX format. For layout-accurate conversion,
-                use Adobe Acrobat or a dedicated service.
+                If <strong>LibreOffice</strong> is installed, this converts the PDF with a layout-preserving
+                engine — editable paragraphs, headings, and images (still not pixel-perfect for complex
+                layouts). Without LibreOffice it falls back to a text-only DOCX copy. PowerPoint export
+                (one slide per page) requires LibreOffice.
               </p>
             </div>
           </div>
@@ -366,9 +392,14 @@ export default function ExportDialog({ onClose }: Props) {
             </button>
           )}
           {tab === 'docx' && (
-            <button className="modal-btn-primary" onClick={exportDocx} disabled={busy}>
-              {busy ? 'Building DOCX…' : '↓ Export to Word'}
-            </button>
+            <>
+              <button className="modal-btn-secondary" onClick={exportPptx} disabled={busy}>
+                ↓ PowerPoint
+              </button>
+              <button className="modal-btn-primary" onClick={exportDocx} disabled={busy}>
+                {busy ? 'Working…' : '↓ Export to Word'}
+              </button>
+            </>
           )}
           {tab === 'xlsx' && (
             <button className="modal-btn-primary" onClick={exportXlsx} disabled={busy}>

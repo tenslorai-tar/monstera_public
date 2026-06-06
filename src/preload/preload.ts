@@ -248,6 +248,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   libreofficeImportBytes: (bytes: ArrayBuffer, ext: string): Promise<ArrayBuffer> => ipcRenderer.invoke('libreoffice:importBytes', bytes, ext),
   libreofficeExportDocx:  (bytes: ArrayBuffer): Promise<ArrayBuffer> => ipcRenderer.invoke('libreoffice:exportDocx', bytes),
   libreofficeExportPptx:  (bytes: ArrayBuffer): Promise<ArrayBuffer> => ipcRenderer.invoke('libreoffice:exportPptx', bytes),
+  libreofficeExportXlsx:  (bytes: ArrayBuffer): Promise<ArrayBuffer> => ipcRenderer.invoke('libreoffice:exportXlsx', bytes),
 
   openOfficeFileDialog: (): Promise<string | null> =>
     ipcRenderer.invoke('dialog:openOfficeFile'),

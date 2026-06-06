@@ -295,6 +295,7 @@ export async function libreOfficeConvert(
   inputBytes: ArrayBuffer | Uint8Array,
   inputExt: string,
   outputFormat: string,
+  infilter?: string,
 ): Promise<Buffer> {
   const lo = requireLibreOffice()
   const inPath = tmpPath(inputExt)
@@ -306,6 +307,7 @@ export async function libreOfficeConvert(
 
     await runProcess(lo, [
       '--headless', '--norestore', '--nofirststartwizard',
+      ...(infilter ? ['--infilter=' + infilter] : []),
       '--convert-to', outputFormat,
       '--outdir', outDir,
       inPath,
@@ -334,9 +336,15 @@ export function libreOfficeToPdf(bytes: ArrayBuffer | Uint8Array, ext: string): 
 }
 
 export function libreOfficeToDocx(bytes: ArrayBuffer | Uint8Array): Promise<Buffer> {
-  return libreOfficeConvert(bytes, '.pdf', 'docx')
+  // writer_pdf_import opens the PDF in Writer (editable text flow) rather than Draw,
+  // so the .docx has selectable/editable paragraphs instead of one big image.
+  return libreOfficeConvert(bytes, '.pdf', 'docx:MS Word 2007 XML', 'writer_pdf_import')
 }
 
 export function libreOfficeToPptx(bytes: ArrayBuffer | Uint8Array): Promise<Buffer> {
-  return libreOfficeConvert(bytes, '.pdf', 'pptx')
+  return libreOfficeConvert(bytes, '.pdf', 'pptx:Impress MS PowerPoint 2007 XML')
+}
+
+export function libreOfficeToXlsx(bytes: ArrayBuffer | Uint8Array): Promise<Buffer> {
+  return libreOfficeConvert(bytes, '.pdf', 'xlsx:Calc MS Excel 2007 XML', 'calc_pdf_import')
 }

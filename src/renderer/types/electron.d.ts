@@ -157,6 +157,7 @@ declare global {
       libreofficeImportBytes: (bytes: ArrayBuffer, ext: string) => Promise<ArrayBuffer>
       libreofficeExportDocx: (bytes: ArrayBuffer) => Promise<ArrayBuffer>
       libreofficeExportPptx: (bytes: ArrayBuffer) => Promise<ArrayBuffer>
+      libreofficeExportXlsx: (bytes: ArrayBuffer) => Promise<ArrayBuffer>
 
       // New batch
       convertMarkdownToPdf: (markdownText: string) => Promise<ArrayBuffer>

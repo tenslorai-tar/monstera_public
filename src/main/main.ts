@@ -1422,6 +1422,7 @@ ipcMain.handle('libreoffice:importBytes', async (_e, bytes: ArrayBuffer, ext: st
 
 ipcMain.handle('libreoffice:exportDocx', async (_e, b: ArrayBuffer) => abuf(await nativeBins.libreOfficeToDocx(b)))
 ipcMain.handle('libreoffice:exportPptx', async (_e, b: ArrayBuffer) => abuf(await nativeBins.libreOfficeToPptx(b)))
+ipcMain.handle('libreoffice:exportXlsx', async (_e, b: ArrayBuffer) => abuf(await nativeBins.libreOfficeToXlsx(b)))
 
 // Office file open dialog
 ipcMain.handle('dialog:openOfficeFile', async () => {
