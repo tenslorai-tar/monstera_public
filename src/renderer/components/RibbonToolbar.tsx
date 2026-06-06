@@ -109,6 +109,7 @@ export default function RibbonToolbar(props: Props) {
   const setFormCreationTool = usePdfStore(s => s.setFormCreationTool)
   const toggleFormsPanel  = usePdfStore(s => s.toggleFormsPanel)
   const flattenForm       = usePdfStore(s => s.flattenForm)
+  const identifyForms     = usePdfStore(s => s.identifyForms)
   const addAnnotation     = usePdfStore(s => s.addAnnotation)
   const toggleLinksPanel  = usePdfStore(s => s.toggleLinksPanel)
   const toggleLayersPanel = usePdfStore(s => s.toggleLayersPanel)
@@ -539,18 +540,42 @@ export default function RibbonToolbar(props: Props) {
         <LBtn icon="📋" label={formMode ? 'Exit Forms' : 'Edit Forms'}
           active={formMode} onClick={() => setFormMode(!formMode)}
           title="Toggle interactive form editing mode" />
+        <LBtn icon="🔍" label="Identify" onClick={() => identifyForms().catch(() => {})}
+          title="Auto-detect form areas on flat PDFs and create field overlays" />
       </Group>
 
       {formMode && (
         <>
-          <Group label="Add Fields">
+          <Group label="Text & Date">
             <div className="rbn-stack">
               <SBtn
                 icon={<span style={{ fontFamily:'monospace', border:'1px solid currentColor', padding:'0 2px', borderRadius:2, fontSize:10 }}>T</span>}
-                label="Text Field" active={formCreationTool === 'form-text'}
+                label="Text" active={formCreationTool === 'form-text'}
                 onClick={() => toggleFTool('form-text')} title="Draw a text input field" />
+              <SBtn icon="📅" label="Date" active={formCreationTool === 'form-date'}
+                onClick={() => toggleFTool('form-date')} title="Draw a date picker field" />
+            </div>
+          </Group>
+
+          <Group label="Choice">
+            <div className="rbn-stack">
               <SBtn icon="☑" label="Checkbox" active={formCreationTool === 'form-checkbox'}
                 onClick={() => toggleFTool('form-checkbox')} title="Draw a checkbox" />
+              <SBtn icon="◉" label="Radio" active={formCreationTool === 'form-radio'}
+                onClick={() => toggleFTool('form-radio')} title="Draw a radio button" />
+              <SBtn icon="▼" label="Dropdown" active={formCreationTool === 'form-dropdown'}
+                onClick={() => toggleFTool('form-dropdown')} title="Draw a dropdown list" />
+              <SBtn icon="≡" label="List Box" active={formCreationTool === 'form-listbox'}
+                onClick={() => toggleFTool('form-listbox')} title="Draw a multi-select list box" />
+            </div>
+          </Group>
+
+          <Group label="Other">
+            <div className="rbn-stack">
+              <SBtn icon="🖱" label="Button" active={formCreationTool === 'form-button'}
+                onClick={() => toggleFTool('form-button')} title="Draw a push button" />
+              <SBtn icon="▦" label="Barcode" active={formCreationTool === 'form-barcode'}
+                onClick={() => toggleFTool('form-barcode')} title="Draw a QR / barcode field" />
               <SBtn icon="✍" label="Signature" active={formCreationTool === 'form-signature'}
                 onClick={() => toggleFTool('form-signature')} title="Draw a signature field area" />
             </div>

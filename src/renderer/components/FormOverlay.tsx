@@ -1,10 +1,51 @@
-import { useRef, useState, useCallback } from 'react'
+import { useRef, useState, useCallback, useEffect } from 'react'
+import QRCode from 'qrcode'
 import { usePdfStore } from '../store/usePdfStore'
 import { newId } from '../utils/annotationUtils'
 import type {
   FormField, TextFormField, CheckboxFormField, RadioFormField,
   DropdownFormField, ListBoxFormField, SignatureFormField,
+  DateFormField, ButtonFormField, BarcodeFormField,
 } from '../types/forms'
+
+// ── Barcode sub-component ─────────────────────────────────────────────────────
+
+interface BarcodeProps {
+  field: BarcodeFormField
+  commonStyle: React.CSSProperties
+  updateFormField: (id: string, patch: Partial<BarcodeFormField>) => void
+}
+
+function BarcodeField({ field, commonStyle, updateFormField }: BarcodeProps) {
+  const [dataUrl, setDataUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!field.value) { setDataUrl(null); return }
+    if (field.barcodeType === 'qr') {
+      QRCode.toDataURL(field.value, { margin: 1, width: 128 })
+        .then(url => setDataUrl(url))
+        .catch(() => setDataUrl(null))
+    }
+  }, [field.value, field.barcodeType])
+
+  return (
+    <div style={{ ...commonStyle, display: 'flex', flexDirection: 'column',
+      background: 'rgba(255,255,255,0.9)', border: '1px solid rgba(0,0,0,0.2)', borderRadius: 2,
+      overflow: 'hidden' }}>
+      {!field.value ? (
+        <input type="text" placeholder="Barcode value…"
+          style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none',
+            fontSize: 11, padding: '2px 4px', color: '#1a1a1a' }}
+          onChange={e => updateFormField(field.id, { value: e.target.value } as Partial<BarcodeFormField>)} />
+      ) : (
+        <img src={dataUrl ?? ''} alt={field.value}
+          style={{ width: '100%', height: '100%', objectFit: 'contain', imageRendering: 'pixelated' }} />
+      )}
+    </div>
+  )
+}
+
+// ── Main FormOverlay ──────────────────────────────────────────────────────────
 
 interface Props {
   pageNum: number
@@ -16,6 +57,41 @@ interface Props {
 type DrawState =
   | { k: 'idle' }
   | { k: 'drawing'; sx: number; sy: number; cx: number; cy: number }
+
+function getValidationError(f: TextFormField): string {
+  const v = f.validation
+  if (!v) return ''
+  if (v.required && !f.value.trim()) return v.errorMessage || 'Required'
+  if (v.minLength != null && f.value.length < v.minLength) return `Min ${v.minLength} chars`
+  if (v.maxLength != null && f.value.length > v.maxLength) return `Max ${v.maxLength} chars`
+  if (v.pattern && f.value && !new RegExp(v.pattern).test(f.value)) return v.errorMessage || 'Invalid format'
+  if (v.minValue != null && parseFloat(f.value) < v.minValue) return `Min value: ${v.minValue}`
+  if (v.maxValue != null && parseFloat(f.value) > v.maxValue) return `Max value: ${v.maxValue}`
+  return ''
+}
+
+function evaluateCalculation(formula: string, allFields: FormField[]): string {
+  try {
+    const scope: Record<string, string | number> = {}
+    for (const f of allFields) {
+      if (f.type === 'text' || f.type === 'date') {
+        const n = parseFloat((f as TextFormField).value)
+        scope[f.fieldName] = isNaN(n) ? (f as TextFormField).value : n
+      }
+    }
+    // Replace field names with values
+    const expr = formula.replace(/\b[a-zA-Z_]\w*\b/g, m => {
+      const v = scope[m]
+      return v != null ? String(v) : '0'
+    })
+    // Only allow safe arithmetic
+    if (/[^0-9+\-*/.() ]/.test(expr)) return ''
+    // eslint-disable-next-line no-new-func
+    return String(new Function(`return ${expr}`)())
+  } catch {
+    return ''
+  }
+}
 
 export default function FormOverlay({ pageNum, scale, pageW, pageH }: Props) {
   const formFields = usePdfStore(s => s.formFields)
@@ -99,6 +175,42 @@ export default function FormOverlay({ pageNum, scale, pageW, pageH }: Props) {
         rect, readOnly: false, isNew: true,
         type: 'signature',
       } as SignatureFormField)
+    } else if (formCreationTool === 'form-date') {
+      addFormField({
+        id, pageNum, fieldName: `date_${id}`,
+        rect, readOnly: false, isNew: true,
+        type: 'date', value: '', format: 'YYYY-MM-DD',
+      } as DateFormField)
+    } else if (formCreationTool === 'form-button') {
+      addFormField({
+        id, pageNum, fieldName: `btn_${id}`,
+        rect, readOnly: false, isNew: true,
+        type: 'button', label: 'Click', backgroundColor: '#4a9eff',
+      } as ButtonFormField)
+    } else if (formCreationTool === 'form-barcode') {
+      addFormField({
+        id, pageNum, fieldName: `barcode_${id}`,
+        rect, readOnly: false, isNew: true,
+        type: 'barcode', value: '', barcodeType: 'qr',
+      } as BarcodeFormField)
+    } else if (formCreationTool === 'form-radio') {
+      addFormField({
+        id, pageNum, fieldName: `radio_group_1`,
+        rect, readOnly: false, isNew: true,
+        type: 'radio', groupName: 'radio_group_1', exportValue: `opt_${id}`, selected: false,
+      } as RadioFormField)
+    } else if (formCreationTool === 'form-dropdown') {
+      addFormField({
+        id, pageNum, fieldName: `dropdown_${id}`,
+        rect, readOnly: false, isNew: true,
+        type: 'dropdown', options: ['Option 1', 'Option 2', 'Option 3'], value: 'Option 1',
+      } as DropdownFormField)
+    } else if (formCreationTool === 'form-listbox') {
+      addFormField({
+        id, pageNum, fieldName: `listbox_${id}`,
+        rect, readOnly: false, isNew: true,
+        type: 'listbox', options: ['Option 1', 'Option 2', 'Option 3'], values: [],
+      } as ListBoxFormField)
     }
   }
 
@@ -115,10 +227,16 @@ export default function FormOverlay({ pageNum, scale, pageW, pageH }: Props) {
 
     if (field.type === 'text') {
       const tf = field as TextFormField
+      const validErr = getValidationError(tf)
+      // Compute calculated value (only when formula exists and field is not focused)
+      const calcValue = tf.calculation && !tf.value
+        ? evaluateCalculation(tf.calculation, formFields)
+        : null
+      const displayValue = calcValue !== null ? calcValue : tf.value
       const inputStyle: React.CSSProperties = {
         ...commonStyle,
-        background: 'rgba(198,225,255,0.35)',
-        border: '1px solid rgba(74,158,255,0.6)',
+        background: validErr ? 'rgba(255,100,100,0.15)' : 'rgba(198,225,255,0.35)',
+        border: validErr ? '1px solid rgba(255,80,80,0.8)' : '1px solid rgba(74,158,255,0.6)',
         borderRadius: 2,
         padding: '2px 4px',
         fontSize: Math.max(10, Math.min(height * 0.7, 14)),
@@ -130,17 +248,19 @@ export default function FormOverlay({ pageNum, scale, pageW, pageH }: Props) {
       if (tf.multiline) {
         return (
           <textarea key={field.id} style={inputStyle}
-            value={tf.value}
-            readOnly={field.readOnly}
+            value={displayValue}
+            readOnly={field.readOnly || calcValue !== null}
+            title={validErr || tf.tooltip}
             onChange={e => updateFormField(field.id, { value: e.target.value } as Partial<TextFormField>)}
           />
         )
       }
       return (
         <input key={field.id} type="text" style={inputStyle}
-          value={tf.value}
-          readOnly={field.readOnly}
+          value={displayValue}
+          readOnly={field.readOnly || calcValue !== null}
           maxLength={tf.maxLen}
+          title={validErr || tf.tooltip}
           onChange={e => updateFormField(field.id, { value: e.target.value } as Partial<TextFormField>)}
         />
       )
@@ -238,6 +358,56 @@ export default function FormOverlay({ pageNum, scale, pageW, pageH }: Props) {
           {height * scale > 20 ? 'Sign here' : ''}
         </div>
       )
+    }
+
+    if (field.type === 'date') {
+      const df = field as DateFormField
+      return (
+        <input key={field.id} type="date"
+          style={{
+            ...commonStyle,
+            background: 'rgba(198,255,220,0.35)',
+            border: '1px solid rgba(74,200,100,0.6)',
+            borderRadius: 2,
+            padding: '2px 4px',
+            fontSize: Math.max(10, Math.min(height * 0.65, 13)),
+            color: '#1a1a1a',
+            outline: 'none',
+          }}
+          value={df.value}
+          readOnly={field.readOnly}
+          onChange={e => updateFormField(field.id, { value: e.target.value } as Partial<DateFormField>)}
+        />
+      )
+    }
+
+    if (field.type === 'button') {
+      const bf = field as ButtonFormField
+      return (
+        <button key={field.id}
+          style={{
+            ...commonStyle,
+            background: bf.backgroundColor || '#4a9eff',
+            border: 'none',
+            borderRadius: 3,
+            color: '#fff',
+            fontWeight: 600,
+            fontSize: Math.max(10, Math.min(height * 0.55, 14)),
+            cursor: field.readOnly ? 'default' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            userSelect: 'none',
+          }}
+          onClick={() => {/* button action placeholder */}}>
+          {bf.label || 'Click'}
+        </button>
+      )
+    }
+
+    if (field.type === 'barcode') {
+      return <BarcodeField key={field.id} field={field as BarcodeFormField}
+        commonStyle={commonStyle} updateFormField={updateFormField} />
     }
 
     return null

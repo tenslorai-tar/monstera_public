@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { usePdfStore } from '../store/usePdfStore'
 import type { FormField } from '../types/forms'
+import { exportFormAsJson, exportFormAsFdf } from '../utils/formPdfLib'
 
 const TYPE_LABEL: Record<FormField['type'], string> = {
   text: 'Text',
@@ -8,25 +10,34 @@ const TYPE_LABEL: Record<FormField['type'], string> = {
   dropdown: 'Dropdown',
   listbox: 'List Box',
   signature: 'Signature',
+  date: 'Date',
+  button: 'Button',
+  barcode: 'Barcode',
 }
 
 function fieldPreview(f: FormField): string {
   switch (f.type) {
-    case 'text': return f.value || '—'
-    case 'checkbox': return f.checked ? '☑ Checked' : '☐ Unchecked'
-    case 'radio': return f.selected ? `● ${f.exportValue}` : `○ ${f.exportValue}`
-    case 'dropdown': return f.value || '—'
-    case 'listbox': return f.values.join(', ') || '—'
+    case 'text':      return f.value || '—'
+    case 'date':      return f.value || '—'
+    case 'checkbox':  return f.checked ? '☑ Checked' : '☐ Unchecked'
+    case 'radio':     return f.selected ? `● ${f.exportValue}` : `○ ${f.exportValue}`
+    case 'dropdown':  return f.value || '—'
+    case 'listbox':   return f.values.join(', ') || '—'
     case 'signature': return '(signature area)'
+    case 'button':    return f.label || '(button)'
+    case 'barcode':   return f.value ? `[${f.barcodeType}] ${f.value.slice(0, 20)}` : '—'
   }
 }
 
 export default function FormsPanel() {
-  const formFields = usePdfStore(s => s.formFields)
-  const scrollToPage = usePdfStore(s => s.scrollToPage)
+  const formFields    = usePdfStore(s => s.formFields)
+  const scrollToPage  = usePdfStore(s => s.scrollToPage)
   const toggleFormsPanel = usePdfStore(s => s.toggleFormsPanel)
-  const flattenForm = usePdfStore(s => s.flattenForm)
+  const flattenForm   = usePdfStore(s => s.flattenForm)
   const deleteFormField = usePdfStore(s => s.deleteFormField)
+  const filePath      = usePdfStore(s => s.filePath)
+
+  const [exportMsg, setExportMsg] = useState('')
 
   const byPage = new Map<number, FormField[]>()
   for (const f of formFields) {
@@ -34,6 +45,26 @@ export default function FormsPanel() {
     byPage.get(f.pageNum)!.push(f)
   }
   const sortedPages = Array.from(byPage.keys()).sort((a, b) => a - b)
+
+  const handleExportJson = async () => {
+    const json = exportFormAsJson(formFields)
+    const path = await window.electronAPI.saveFileDialog('form-data.json')
+    if (!path) return
+    const enc = new TextEncoder()
+    await window.electronAPI.writeFile(path, enc.encode(json).buffer as ArrayBuffer)
+    setExportMsg('Exported JSON')
+    setTimeout(() => setExportMsg(''), 2500)
+  }
+
+  const handleExportFdf = async () => {
+    const fdf = exportFormAsFdf(formFields, filePath)
+    const path = await window.electronAPI.saveFileDialog('form-data.fdf')
+    if (!path) return
+    const enc = new TextEncoder()
+    await window.electronAPI.writeFile(path, enc.encode(fdf).buffer as ArrayBuffer)
+    setExportMsg('Exported FDF')
+    setTimeout(() => setExportMsg(''), 2500)
+  }
 
   return (
     <div className="annot-panel">
@@ -58,6 +89,21 @@ export default function FormsPanel() {
           >✕</button>
         </div>
       </div>
+
+      {formFields.length > 0 && (
+        <div style={{ padding: '4px 8px', borderBottom: '1px solid var(--border)',
+          display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 6px' }}
+            onClick={handleExportJson} title="Export field values as JSON">
+            {} JSON
+          </button>
+          <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 6px' }}
+            onClick={handleExportFdf} title="Export field values as FDF (standard PDF form data)">
+            {} FDF
+          </button>
+          {exportMsg && <span style={{ fontSize: 10, color: 'var(--accent)', opacity: 0.8 }}>{exportMsg}</span>}
+        </div>
+      )}
 
       {formFields.length === 0 ? (
         <div className="annot-panel-empty">

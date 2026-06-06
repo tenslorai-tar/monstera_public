@@ -543,6 +543,73 @@ ipcMain.handle('pdf:verifySignatures', async (
   return results
 })
 
+// ── Identify Forms (heuristic detection) ──────────────────────────────────────
+
+interface IdentifiedField {
+  pageNum: number
+  label: string
+  rect: [number, number, number, number]   // PDF pts [x1, y_bot, x2, y_top]
+  fieldType: 'text' | 'checkbox' | 'date'
+}
+
+ipcMain.handle('forms:identify', async (_event, bytes: ArrayBuffer): Promise<IdentifiedField[]> => {
+  const mupdf = await getMupdf()
+  const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
+  const numPages = doc.countPages()
+  const fields: IdentifiedField[] = []
+
+  for (let pi = 0; pi < numPages; pi++) {
+    const page = doc.loadPage(pi)
+    let stext: string = ''
+    try {
+      stext = page.toStructuredText('preserve-whitespace,preserve-ligatures').asJSON()
+    } catch {
+      try { stext = page.toStructuredText().asJSON() } catch { continue }
+    }
+
+    let parsed: {blocks?: Array<{lines?: Array<{spans?: Array<{text: string; bbox: number[]}>}>}>}
+    try { parsed = JSON.parse(stext) } catch { continue }
+
+    const pageObj = doc.loadPage(pi)
+    const bounds = pageObj.getBounds()
+    const pageH = bounds[3] - bounds[1]
+
+    for (const block of (parsed.blocks ?? [])) {
+      for (const line of (block.lines ?? [])) {
+        for (const span of (line.spans ?? [])) {
+          const text = span.text.trim()
+          const [, by1, bx2, by2] = span.bbox
+
+          // Detect form labels: text ending with ":" or "_____" style underlines
+          const isLabel = /[A-Za-z\s]{2,}[:\s]*$/.test(text) && text.length < 40
+          const hasUnderline = text.includes('___') || text.includes('...')
+          const isCheckboxLabel = /\b(check|yes|no|agree|select)\b/i.test(text)
+          const isDateLabel = /\b(date|dob|birthday|expir)/i.test(text)
+
+          if (isLabel || hasUnderline) {
+            // Place a field to the right of or below the label
+            const labelRight = bx2
+            const fieldX1 = labelRight + 4
+            const fieldX2 = Math.min(fieldX1 + 150, 590)
+            const fieldY1 = pageH - by2   // convert to PDF coords (y=0 at bottom)
+            const fieldY2 = pageH - by1
+            if (fieldX2 <= fieldX1 || fieldY2 <= fieldY1) continue
+
+            fields.push({
+              pageNum: pi + 1,
+              label: text.replace(/[:\s_\.]+$/, ''),
+              rect: [fieldX1, fieldY1, fieldX2, fieldY2],
+              fieldType: isDateLabel ? 'date' : isCheckboxLabel ? 'checkbox' : 'text',
+            })
+          }
+        }
+      }
+    }
+  }
+
+  return fields
+})
+
 // ── DOCX Export ───────────────────────────────────────────────────────────────
 // Approach: extract text via MuPDF page-by-page, build a Word document using the
 // `docx` npm package. Layout, images, tables, and font matching are NOT preserved —

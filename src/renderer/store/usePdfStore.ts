@@ -229,6 +229,7 @@ interface PdfStore {
   setRadioSelected: (groupName: string, exportValue: string) => void
   toggleFormsPanel: () => void
   flattenForm: () => Promise<void>
+  identifyForms: () => Promise<number>
 
   flattenAnnotations: () => Promise<void>
   closePdf: () => void
@@ -601,6 +602,31 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     const baked = await getBakedBytes()
     const flattened = await flattenFormToBytes(baked)
     await applyEdit(flattened)
+  },
+
+  identifyForms: async () => {
+    const { pdfBytes } = get()
+    if (!pdfBytes) return 0
+    const detected = await window.electronAPI.formsIdentify(pdfBytes.buffer as ArrayBuffer)
+    let added = 0
+    for (const d of detected) {
+      const id = Math.random().toString(36).slice(2)
+      const fieldName = `${d.fieldType}_${d.label.replace(/\W+/g, '_').slice(0, 20)}_${id.slice(0, 4)}`
+      const base = { id, pageNum: d.pageNum, rect: d.rect, readOnly: false, isNew: true, fieldName }
+      if (d.fieldType === 'date') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        get().addFormField({ ...base, type: 'date', value: '', format: 'YYYY-MM-DD' } as any)
+      } else if (d.fieldType === 'checkbox') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        get().addFormField({ ...base, type: 'checkbox', checked: false, exportValue: 'Yes' } as any)
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        get().addFormField({ ...base, type: 'text', value: '', multiline: false } as any)
+      }
+      added++
+    }
+    if (added > 0) set({ formMode: true, formsPanelOpen: true })
+    return added
   },
 
   // ── Bookmark actions ──────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ import {
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import type {
   FormField, TextFormField, CheckboxFormField, RadioFormField,
-  DropdownFormField, ListBoxFormField,
+  DropdownFormField, ListBoxFormField, DateFormField, ButtonFormField,
 } from '../types/forms'
 import { newId } from './annotationUtils'
 
@@ -189,6 +189,43 @@ export async function writeFormToBytes(
         if (field.multiline) tf.enableMultiline()
         tf.addToPage(page, { x, y, width, height, borderWidth: 1 })
         if (field.value) tf.setText(field.value)
+      } else if (field.type === 'date') {
+        const df = field as DateFormField
+        const tf = form.createTextField(name)
+        tf.addToPage(page, { x, y, width, height, borderWidth: 1 })
+        if (df.value) tf.setText(df.value)
+      } else if (field.type === 'button') {
+        const bf = field as ButtonFormField
+        // pdf-lib doesn't expose push button API; create a text field as a stand-in
+        const tf = form.createTextField(name)
+        tf.addToPage(page, { x, y, width, height, borderWidth: 1 })
+        if (bf.label) tf.setText(bf.label)
+      } else if (field.type === 'barcode') {
+        // Barcode: save the value in a text field
+        const tf = form.createTextField(name)
+        tf.addToPage(page, { x, y, width, height, borderWidth: 1 })
+        if (field.value) tf.setText(field.value)
+      } else if (field.type === 'dropdown') {
+        const df = field as DropdownFormField
+        const sel = form.createDropdown(name)
+        if (df.options.length > 0) {
+          sel.addOptions(df.options)
+          sel.addToPage(page, { x, y, width, height, borderWidth: 1 })
+          if (df.value) { try { sel.select(df.value) } catch {} }
+        }
+      } else if (field.type === 'listbox') {
+        const lf = field as ListBoxFormField
+        const ol = form.createOptionList(name)
+        if (lf.options.length > 0) {
+          ol.addOptions(lf.options)
+          ol.addToPage(page, { x, y, width, height, borderWidth: 1 })
+          if (lf.values.length > 0) { try { ol.select(lf.values[0]) } catch {} }
+        }
+      } else if (field.type === 'radio') {
+        const rf = field as RadioFormField & { isNew: true }
+        const grp = form.createRadioGroup(rf.groupName || name)
+        grp.addOptionToPage(rf.exportValue || 'Yes', page, { x, y, width: Math.min(width, height), height: Math.min(width, height), borderWidth: 1 })
+        if (rf.selected) { try { grp.select(rf.exportValue) } catch {} }
       } else if (field.type === 'signature') {
         // Signature as a text field with visual distinction
         const tf = form.createTextField(name)
@@ -214,4 +251,59 @@ export async function flattenFormToBytes(bytes: Uint8Array): Promise<Uint8Array>
   const form = doc.getForm()
   try { form.flatten() } catch {}
   return doc.save()
+}
+
+// ── export form data ──────────────────────────────────────────────────────────
+
+export function exportFormAsJson(fields: FormField[]): string {
+  const data: Record<string, unknown> = {}
+  for (const f of fields) {
+    switch (f.type) {
+      case 'text':      data[f.fieldName] = (f as TextFormField).value; break
+      case 'date':      data[f.fieldName] = (f as DateFormField).value; break
+      case 'checkbox':  data[f.fieldName] = (f as CheckboxFormField).checked; break
+      case 'radio':     if ((f as RadioFormField).selected) data[f.fieldName] = (f as RadioFormField).exportValue; break
+      case 'dropdown':  data[f.fieldName] = (f as DropdownFormField).value; break
+      case 'listbox':   data[f.fieldName] = (f as ListBoxFormField).values; break
+      case 'barcode':   data[f.fieldName] = (f as import('../types/forms').BarcodeFormField).value; break
+      case 'button':    break  // buttons have no data value
+      case 'signature': break
+    }
+  }
+  return JSON.stringify(data, null, 2)
+}
+
+export function exportFormAsFdf(fields: FormField[], pdfPath?: string): string {
+  const lines = [
+    '%FDF-1.2',
+    '%âãÏÓ',
+    '1 0 obj',
+    '<< /FDF << /Fields [',
+  ]
+  const fieldLines: string[] = []
+  const seen = new Set<string>()
+  for (const f of fields) {
+    if (seen.has(f.fieldName)) continue
+    seen.add(f.fieldName)
+    let val = ''
+    switch (f.type) {
+      case 'text':     val = (f as TextFormField).value ?? ''; break
+      case 'date':     val = (f as DateFormField).value ?? ''; break
+      case 'checkbox': val = (f as CheckboxFormField).checked ? 'Yes' : 'Off'; break
+      case 'radio':    if ((f as RadioFormField).selected) val = (f as RadioFormField).exportValue; break
+      case 'dropdown': val = (f as DropdownFormField).value ?? ''; break
+      case 'listbox':  val = (f as ListBoxFormField).values[0] ?? ''; break
+      default: continue
+    }
+    fieldLines.push(`<< /T (${f.fieldName}) /V (${val}) >>`)
+  }
+  lines.push(...fieldLines)
+  if (pdfPath) lines.push(`] /F (${pdfPath})`)
+  else lines.push(']')
+  lines.push('>> >>')
+  lines.push('endobj')
+  lines.push('trailer')
+  lines.push('<< /Root 1 0 R >>')
+  lines.push('%%EOF')
+  return lines.join('\n')
 }

@@ -44,6 +44,10 @@ declare global {
 
       exportToDocx: (bytes: ArrayBuffer, fileName: string) => Promise<ArrayBuffer>
 
+      formsIdentify: (bytes: ArrayBuffer) => Promise<Array<{
+        pageNum: number; label: string; rect: [number, number, number, number]; fieldType: 'text' | 'checkbox' | 'date';
+      }>>
+
       setWindowTitle: (title: string) => Promise<void>
       printWindow: () => Promise<void>
       onMenuAction: (callback: (action: string) => void) => void
