@@ -29,6 +29,7 @@ import TranslateDialog from './components/TranslateDialog'
 import SpellCheckDialog from './components/SpellCheckDialog'
 import ResizePagesDialog from './components/ResizePagesDialog'
 import SwapPagesDialog from './components/SwapPagesDialog'
+import LoupeOverlay from './components/LoupeOverlay'
 import * as docEnhance from './utils/documentEnhance'
 import { usePdfStore } from './store/usePdfStore'
 import { useSettingsStore } from './store/useSettingsStore'
@@ -450,6 +451,8 @@ export default function App() {
           onCancel={() => setRedactConfirmOpen(false)}
         />
       )}
+
+      <LoupeOverlay />
 
       {/* ── Password prompt ───────────────────────────────────────────────── */}
       {passwordPrompt && (

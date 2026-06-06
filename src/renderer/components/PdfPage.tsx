@@ -139,7 +139,8 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
     >
       {inView ? (
         <>
-          <canvas ref={canvasRef} className="pdf-page-canvas" />
+          <canvas ref={canvasRef} className="pdf-page-canvas"
+            style={settings.darkPageMode ? { filter: 'invert(1) hue-rotate(180deg)' } : undefined} />
           <div
             ref={textLayerRef}
             className="text-layer"

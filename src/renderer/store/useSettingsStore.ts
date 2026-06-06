@@ -12,6 +12,10 @@ export interface AppSettings {
   showRulers: boolean
   showGrid: boolean
   autoscrollSpeed: number           // 0 = disabled, 1-10 scale
+  darkPageMode: boolean
+  loupeEnabled: boolean
+  measureUnit: string
+  measureScale: number
 }
 
 const STORAGE_KEY = 'monstera-settings'
@@ -34,6 +38,10 @@ function defaults(): AppSettings {
     showRulers: false,
     showGrid: false,
     autoscrollSpeed: 0,
+    darkPageMode: false,
+    loupeEnabled: false,
+    measureUnit: 'pt',
+    measureScale: 1.0,
   }
 }
 

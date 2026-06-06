@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { usePdfStore } from '../store/usePdfStore'
+import { useSettingsStore } from '../store/useSettingsStore'
 import { canvasToPdf, pdfToCanvas, newId } from '../utils/annotationUtils'
 import type {
   Annotation, HighlightAnn, InkAnn,
@@ -72,12 +73,13 @@ function makeCloudPath(svgPts: Array<[number, number]>, close = true): string {
 function measureLabel(
   type: 'measure-distance' | 'measure-area' | 'measure-perimeter',
   pts: Array<[number, number]>,
-  unit: string
+  unit: string,
+  scale = 1
 ): string {
   if (type === 'measure-distance' && pts.length >= 2) {
     const dx = pts[1][0] - pts[0][0], dy = pts[1][1] - pts[0][1]
-    const d = Math.sqrt(dx * dx + dy * dy)
-    return `${d.toFixed(1)} ${unit}`
+    const d = Math.sqrt(dx * dx + dy * dy) * scale
+    return `${d.toFixed(2)} ${unit}`
   }
   if (type === 'measure-perimeter' && pts.length >= 2) {
     let total = 0
@@ -86,7 +88,7 @@ function measureLabel(
       const dx = p1[0] - p0[0], dy = p1[1] - p0[1]
       total += Math.sqrt(dx * dx + dy * dy)
     }
-    return `P: ${total.toFixed(1)} ${unit}`
+    return `P: ${(total * scale).toFixed(2)} ${unit}`
   }
   if (type === 'measure-area' && pts.length >= 3) {
     let area = 0
@@ -94,7 +96,7 @@ function measureLabel(
       const p0 = pts[i], p1 = pts[(i + 1) % pts.length]
       area += p0[0] * p1[1] - p1[0] * p0[1]
     }
-    return `A: ${(Math.abs(area) / 2).toFixed(1)} ${unit}²`
+    return `A: ${(Math.abs(area) / 2 * scale * scale).toFixed(2)} ${unit}²`
   }
   return ''
 }
@@ -102,6 +104,10 @@ function measureLabel(
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Props) {
+  const { settings } = useSettingsStore()
+  const measureUnit = settings.measureUnit ?? 'pt'
+  const measureScale = settings.measureScale ?? 1
+
   const activeTool = usePdfStore(s => s.activeTool)
   const annotations = usePdfStore(s => s.annotations)
   const selectedAnnotationId = usePdfStore(s => s.selectedAnnotationId)
@@ -192,28 +198,28 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
     const pdfPts = svgPts.map(([x, y]) => toPdf(x, y) as [number, number])
 
     if (tool === 'measure-distance') {
-      const label = measureLabel('measure-distance', pdfPts, 'pt')
+      const label = measureLabel('measure-distance', pdfPts, measureUnit, measureScale)
       const ann: MeasureAnn = {
         id: newId(), type: 'measure-distance', pageNum,
         color: toolColor, opacity: toolOpacity, lineWidth: toolLineWidth,
-        points: pdfPts, label, unit: 'pt', createdAt: Date.now(),
+        points: pdfPts, label, unit: measureUnit, createdAt: Date.now(),
       }
       addAnnotation(ann)
     } else if (tool === 'measure-area') {
       if (pdfPts.length < 3) { setDraw({ k: 'idle' }); return }
-      const label = measureLabel('measure-area', pdfPts, 'pt')
+      const label = measureLabel('measure-area', pdfPts, measureUnit, measureScale)
       const ann: MeasureAnn = {
         id: newId(), type: 'measure-area', pageNum,
         color: toolColor, opacity: toolOpacity, lineWidth: toolLineWidth,
-        points: pdfPts, label, unit: 'pt', createdAt: Date.now(),
+        points: pdfPts, label, unit: measureUnit, createdAt: Date.now(),
       }
       addAnnotation(ann)
     } else if (tool === 'measure-perimeter') {
-      const label = measureLabel('measure-perimeter', pdfPts, 'pt')
+      const label = measureLabel('measure-perimeter', pdfPts, measureUnit, measureScale)
       const ann: MeasureAnn = {
         id: newId(), type: 'measure-perimeter', pageNum,
         color: toolColor, opacity: toolOpacity, lineWidth: toolLineWidth,
-        points: pdfPts, label, unit: 'pt', createdAt: Date.now(),
+        points: pdfPts, label, unit: measureUnit, createdAt: Date.now(),
       }
       addAnnotation(ann)
     } else if (tool === 'cloud') {

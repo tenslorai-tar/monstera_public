@@ -151,6 +151,58 @@ export default function SettingsDialog({ onClose }: Props) {
           <span className="modal-hint">Enable with the ▶▶ button in the status bar while a PDF is open.</span>
         </div>
 
+        {/* Dark page mode */}
+        <div className="modal-field">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!local.darkPageMode}
+              onChange={e => setLocal(l => ({ ...l, darkPageMode: e.target.checked }))} />
+            <span style={{ fontSize: 13 }}>Dark page mode (invert page colors for night reading)</span>
+          </label>
+        </div>
+
+        {/* Loupe */}
+        <div className="modal-field">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!local.loupeEnabled}
+              onChange={e => setLocal(l => ({ ...l, loupeEnabled: e.target.checked }))} />
+            <span style={{ fontSize: 13 }}>Enable loupe / magnifier (follows cursor over PDF pages)</span>
+          </label>
+        </div>
+
+        {/* Measure unit */}
+        <div className="modal-field">
+          <label className="modal-label">Measurement unit</label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <select className="annot-select" style={{ flex: 1, padding: '7px 10px', fontSize: 13 }}
+              value={local.measureUnit ?? 'pt'}
+              onChange={e => setLocal(l => ({ ...l, measureUnit: e.target.value }))}>
+              <option value="pt">Points (pt) — default PDF unit</option>
+              <option value="mm">Millimetres (mm)</option>
+              <option value="cm">Centimetres (cm)</option>
+              <option value="in">Inches (in)</option>
+              <option value="px">Pixels (px) — at 72 dpi</option>
+            </select>
+          </div>
+          <span className="modal-hint">Unit shown on new distance / area / perimeter measurements.</span>
+        </div>
+
+        {/* Measure scale */}
+        <div className="modal-field">
+          <label className="modal-label">Measurement scale factor</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input type="number" min={0.001} max={1000} step={0.001}
+              value={local.measureScale ?? 1}
+              onChange={e => setLocal(l => ({ ...l, measureScale: parseFloat(e.target.value) || 1 }))}
+              style={{ width: 100, padding: '5px 8px', fontSize: 13,
+                background: 'var(--bg-secondary)', color: 'var(--text-primary)',
+                border: '1px solid var(--border)', borderRadius: 4 }} />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              × (e.g. 0.3528 to convert pt → mm)
+            </span>
+          </div>
+          <span className="modal-hint">Multiply raw PDF point values by this factor before displaying measurements.</span>
+        </div>
+
         <div className="modal-actions" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
           <button className="modal-btn-secondary" onClick={reset} style={{ marginRight: 'auto' }}>
             Reset to defaults
