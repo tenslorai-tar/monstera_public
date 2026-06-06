@@ -163,6 +163,7 @@ declare global {
       libreofficeExportXlsx: (bytes: ArrayBuffer) => Promise<ArrayBuffer>
 
       spellCheck: (text: string) => Promise<Array<{ word: string; suggestions: string[] }>>
+      emailToPdf: (filePath: string) => Promise<ArrayBuffer>
 
       // New batch
       convertMarkdownToPdf: (markdownText: string) => Promise<ArrayBuffer>

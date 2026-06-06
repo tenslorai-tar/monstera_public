@@ -257,6 +257,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   spellCheck: (text: string): Promise<Array<{ word: string; suggestions: string[] }>> =>
     ipcRenderer.invoke('dict:spellCheck', text),
 
+  emailToPdf: (filePath: string): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('email:toPdf', filePath),
+
   openOfficeFileDialog: (): Promise<string | null> =>
     ipcRenderer.invoke('dialog:openOfficeFile'),
 

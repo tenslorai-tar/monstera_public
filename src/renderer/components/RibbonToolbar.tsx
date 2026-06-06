@@ -83,6 +83,7 @@ interface Props {
   onBarcode: () => void
   onScan: () => void
   onSanitize: () => void
+  onEmailImport: () => void
 }
 
 const STAMP_NAMES: StampName[] = ['Approved', 'Draft', 'Confidential', 'Rejected', 'Custom']
@@ -109,7 +110,7 @@ export default function RibbonToolbar(props: Props) {
     onAiAssistant, onOfficeImport,
     onMarkdownToPdf, onCsvToPdf, onEditExternal, onOcrRegion, onDeskew,
     onWebcam,
-    onMultiPageStamp, onSplitView, onBarcode, onScan, onSanitize,
+    onMultiPageStamp, onSplitView, onBarcode, onScan, onSanitize, onEmailImport,
   } = props
 
   const resetFormFields = usePdfStore(s => s.resetFormFields)
@@ -744,6 +745,8 @@ export default function RibbonToolbar(props: Props) {
             title="Convert Markdown text to a PDF document" />
           <SBtn icon="📊" label="CSV" onClick={onCsvToPdf}
             title="Convert CSV data to a formatted PDF table" />
+          <SBtn icon="📧" label="Email" onClick={onEmailImport}
+            title="Convert an email (.eml) into a PDF" />
         </div>
       </Group>
 

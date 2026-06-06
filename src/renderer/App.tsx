@@ -407,6 +407,20 @@ export default function App() {
         onWordCount={() => setWordCountOpen(true)}
         onBarcode={() => setBarcodeOpen(true)}
         onScan={() => setScanOpen(true)}
+        onEmailImport={async () => {
+          try {
+            const path = await window.electronAPI.openAnyFile([{ name: 'Email', extensions: ['eml'] }])
+            if (!path) return
+            const bytes = await window.electronAPI.emailToPdf(path)
+            if (bytes && bytes.byteLength > 0) {
+              const name = (path.split(/[\\/]/).pop() ?? 'email').replace(/\.eml$/i, '') + '.pdf'
+              await loadPdf(bytes, name, name)
+              addRecentFile(name, name)
+            }
+          } catch (e: any) {
+            alert(`Email import failed: ${e?.message ?? 'could not convert .eml'}`)
+          }
+        }}
         onSanitize={async () => {
           const s = usePdfStore.getState()
           try {

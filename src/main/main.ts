@@ -1439,7 +1439,7 @@ ipcMain.handle('dialog:openOfficeFile', async () => {
   const r = await dialog.showOpenDialog({
     properties: ['openFile'],
     filters: [
-      { name: 'Office Documents', extensions: ['docx','doc','xlsx','xls','pptx','ppt','odt','ods','odp','rtf','csv'] },
+      { name: 'Documents & Graphics', extensions: ['docx','doc','xlsx','xls','pptx','ppt','odt','ods','odp','rtf','csv','txt','vsd','vsdx','pub','wmf','emf','odg','fodt','fods','fodp'] },
       { name: 'All Files', extensions: ['*'] },
     ],
   })
@@ -1488,6 +1488,35 @@ ipcMain.handle('convert:markdownToPdf', async (_event, markdownText: string): Pr
   const pdfBuf = await offscreen.webContents.printToPDF({ pageSize: 'A4', printBackground: true, margins: { top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 } })
   offscreen.close()
   return abuf(pdfBuf)
+})
+
+// ── Email (.eml) → PDF ──────────────────────────────────────────────────────
+ipcMain.handle('email:toPdf', async (_e, filePath: string): Promise<ArrayBuffer> => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { simpleParser } = require('mailparser')
+  const raw = fs.readFileSync(filePath)
+  const m = await simpleParser(raw)
+  const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const headerRows = ([
+    ['From', m.from?.text], ['To', m.to && (Array.isArray(m.to) ? m.to.map((t: { text: string }) => t.text).join(', ') : m.to.text)],
+    ['Cc', m.cc && (Array.isArray(m.cc) ? m.cc.map((t: { text: string }) => t.text).join(', ') : m.cc.text)],
+    ['Subject', m.subject], ['Date', m.date ? new Date(m.date).toLocaleString() : ''],
+  ] as Array<[string, unknown]>)
+    .filter(([, v]) => v)
+    .map(([k, v]) => `<tr><td class="k">${k}</td><td>${esc(v)}</td></tr>`).join('')
+  const bodyHtml = m.html || `<pre style="white-space:pre-wrap;font-family:inherit">${esc(m.text)}</pre>`
+  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+    body{font-family:Arial,sans-serif;font-size:12px;margin:32px 40px;color:#111}
+    table.h{border-collapse:collapse;margin-bottom:14px;width:100%}
+    table.h td{padding:2px 6px;vertical-align:top} td.k{font-weight:bold;color:#444;width:64px}
+    hr{border:none;border-top:1px solid #ccc;margin:10px 0} img{max-width:100%}
+  </style></head><body><table class="h">${headerRows}</table><hr/><div>${bodyHtml}</div></body></html>`
+  const offscreen = new BrowserWindow({ show: false, width: 794, height: 1123, webPreferences: { nodeIntegration: false, contextIsolation: true } })
+  await offscreen.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(fullHtml)}`)
+  await new Promise<void>(r => setTimeout(r, 400))
+  const pdf = await offscreen.webContents.printToPDF({ pageSize: 'A4', printBackground: true, margins: { top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 } })
+  offscreen.close()
+  return abuf(pdf)
 })
 
 // ── CSV → PDF ─────────────────────────────────────────────────────────────────
