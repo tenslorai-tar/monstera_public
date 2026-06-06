@@ -22,6 +22,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // PDFium engine — true in-place text editing
   pdfiumStatus: (): Promise<{ available: boolean }> =>
     ipcRenderer.invoke('pdfium:status'),
+  pdfiumRenderPage: (
+    bytes: ArrayBuffer,
+    pageIndex: number,
+    scale: number,
+  ): Promise<{ data: ArrayBuffer; width: number; height: number }> =>
+    ipcRenderer.invoke('pdfium:renderPage', bytes, pageIndex, scale),
   pdfiumTextInRegion: (
     bytes: ArrayBuffer,
     pageIndex: number,

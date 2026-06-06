@@ -88,18 +88,40 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
 
       const viewport = page.getViewport({ scale })
       const ctx = canvas.getContext('2d')!
-      canvas.width = viewport.width
-      canvas.height = viewport.height
 
-      const ocgConfig = getOcgConfig()
-      // annotationMode: 0 = DISABLE — our overlay handles annotation rendering
-      await page.render({
-        canvasContext: ctx,
-        viewport,
-        annotationMode: 0,
-        ...(ocgConfig ? { optionalContentConfigPromise: Promise.resolve(ocgConfig) } : {}),
-      }).promise
-      if (cancelled || gen !== renderGenRef.current) return
+      // Canvas pixels: PDFium (opt-in, higher fidelity) or PDF.js. The text layer
+      // below is always PDF.js, so selection/search stays intact either way.
+      let painted = false
+      if (settings.pdfiumRender) {
+        try {
+          const bytes = usePdfStore.getState().pdfBytes
+          if (bytes) {
+            const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+            const img = await window.electronAPI.pdfiumRenderPage(ab, pageNum - 1, scale)
+            if (cancelled || gen !== renderGenRef.current) return
+            if (img.width > 0 && img.data.byteLength === img.width * img.height * 4) {
+              canvas.width = img.width
+              canvas.height = img.height
+              ctx.putImageData(new ImageData(new Uint8ClampedArray(img.data), img.width, img.height), 0, 0)
+              painted = true
+            }
+          }
+        } catch { /* fall back to PDF.js below */ }
+      }
+
+      if (!painted) {
+        canvas.width = viewport.width
+        canvas.height = viewport.height
+        const ocgConfig = getOcgConfig()
+        // annotationMode: 0 = DISABLE — our overlay handles annotation rendering
+        await page.render({
+          canvasContext: ctx,
+          viewport,
+          annotationMode: 0,
+          ...(ocgConfig ? { optionalContentConfigPromise: Promise.resolve(ocgConfig) } : {}),
+        }).promise
+        if (cancelled || gen !== renderGenRef.current) return
+      }
 
       textDiv.innerHTML = ''
       textDiv.style.width = `${viewport.width}px`
@@ -119,7 +141,7 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
     })()
 
     return () => { cancelled = true }
-  }, [inView, pdfDoc, pageNum, scale, layerRevision]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [inView, pdfDoc, pageNum, scale, layerRevision, settings.pdfiumRender]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const textDiv = textLayerRef.current

@@ -701,6 +701,9 @@ export default function RibbonToolbar(props: Props) {
           <SBtn icon="⊞" label="Grid" active={settings.showGrid}
             onClick={() => updateSettings({ showGrid: !settings.showGrid })}
             title="Show alignment grid on pages" />
+          <SBtn icon="✨" label="HD Render" active={settings.pdfiumRender}
+            onClick={() => updateSettings({ pdfiumRender: !settings.pdfiumRender })}
+            title="Render pages with the PDFium engine — higher fidelity on complex fonts/vectors (uses more memory)" />
         </div>
         {settings.autoscrollSpeed > 0 && (
           <div className="rbn-ctrl-row" style={{ marginTop: 4 }}>

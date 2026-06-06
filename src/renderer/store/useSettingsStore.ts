@@ -14,6 +14,7 @@ export interface AppSettings {
   autoscrollSpeed: number           // 0 = disabled, 1-10 scale
   darkPageMode: boolean
   loupeEnabled: boolean
+  pdfiumRender: boolean             // render pages with PDFium instead of PDF.js
   measureUnit: string
   measureScale: number
   // Tier 3
@@ -52,6 +53,7 @@ function defaults(): AppSettings {
     autoscrollSpeed: 0,
     darkPageMode: false,
     loupeEnabled: false,
+    pdfiumRender: false,
     measureUnit: 'pt',
     measureScale: 1.0,
     // Tier 3

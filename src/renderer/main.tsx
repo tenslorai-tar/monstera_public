@@ -17,6 +17,7 @@ if (!window.electronAPI) {
     pdfiumStatus: async () => ({ available: false }),
     pdfiumEditText: emptyBuf,
     pdfiumTextInRegion: async () => ({ text: '', fontSize: 0, found: false }),
+    pdfiumRenderPage: async () => ({ data: new ArrayBuffer(0), width: 0, height: 0 }),
     writeFile: noop, writeBytesToDir: noop,
     mupdfGetMetadata: async () => ({ title:'', author:'', subject:'', keywords:'', creator:'', producer:'', needsPassword:false, encryption:'' }),
     mupdfSetMetadata: emptyBuf, mupdfEncrypt: emptyBuf, mupdfRemovePassword: emptyBuf,
