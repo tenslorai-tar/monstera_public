@@ -22,6 +22,11 @@ import WatermarkDialog from './components/WatermarkDialog'
 import BackgroundDialog from './components/BackgroundDialog'
 import BatesDialog from './components/BatesDialog'
 import CropDialog from './components/CropDialog'
+import CompareDialog from './components/CompareDialog'
+import AccessibilityDialog from './components/AccessibilityDialog'
+import WordCountDialog from './components/WordCountDialog'
+import TranslateDialog from './components/TranslateDialog'
+import SpellCheckDialog from './components/SpellCheckDialog'
 import * as docEnhance from './utils/documentEnhance'
 import { usePdfStore } from './store/usePdfStore'
 import { useSettingsStore } from './store/useSettingsStore'
@@ -71,6 +76,11 @@ export default function App() {
   const [backgroundOpen,    setBackgroundOpen]      = useState(false)
   const [batesOpen,         setBatesOpen]           = useState(false)
   const [cropOpen,          setCropOpen]            = useState(false)
+  const [compareOpen,       setCompareOpen]         = useState(false)
+  const [accessOpen,        setAccessOpen]          = useState(false)
+  const [wordCountOpen,     setWordCountOpen]       = useState(false)
+  const [translateOpen,     setTranslateOpen]       = useState(false)
+  const [spellCheckOpen,    setSpellCheckOpen]      = useState(false)
 
   const [passwordPrompt,    setPasswordPrompt]     = useState<PasswordPromptState>(null)
   const [passwordError,     setPasswordError]      = useState('')
@@ -169,6 +179,11 @@ export default function App() {
         case 'toggleLinksPanel':       s.toggleLinksPanel(); break
         case 'toggleLayersPanel':      s.toggleLayersPanel(); break
         case 'toggleNamedDestsPanel':  s.toggleNamedDestsPanel(); break
+        case 'compare':        setCompareOpen(true); break
+        case 'accessibility':  setAccessOpen(true); break
+        case 'wordCount':      setWordCountOpen(true); break
+        case 'translate':      setTranslateOpen(true); break
+        case 'spellCheck':     setSpellCheckOpen(true); break
         case 'toggleTheme':
           updateSettings({ theme: settings.theme === 'dark' ? 'light' : 'dark' }); break
         case 'zoomIn':   s.setScale(Math.min(5,    Math.round((s.scale + 0.25) * 100) / 100)); break
@@ -270,6 +285,11 @@ export default function App() {
         onBackground={() => setBackgroundOpen(true)}
         onBatesNumbers={() => setBatesOpen(true)}
         onCropPages={() => setCropOpen(true)}
+        onCompare={() => setCompareOpen(true)}
+        onAccessibility={() => setAccessOpen(true)}
+        onWordCount={() => setWordCountOpen(true)}
+        onTranslate={() => setTranslateOpen(true)}
+        onSpellCheck={() => setSpellCheckOpen(true)}
       />
 
       {hasPdf ? (
@@ -358,6 +378,12 @@ export default function App() {
           }}
         />
       )}
+      {compareOpen    && <CompareDialog      onClose={() => setCompareOpen(false)} />}
+      {accessOpen     && <AccessibilityDialog onClose={() => setAccessOpen(false)} />}
+      {wordCountOpen  && <WordCountDialog    onClose={() => setWordCountOpen(false)} />}
+      {translateOpen  && <TranslateDialog   onClose={() => setTranslateOpen(false)} />}
+      {spellCheckOpen && <SpellCheckDialog  onClose={() => setSpellCheckOpen(false)} />}
+
       {digitalSignOpen && <DigitalSignDialog onClose={() => setDigitalSignOpen(false)} />}
 
       {signaturePadOpen && (

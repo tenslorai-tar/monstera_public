@@ -48,6 +48,14 @@ declare global {
         pageNum: number; label: string; rect: [number, number, number, number]; fieldType: 'text' | 'checkbox' | 'date';
       }>>
 
+      mupdfExtractAllText: (bytes: ArrayBuffer) => Promise<Array<{ pageNum: number; text: string }>>
+      mupdfCheckAccessibility: (bytes: ArrayBuffer) => Promise<Array<{
+        issue: string; severity: 'error' | 'warning' | 'info'; page?: number;
+      }>>
+      mupdfGenerateBookmarks: (bytes: ArrayBuffer) => Promise<Array<{
+        title: string; pageNum: number; level: number;
+      }>>
+
       setWindowTitle: (title: string) => Promise<void>
       printWindow: () => Promise<void>
       onMenuAction: (callback: (action: string) => void) => void

@@ -659,3 +659,125 @@ ipcMain.handle('export:toDocx', async (_event, bytes: ArrayBuffer, _fileName: st
   const buf = await Packer.toBuffer(wordDoc)
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
 })
+
+// ── Extract all text (for compare, translate, word count) ─────────────────────
+
+ipcMain.handle('mupdf:extractAllText', async (_event, bytes: ArrayBuffer): Promise<Array<{ pageNum: number; text: string }>> => {
+  const mupdf = await getMupdf()
+  const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
+  const numPages = doc.countPages()
+  const pages: Array<{ pageNum: number; text: string }> = []
+  for (let i = 0; i < numPages; i++) {
+    const page = doc.loadPage(i)
+    let text = ''
+    try { text = page.toStructuredText('preserve-whitespace').asText() } catch {
+      try { text = page.toStructuredText().asText() } catch {}
+    }
+    pages.push({ pageNum: i + 1, text })
+  }
+  return pages
+})
+
+// ── Accessibility checker ─────────────────────────────────────────────────────
+
+interface AccessibilityIssue { issue: string; severity: 'error' | 'warning' | 'info'; page?: number }
+
+ipcMain.handle('mupdf:checkAccessibility', async (_event, bytes: ArrayBuffer): Promise<AccessibilityIssue[]> => {
+  const mupdf = await getMupdf()
+  const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
+  const issues: AccessibilityIssue[] = []
+
+  // Check document-level metadata
+  const title = doc.getMetaData('info:Title') ?? ''
+  if (!title.trim()) issues.push({ issue: 'Document has no title. Screen readers need a title.', severity: 'error' })
+
+  const lang = doc.getMetaData('info:Lang') ?? ''
+  if (!lang.trim()) issues.push({ issue: 'No document language set (PDF /Lang entry missing).', severity: 'warning' })
+
+  // Check for tags (StructTreeRoot)
+  const numPages = doc.countPages()
+  let hasImages = false, totalChars = 0
+  for (let i = 0; i < numPages; i++) {
+    const page = doc.loadPage(i)
+    let pageText = ''
+    try { pageText = page.toStructuredText().asText() } catch {}
+    totalChars += pageText.length
+
+    // Check for very low text: likely image-only page
+    if (pageText.trim().length < 10) {
+      hasImages = true
+      issues.push({ issue: `Page ${i + 1} appears to be image-only (no selectable text). Consider running OCR.`, severity: 'warning', page: i + 1 })
+    }
+  }
+
+  if (totalChars < 50 && numPages > 0) {
+    issues.push({ issue: 'Document appears to have little or no text content — may be a scanned document.', severity: 'error' })
+  }
+  if (!hasImages && numPages > 0) {
+    issues.push({ issue: 'Document has text content on all pages.', severity: 'info' })
+  }
+
+  // Check for bookmarks (good for navigation)
+  const outline = doc.loadOutline()
+  if (!outline || (Array.isArray(outline) && outline.length === 0)) {
+    if (numPages > 5) issues.push({ issue: 'No bookmarks/outline found. Bookmarks help users navigate long documents.', severity: 'warning' })
+  } else {
+    issues.push({ issue: `Document has ${Array.isArray(outline) ? outline.length : 0} bookmarks.`, severity: 'info' })
+  }
+
+  if (issues.length === 0) issues.push({ issue: 'No accessibility issues found.', severity: 'info' })
+  return issues
+})
+
+// ── Generate bookmarks from headings ─────────────────────────────────────────
+
+ipcMain.handle('mupdf:generateBookmarks', async (_event, bytes: ArrayBuffer): Promise<Array<{ title: string; pageNum: number; level: number }>> => {
+  const mupdf = await getMupdf()
+  const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
+  const numPages = doc.countPages()
+  const suggestions: Array<{ title: string; pageNum: number; level: number }> = []
+
+  for (let i = 0; i < numPages; i++) {
+    const page = doc.loadPage(i)
+    let stext = ''
+    try { stext = page.toStructuredText('preserve-whitespace').asJSON() } catch {
+      try { stext = page.toStructuredText().asJSON() } catch { continue }
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let parsed: any
+    try { parsed = JSON.parse(stext) } catch { continue }
+
+    // Find large text blocks that look like headings
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const block of (parsed.blocks ?? []) as any[]) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const line of (block.lines ?? []) as any[]) {
+        let lineText = ''
+        let maxFontSize = 0
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const span of (line.spans ?? []) as any[]) {
+          lineText += span.text ?? ''
+          if ((span.size ?? 0) > maxFontSize) maxFontSize = span.size ?? 0
+        }
+        lineText = lineText.trim()
+        if (!lineText || lineText.length > 80) continue
+
+        // Heuristic: font size > 14pt → potential heading
+        if (maxFontSize >= 16) {
+          suggestions.push({ title: lineText, pageNum: i + 1, level: maxFontSize >= 20 ? 1 : 2 })
+        } else if (maxFontSize >= 13) {
+          suggestions.push({ title: lineText, pageNum: i + 1, level: 3 })
+        }
+      }
+    }
+  }
+
+  // Deduplicate consecutive same-page same-title entries
+  const seen = new Set<string>()
+  return suggestions.filter(s => {
+    const k = `${s.pageNum}:${s.title}`
+    if (seen.has(k)) return false
+    seen.add(k)
+    return true
+  }).slice(0, 200)  // cap at 200 suggestions
+})

@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { usePdfStore } from '../store/usePdfStore'
+import { textCache } from '../utils/textCache'
+import type { TextEditAnn } from '../types/annotations'
+import { newId } from '../utils/annotationUtils'
 
 export default function SearchPanel() {
   const searchOpen      = usePdfStore(s => s.searchOpen)
@@ -12,6 +15,8 @@ export default function SearchPanel() {
   const setSearchOpen   = usePdfStore(s => s.setSearchOpen)
   const annotations     = usePdfStore(s => s.annotations)
   const updateAnnotation = usePdfStore(s => s.updateAnnotation)
+
+  const addAnnotation  = usePdfStore(s => s.addAnnotation)
 
   const inputRef = useRef<HTMLInputElement>(null)
   const [showReplace, setShowReplace] = useState(false)
@@ -28,6 +33,68 @@ export default function SearchPanel() {
   const matchLabel = searchMatches.length === 0
     ? (searchQuery ? 'No results' : '')
     : `${activeMatchIndex + 1} / ${searchMatches.length}`
+
+  // Replace in native PDF text via text-edit overlays (cover + replacement text on top)
+  const replaceOnPage = async () => {
+    if (!searchQuery || !replaceText) return
+    const pdfDoc = usePdfStore.getState().pdfDoc
+    if (!pdfDoc) return
+    // Find all matches
+    const targets = searchMatches.length > 0 ? searchMatches : []
+    if (targets.length === 0) { setReplaceMsg('No matches found.'); return }
+    let count = 0
+    const lower = searchQuery.toLowerCase()
+    const pagesToProcess = [...new Set(targets.map(m => m.pageNum))]
+    for (const pageNum of pagesToProcess) {
+      try {
+        const page = await pdfDoc.getPage(pageNum)
+        const tc = await page.getTextContent()
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const items: any[] = tc.items.filter((it: any) => 'str' in it)
+        const cache = textCache.get(pageNum)
+        if (!cache) continue
+        const pageMatches = targets.filter(m => m.pageNum === pageNum)
+        for (const match of pageMatches) {
+          // Find which items are covered by this match
+          let covered: typeof items = []
+          for (let i = 0; i < items.length; i++) {
+            const itemStart = cache.itemOffsets[i]
+            const itemEnd = itemStart + (cache.itemLengths[i] ?? 0)
+            if (itemEnd > match.matchStart && itemStart < match.matchStart + match.matchLen) {
+              covered.push(items[i])
+            }
+          }
+          if (covered.length === 0) continue
+          // Compute bounding box from transform + width/height of covered items
+          // PDF.js transform: [scaleX, skewY, skewX, scaleY, tx, ty]
+          const xs: number[] = [], ys: number[] = []
+          for (const item of covered) {
+            const [, , , h, x, y] = item.transform as number[]
+            const w = item.width as number
+            xs.push(x, x + w)
+            ys.push(y, y + Math.abs(h))
+          }
+          const x1 = Math.min(...xs), y1 = Math.min(...ys)
+          const x2 = Math.max(...xs), y2 = Math.max(...ys)
+          const ann: TextEditAnn = {
+            id: newId(), type: 'text-edit', pageNum,
+            color: '#000000', opacity: 1, createdAt: Date.now(),
+            x: x1, y: y1,
+            width: Math.max(x2 - x1, 40),
+            height: Math.max(y2 - y1, 12),
+            text: replaceText.replace(
+              new RegExp(lower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
+              replaceText
+            ),
+            fontSize: Math.max(8, Math.abs((covered[0]?.transform as number[])?.[3] ?? 12)),
+          }
+          addAnnotation(ann)
+          count++
+        }
+      } catch { /* skip page */ }
+    }
+    setReplaceMsg(count > 0 ? `Created ${count} replacement overlay${count !== 1 ? 's' : ''}.` : 'No matches placed.')
+  }
 
   // Replace in text annotations (textbox, typewriter, text-edit, stickynote)
   // Note: replacing text in the original PDF content stream requires MuPDF native
@@ -89,15 +156,18 @@ export default function SearchPanel() {
           <input
             className="search-input"
             type="text"
-            placeholder="Replace in annotations…"
+            placeholder="Replace with…"
             value={replaceText}
             onChange={e => { setReplaceText(e.target.value); setReplaceMsg('') }}
             onKeyDown={e => { if (e.key === 'Escape') setShowReplace(false) }}
           />
           <button className="search-nav-btn" onClick={() => replaceInAnnotations(false)}
-            disabled={!searchQuery || !replaceText} title="Replace current">1</button>
+            disabled={!searchQuery || !replaceText} title="Replace in annotation text (current match)">Ann</button>
           <button className="search-nav-btn" onClick={() => replaceInAnnotations(true)}
-            disabled={!searchQuery || !replaceText} title="Replace all">All</button>
+            disabled={!searchQuery || !replaceText} title="Replace all annotation text">All</button>
+          <button className="search-nav-btn" onClick={replaceOnPage}
+            disabled={!searchQuery || !replaceText || searchMatches.length === 0}
+            title="Replace in native PDF text using overlay (places white cover + new text on top)">PDF</button>
           {replaceMsg && (
             <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
               {replaceMsg}
@@ -108,7 +178,7 @@ export default function SearchPanel() {
 
       {showReplace && (
         <div style={{ fontSize: 11, color: 'var(--text-muted)', paddingLeft: 22 }}>
-          Replace works on text annotations only — not on original PDF content.
+          Ann: replace in text annotations. PDF: overlay-based replacement (white cover + text on PDF content).
         </div>
       )}
     </div>

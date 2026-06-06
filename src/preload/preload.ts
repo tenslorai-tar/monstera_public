@@ -70,6 +70,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     pageNum: number; label: string; rect: [number, number, number, number]; fieldType: 'text' | 'checkbox' | 'date';
   }>> => ipcRenderer.invoke('forms:identify', bytes),
 
+  mupdfExtractAllText: (bytes: ArrayBuffer): Promise<Array<{ pageNum: number; text: string }>> =>
+    ipcRenderer.invoke('mupdf:extractAllText', bytes),
+
+  mupdfCheckAccessibility: (bytes: ArrayBuffer): Promise<Array<{
+    issue: string; severity: 'error' | 'warning' | 'info'; page?: number;
+  }>> => ipcRenderer.invoke('mupdf:checkAccessibility', bytes),
+
+  mupdfGenerateBookmarks: (bytes: ArrayBuffer): Promise<Array<{
+    title: string; pageNum: number; level: number;
+  }>> => ipcRenderer.invoke('mupdf:generateBookmarks', bytes),
+
   setWindowTitle: (title: string): Promise<void> =>
     ipcRenderer.invoke('window:setTitle', title),
 

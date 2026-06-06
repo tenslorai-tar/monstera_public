@@ -42,6 +42,11 @@ interface Props {
   onBackground: () => void
   onBatesNumbers: () => void
   onCropPages: () => void
+  onCompare: () => void
+  onAccessibility: () => void
+  onWordCount: () => void
+  onTranslate: () => void
+  onSpellCheck: () => void
 }
 
 const ZOOM_PRESETS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]
@@ -55,6 +60,7 @@ export default function RibbonToolbar(props: Props) {
     onDeletePages, onExtractPages, onDuplicatePages, onRotateCW, onRotateCCW, onRotate180, onReverseOrder,
     onCommentStyles, onSummarizeComments, onFlattenAnnotations,
     onHeaderFooter, onWatermark, onBackground, onBatesNumbers, onCropPages,
+    onCompare, onAccessibility, onWordCount, onTranslate, onSpellCheck,
   } = props
 
   const [activeTab, setActiveTab] = useState<RibbonTab>('home')
@@ -607,7 +613,22 @@ export default function RibbonToolbar(props: Props) {
 
       <Group label="Search">
         <LBtn icon="🔎" label="Find" active={searchOpen} onClick={() => setSearchOpen(!searchOpen)} title="Find in document (Ctrl+F)" />
-        <LBtn icon="↔" label="Replace" onClick={() => setSearchOpen(true)} title="Find & replace text in annotations (Ctrl+H)" />
+        <LBtn icon="↔" label="Replace" onClick={() => setSearchOpen(true)} title="Find & replace text in annotations and PDF content (Ctrl+H)" />
+      </Group>
+
+      <Group label="Compare">
+        <LBtn icon="⊕" label="Compare" onClick={onCompare} title="Compare this document with another PDF" />
+      </Group>
+
+      <Group label="Proofing">
+        <div className="rbn-stack">
+          <SBtn icon="ABC" label="Spell Check" onClick={onSpellCheck} title="Spell-check all text annotations" />
+          <SBtn icon="🔢" label="Word Count" onClick={onWordCount} title="Count words, characters, and pages" />
+        </div>
+      </Group>
+
+      <Group label="Language">
+        <LBtn icon="🌐" label="Translate" onClick={onTranslate} title="Extract text and open in translation tool" />
       </Group>
 
       <Group label="Export">
@@ -632,6 +653,10 @@ export default function RibbonToolbar(props: Props) {
 
       <Group label="OCR & Text">
         <LBtn icon="🔍" label="Run OCR" onClick={onOcr} title="Run OCR on scanned / image-only pages" />
+      </Group>
+
+      <Group label="Accessibility">
+        <LBtn icon="♿" label="Check" onClick={onAccessibility} title="Check document for accessibility issues" />
       </Group>
 
       <Group label="Digital Signatures">
