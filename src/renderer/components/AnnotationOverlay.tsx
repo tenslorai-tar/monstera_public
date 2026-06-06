@@ -36,6 +36,15 @@ type ImageDrag =
   | { k: 'move'; id: string; startSvgX: number; startSvgY: number; origAnnX: number; origAnnY: number }
   | { k: 'resize'; id: string; corner: 'br'; startSvgX: number; startSvgY: number; origW: number; origH: number }
 
+// PDFium engine availability (true in-place text editing), cached per session.
+let _pdfiumAvail: boolean | null = null
+async function pdfiumReady(): Promise<boolean> {
+  if (_pdfiumAvail !== null) return _pdfiumAvail
+  try { _pdfiumAvail = (await window.electronAPI.pdfiumStatus()).available }
+  catch { _pdfiumAvail = false }
+  return _pdfiumAvail
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 function StampShape({ color, stampName, w, h }: { color: string; stampName: string; w: number; h: number }) {
@@ -555,18 +564,35 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
     setDraw({ k: 'idle' })
   }
 
-  const commitTextEdit = (text: string) => {
+  const commitTextEdit = async (text: string) => {
     if (draw.k !== 'text-edit-edit') return
-    if (text.trim()) {
-      const [x, y_top] = toPdf(draw.x, draw.y)
-      const [, y_bot] = toPdf(draw.x, draw.y + draw.h)
-      const [x2] = toPdf(draw.x + draw.w, draw.y)
-      addAnnotation({ id: newId(), type: 'text-edit', pageNum,
-        color: draw.color ?? toolColor, opacity: toolOpacity,
-        x, y: y_bot, width: x2 - x, height: y_top - y_bot,
-        text, fontSize: draw.fontSize ?? toolFontSize, createdAt: Date.now() } as TextEditAnn)
-    }
+    const d = draw
+    const trimmed = text.trim()
     setDraw({ k: 'idle' })
+    if (!trimmed) return
+
+    const [x, y_top] = toPdf(d.x, d.y)
+    const [, y_bot] = toPdf(d.x, d.y + d.h)
+    const [x2] = toPdf(d.x + d.w, d.y)
+
+    // Preferred path: true in-place edit of the original PDF text via PDFium.
+    try {
+      if (await pdfiumReady()) {
+        const store = usePdfStore.getState()
+        const bytes = await store.getBakedBytes()
+        const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+        const out = await window.electronAPI.pdfiumEditText(
+          ab, pageNum - 1, { x1: x, y1: y_bot, x2, y2: y_top }, text,
+        )
+        if (out && out.byteLength > 0) { await store.applyEdit(new Uint8Array(out)); return }
+      }
+    } catch { /* engine unavailable or no text found — fall back to overlay */ }
+
+    // Fallback: cover the region and paint the replacement (font-matched overlay).
+    addAnnotation({ id: newId(), type: 'text-edit', pageNum,
+      color: d.color ?? toolColor, opacity: toolOpacity,
+      x, y: y_bot, width: x2 - x, height: y_top - y_bot,
+      text, fontSize: d.fontSize ?? toolFontSize, createdAt: Date.now() } as TextEditAnn)
   }
 
   const commitCallout = (text: string) => {

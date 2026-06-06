@@ -27,8 +27,18 @@
       "dist-electron/**/*",
       "assets/**/*"
     ],
+    "asarUnpack": [
+      "assets/bin/**",
+      "node_modules/koffi/**"
+    ],
     "extraResources": [
-      { "from": "assets/bin", "to": "app/assets/bin", "filter": ["**/*"] }
+      {
+        "from": "assets/bin",
+        "to": "app/assets/bin",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "win": {
       "target": [
@@ -75,6 +85,7 @@
     "docx": "^9.7.1",
     "dropbox": "^10.34.0",
     "googleapis": "^173.0.0",
+    "koffi": "^3.0.2",
     "mammoth": "^1.12.0",
     "mupdf": "^0.3.0",
     "node-forge": "^1.4.0",

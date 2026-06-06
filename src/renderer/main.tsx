@@ -14,6 +14,8 @@ if (!window.electronAPI) {
     openFileDialog: nullAsync, openMultipleFiles: emptyArr, openImageFile: nullAsync,
     saveFileDialog: nullAsync, chooseDirectory: nullAsync,
     readFileBytes: emptyBuf, getMimeType: async () => 'application/pdf',
+    pdfiumStatus: async () => ({ available: false }),
+    pdfiumEditText: emptyBuf,
     writeFile: noop, writeBytesToDir: noop,
     mupdfGetMetadata: async () => ({ title:'', author:'', subject:'', keywords:'', creator:'', producer:'', needsPassword:false, encryption:'' }),
     mupdfSetMetadata: emptyBuf, mupdfEncrypt: emptyBuf, mupdfRemovePassword: emptyBuf,

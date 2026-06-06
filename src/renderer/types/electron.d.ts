@@ -12,6 +12,14 @@ declare global {
       readFileBytes: (filePath: string) => Promise<ArrayBuffer>
       getMimeType: (filePath: string) => Promise<string>
 
+      pdfiumStatus: () => Promise<{ available: boolean }>
+      pdfiumEditText: (
+        bytes: ArrayBuffer,
+        pageIndex: number,
+        rect: { x1: number; y1: number; x2: number; y2: number },
+        newText: string,
+      ) => Promise<ArrayBuffer>
+
       writeFile: (filePath: string, bytes: ArrayBuffer) => Promise<void>
       writeBytesToDir: (
         dirPath: string,

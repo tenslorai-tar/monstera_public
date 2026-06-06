@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import * as nativeBins from './nativeBins'
+import * as pdfium from './pdfiumEngine'
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
@@ -349,6 +350,20 @@ ipcMain.handle('file:getMimeType', async (_event, filePath: string) => {
   if (ext === '.png') return 'image/png'
   if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg'
   return 'application/octet-stream'
+})
+
+// ── PDFium engine — true in-place text editing ───────────────────────────────
+ipcMain.handle('pdfium:status', async () => ({ available: pdfium.isAvailable() }))
+
+ipcMain.handle('pdfium:editText', async (
+  _event,
+  bytes: ArrayBuffer,
+  pageIndex: number,
+  rect: { x1: number; y1: number; x2: number; y2: number },
+  newText: string,
+) => {
+  const out = pdfium.editTextInRegion(Buffer.from(bytes), pageIndex, rect, newText)
+  return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength)
 })
 
 // ── File write ───────────────────────────────────────────────────────────────

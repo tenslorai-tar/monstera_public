@@ -19,6 +19,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getMimeType: (filePath: string): Promise<string> =>
     ipcRenderer.invoke('file:getMimeType', filePath),
 
+  // PDFium engine — true in-place text editing
+  pdfiumStatus: (): Promise<{ available: boolean }> =>
+    ipcRenderer.invoke('pdfium:status'),
+  pdfiumEditText: (
+    bytes: ArrayBuffer,
+    pageIndex: number,
+    rect: { x1: number; y1: number; x2: number; y2: number },
+    newText: string,
+  ): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('pdfium:editText', bytes, pageIndex, rect, newText),
+
   // Write
   writeFile: (filePath: string, bytes: ArrayBuffer): Promise<void> =>
     ipcRenderer.invoke('file:writeBytes', filePath, bytes),
