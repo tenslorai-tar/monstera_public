@@ -31,6 +31,32 @@ export default function BookmarksPanel() {
     setBookmarks([...bookmarks].sort((a, b) => a.title.localeCompare(b.title)))
   }
 
+  const handleEveryN = () => {
+    const ans = window.prompt(`Create a bookmark every N pages (1–${numPages}):`, '5')
+    const n = ans ? parseInt(ans, 10) : NaN
+    if (isNaN(n) || n < 1 || n > numPages) return
+    const generated: BookmarkItem[] = []
+    for (let p = 1; p <= numPages; p += n) {
+      generated.push({ id: Math.random().toString(36).slice(2), title: `Page ${p}`, pageNum: p })
+    }
+    setBookmarks([...bookmarks, ...generated])
+  }
+
+  const titleCase = (s: string) => s.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+  const handleCase = (kind: 'upper' | 'lower' | 'title') => {
+    setBookmarks(bookmarks.map(b => ({
+      ...b,
+      title: kind === 'upper' ? b.title.toUpperCase() : kind === 'lower' ? b.title.toLowerCase() : titleCase(b.title),
+    })))
+  }
+
+  const handleValidate = () => {
+    const valid = bookmarks.filter(b => b.pageNum >= 1 && b.pageNum <= numPages)
+    const removed = bookmarks.length - valid.length
+    if (removed > 0) setBookmarks(valid)
+    window.alert(removed > 0 ? `Removed ${removed} bookmark(s) pointing outside the document.` : 'All bookmarks point to valid pages.')
+  }
+
   const handleMergeDuplicates = () => {
     const seen = new Set<number>()
     const merged: BookmarkItem[] = []
@@ -146,6 +172,16 @@ export default function BookmarksPanel() {
             title="Export bookmarks as plain text" onClick={handleExportText}>↗ .txt</button>
           <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 5px' }}
             title="Export bookmarks as HTML" onClick={handleExportHtml}>↗ .html</button>
+          <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 5px' }}
+            title="Create a bookmark every N pages" onClick={handleEveryN}>⊞ Every N</button>
+          <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 5px' }}
+            title="Title-case all bookmark titles" onClick={() => handleCase('title')}>Aa Title</button>
+          <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 5px' }}
+            title="UPPERCASE all titles" onClick={() => handleCase('upper')}>AA</button>
+          <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 5px' }}
+            title="lowercase all titles" onClick={() => handleCase('lower')}>aa</button>
+          <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 5px' }}
+            title="Remove bookmarks pointing outside the document" onClick={handleValidate}>✓ Validate</button>
         </div>
       )}
 
