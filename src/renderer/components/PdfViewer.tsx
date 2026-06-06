@@ -14,6 +14,8 @@ export default function PdfViewer() {
   const numPages = usePdfStore(s => s.numPages)
   const pageSizes = usePdfStore(s => s.pageSizes)
   const scale = usePdfStore(s => s.scale)
+  const activeTool = usePdfStore(s => s.activeTool)
+  const panMode = usePdfStore(s => s.panMode)
   const setCurrentPage = usePdfStore(s => s.setCurrentPage)
   const setContainerSize = usePdfStore(s => s.setContainerSize)
   const setScrollToPage = usePdfStore(s => s.setScrollToPage)
@@ -115,13 +117,43 @@ export default function PdfViewer() {
 
   const canAutoscroll = settings.autoscrollSpeed > 0
 
+  // Hand tool: grab-drag to pan the document. Active only when no annotation
+  // tool is selected and pan mode is on (Text tool turns pan off for selection).
+  const handActive = panMode && activeTool === null
+  const panRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null)
+
+  const onPanDown = useCallback((e: React.MouseEvent) => {
+    if (!handActive || e.button !== 0) return
+    const el = scrollRef.current
+    if (!el) return
+    panRef.current = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop }
+  }, [handActive])
+
+  useEffect(() => {
+    if (!handActive) return
+    const onMove = (e: MouseEvent) => {
+      const p = panRef.current, el = scrollRef.current
+      if (!p || !el) return
+      el.scrollLeft = p.left - (e.clientX - p.x)
+      el.scrollTop = p.top - (e.clientY - p.y)
+    }
+    const onUp = () => { panRef.current = null }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [handActive])
+
   return (
     <div className="viewer-area" ref={viewerRef}>
       <Sidebar />
       <div
-        className="pdf-scroll-container"
+        className={`pdf-scroll-container${handActive ? ' pdf-pan-mode' : ''}`}
         ref={scrollRef}
         onScroll={handleScroll}
+        onMouseDown={onPanDown}
       >
         <div className="pdf-pages-stack">
           {Array.from({ length: numPages }, (_, i) => (

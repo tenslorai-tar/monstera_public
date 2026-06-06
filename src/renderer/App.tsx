@@ -240,7 +240,8 @@ export default function App() {
     if (!window.electronAPI.onMenuAction) return
     window.electronAPI.onMenuAction((action: string) => {
       const s = usePdfStore.getState()
-      const sel = [...s.selectedPages]
+      const rawSel = [...s.selectedPages]
+      const sel = rawSel.length > 0 ? rawSel : (s.numPages > 0 ? [s.currentPage] : [])
       switch (action) {
         case 'open':         openFile(); break
         case 'close':        s.closePdf(); break
@@ -358,6 +359,8 @@ export default function App() {
   const selectedPages = usePdfStore(s => s.selectedPages)
   const currentPage   = usePdfStore(s => s.currentPage)
   const selList = [...selectedPages]
+  // Page ops act on selected thumbnails, or fall back to the current page
+  const opPages = selList.length > 0 ? selList : (numPages > 0 ? [currentPage] : [])
 
   return (
     <div className="app">
@@ -380,12 +383,12 @@ export default function App() {
         onInsertBlankAfter={() => ops.insertBlankPage(currentPage)}
         onInsertFromPdf={() => ops.insertFromPdf(currentPage)}
         onInsertFromImage={() => ops.insertFromImage(currentPage)}
-        onDeletePages={() => { if (selList.length > 0) ops.deletePages(selList) }}
-        onExtractPages={() => { if (selList.length > 0) ops.extractPages(selList) }}
-        onDuplicatePages={() => { if (selList.length > 0) ops.duplicatePage(selList[0]) }}
-        onRotateCW={() => { if (selList.length > 0) ops.rotatePages(selList, 90) }}
-        onRotateCCW={() => { if (selList.length > 0) ops.rotatePages(selList, 270) }}
-        onRotate180={() => { if (selList.length > 0) ops.rotatePages(selList, 180) }}
+        onDeletePages={() => { if (opPages.length > 0) ops.deletePages(opPages) }}
+        onExtractPages={() => { if (opPages.length > 0) ops.extractPages(opPages) }}
+        onDuplicatePages={() => { if (opPages.length > 0) ops.duplicatePage(opPages[0]) }}
+        onRotateCW={() => { if (opPages.length > 0) ops.rotatePages(opPages, 90) }}
+        onRotateCCW={() => { if (opPages.length > 0) ops.rotatePages(opPages, 270) }}
+        onRotate180={() => { if (opPages.length > 0) ops.rotatePages(opPages, 180) }}
         onReverseOrder={ops.reversePages}
         onCommentStyles={() => setCommentStylesOpen(true)}
         onSummarizeComments={() => setSummarizeOpen(true)}

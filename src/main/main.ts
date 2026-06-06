@@ -90,6 +90,17 @@ function buildAppMenu(win: BrowserWindow): Menu {
         { type: 'separator' },
         { label: 'Stamp',               click: send('tool:stamp') },
         { type: 'separator' },
+        {
+          label: 'Measure',
+          submenu: [
+            { label: 'Distance',  click: send('tool:measure-distance') },
+            { label: 'Area',      click: send('tool:measure-area') },
+            { label: 'Perimeter', click: send('tool:measure-perimeter') },
+          ],
+        },
+        { label: 'Create Link',         click: send('tool:link') },
+        { label: 'Links Panel',         click: send('toggleLinksPanel') },
+        { type: 'separator' },
         { label: 'Mark for Redaction',  click: send('tool:redact') },
         { label: 'Apply All Redactions', click: send('applyRedactions') },
         { type: 'separator' },
@@ -134,6 +145,15 @@ function buildAppMenu(win: BrowserWindow): Menu {
             { label: 'Page Background…',    click: send('background') },
             { label: 'Bates Numbering…',    click: send('batesNumbers') },
             { label: 'Crop Page…',          click: send('cropPages') },
+          ],
+        },
+        {
+          label: 'Advanced',
+          submenu: [
+            { label: 'Swap Two Pages…',          click: send('swapPages') },
+            { label: 'Resize Pages…',            click: send('resizePages') },
+            { label: 'Delete Empty Pages',       click: send('deleteEmptyPages') },
+            { label: 'Normalize Page Origins',   click: send('normalizePages') },
           ],
         },
       ],

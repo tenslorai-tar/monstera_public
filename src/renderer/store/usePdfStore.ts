@@ -114,6 +114,7 @@ interface PdfStore {
   // ── Annotations ─────────────────────────────────────────────────────────────
   annotations: Annotation[]
   activeTool: AnnotationTool | null
+  panMode: boolean
   selectedAnnotationId: string | null
   toolColor: string
   toolOpacity: number
@@ -181,6 +182,7 @@ interface PdfStore {
   prevMatch: () => void
 
   setActiveTool: (tool: AnnotationTool | null) => void
+  setPanMode: (v: boolean) => void
   addAnnotation: (ann: Annotation) => void
   updateAnnotation: (id: string, patch: Partial<Annotation>) => void
   deleteAnnotation: (id: string) => void
@@ -254,6 +256,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   // ── Annotation defaults ──────────────────────────────────────────────────
   annotations: [],
   activeTool: null,
+  panMode: true,
   selectedAnnotationId: null,
   toolColor: '#ffcc00',
   toolOpacity: 0.7,
@@ -545,6 +548,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   // ── Annotations ──────────────────────────────────────────────────────────
 
   setActiveTool: (tool) => set({ activeTool: tool, selectedAnnotationId: null }),
+  setPanMode: (v) => set({ panMode: v }),
   addAnnotation: (ann) => set(s => ({ annotations: [...s.annotations, ann], isDirty: true })),
   updateAnnotation: (id, patch) => set(s => ({
     annotations: s.annotations.map(a => a.id === id ? { ...a, ...patch } as Annotation : a),

@@ -12,22 +12,26 @@ export default function LeftPalette() {
   const numPages   = usePdfStore(s => s.numPages)
   const scale      = usePdfStore(s => s.scale)
   const activeTool = usePdfStore(s => s.activeTool)
+  const panMode    = usePdfStore(s => s.panMode)
   const setScale   = usePdfStore(s => s.setScale)
   const setActiveTool = usePdfStore(s => s.setActiveTool)
+  const setPanMode = usePdfStore(s => s.setPanMode)
 
   if (numPages === 0) return null
 
-  const isHand   = activeTool === null
   const isActive = (id: string) => {
-    if (id === 'hand') return isHand
+    if (id === 'hand')     return activeTool === null && panMode
+    if (id === 'text-sel') return activeTool === null && !panMode
+    if (id === 'snapshot') return activeTool === 'snapshot'
     return false
   }
 
   const handleClick = (id: string) => {
-    if (id === 'hand' || id === 'text-sel') { setActiveTool(null); return }
+    if (id === 'hand')     { setActiveTool(null); setPanMode(true);  return }
+    if (id === 'text-sel') { setActiveTool(null); setPanMode(false); return }
     if (id === 'zoom-in')  { setScale(Math.min(5,    Math.round((scale + 0.25) * 100) / 100)); return }
     if (id === 'zoom-out') { setScale(Math.max(0.1, Math.round((scale - 0.25) * 100) / 100)); return }
-    // snapshot — placeholder
+    if (id === 'snapshot') { setActiveTool('snapshot'); return }
   }
 
   return (

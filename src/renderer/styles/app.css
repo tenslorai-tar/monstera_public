@@ -256,6 +256,44 @@
   padding: 3px 8px;
   font-size: 12px;
 }
+/* Icon-only grid (e.g. Shapes) — square buttons, tooltip on hover */
+.rbn-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+  align-content: center;
+  padding: 0 1px;
+}
+.rbn-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+.rbn-icon-btn:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--border-light); }
+.rbn-icon-btn:disabled { opacity: 0.3; cursor: default; pointer-events: none; }
+
+/* Hint pointing to the native menu for less-common tools */
+.rbn-more-hint {
+  display: flex;
+  align-items: center;
+  align-self: center;
+  max-width: 200px;
+  margin: 0 14px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.rbn-more-hint strong { color: var(--text-secondary); }
 
 /* ── Right side: nav + zoom ──────────────────────────────── */
 .rbn-right {
@@ -425,8 +463,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 24px;
-  padding: 0 12px;
+  height: 30px;
+  padding: 0 10px;
   background: var(--bg-secondary);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
@@ -435,6 +473,51 @@
   user-select: none;
   gap: 8px;
 }
+
+/* Zoom + page controls in status bar */
+.status-zoom {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+}
+.status-zoom-sep { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
+.status-zoom-btn {
+  width: 22px; height: 20px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-toolbar);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 14px; line-height: 1; cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+.status-zoom-btn:hover { background: var(--bg-hover); border-color: var(--accent); }
+.status-zoom-select {
+  height: 20px;
+  padding: 0 4px;
+  background: var(--bg-toolbar);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 11px; cursor: pointer; outline: none;
+  min-width: 78px;
+}
+.status-zoom-select:hover { border-color: var(--accent); }
+.status-page-display {
+  min-width: 44px; text-align: center;
+  padding: 2px 8px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--text-primary); cursor: text; font-size: 11px;
+}
+.status-page-display:hover { border-color: var(--accent); }
+.status-page-input {
+  width: 50px; height: 20px; padding: 0 6px;
+  background: var(--bg-toolbar); color: var(--text-primary);
+  border: 1px solid var(--accent); border-radius: var(--radius-sm);
+  font-size: 11px; text-align: center; outline: none;
+}
+.status-page-input::-webkit-inner-spin-button { display: none; }
 .status-left, .status-right {
   display: flex;
   align-items: center;
@@ -733,6 +816,10 @@
 .pdf-scroll-container::-webkit-scrollbar { width: 8px; height: 8px; }
 .pdf-scroll-container::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
+/* Hand tool: grab cursor + suppress text selection while panning */
+.pdf-pan-mode, .pdf-pan-mode * { cursor: grab !important; user-select: none !important; }
+.pdf-pan-mode:active, .pdf-pan-mode:active * { cursor: grabbing !important; }
+
 .pdf-pages-stack {
   display: flex;
   flex-direction: column;
@@ -882,8 +969,8 @@
 }
 
 .start-logo {
-  width: 132px;
-  height: 132px;
+  width: 106px;
+  height: 106px;
   display: flex;
   align-items: center;
   justify-content: center;

@@ -3,7 +3,6 @@ import { usePdfStore } from '../store/usePdfStore'
 import { useSettingsStore } from '../store/useSettingsStore'
 import type { AnnotationTool, StampName, PlacedImageAnn } from '../types/annotations'
 import type { FormCreationTool } from '../types/forms'
-import type { ZoomMode } from '../store/usePdfStore'
 import { newId } from '../utils/annotationUtils'
 import logoUrl from '../assets/monstera-logo.png'
 
@@ -83,7 +82,6 @@ interface Props {
   onSplitView: () => void
 }
 
-const ZOOM_PRESETS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]
 const STAMP_NAMES: StampName[] = ['Approved', 'Draft', 'Confidential', 'Rejected', 'Custom']
 const DYNAMIC_STAMP_NAMES = ['Today', 'Received', 'Revised', 'Void', 'For Review']
 
@@ -102,14 +100,12 @@ export default function RibbonToolbar(props: Props) {
     onInsertBlankBefore, onInsertBlankAfter, onInsertFromPdf, onInsertFromImage,
     onDeletePages, onExtractPages, onDuplicatePages, onRotateCW, onRotateCCW, onRotate180, onReverseOrder,
     onCommentStyles, onSummarizeComments, onFlattenAnnotations,
-    onHeaderFooter, onWatermark, onBackground, onBatesNumbers, onCropPages,
+    onHeaderFooter, onWatermark, onBatesNumbers, onCropPages,
     onCompare, onAccessibility, onWordCount, onTranslate, onSpellCheck,
-    onSwapPages, onResizePages, onDeleteEmptyPages, onNormalizePages,
     onFindRedact, onOptimize, onOpenUrl, onReplacePage, onMeasureCalibration,
-    onAiAssistant, onOfficeImport, onCloudStorage, onDocuSign,
-    onNativeBins, onPdfConvert,
-    onMarkdownToPdf, onCsvToPdf, onEditExternal, onTaggedPdf, onImportToLayer,
-    onEmail, onFindDuplicates, onWebcam, onPageTransitions, onTocGenerator, onOcrRegion, onDeskew,
+    onAiAssistant, onOfficeImport,
+    onMarkdownToPdf, onCsvToPdf, onEditExternal, onOcrRegion, onDeskew,
+    onWebcam,
     onMultiPageStamp, onSplitView,
   } = props
 
@@ -122,8 +118,6 @@ export default function RibbonToolbar(props: Props) {
   const fileName          = usePdfStore(s => s.fileName)
   const numPages          = usePdfStore(s => s.numPages)
   const currentPage       = usePdfStore(s => s.currentPage)
-  const scale             = usePdfStore(s => s.scale)
-  const zoomMode          = usePdfStore(s => s.zoomMode)
   const sidebarOpen       = usePdfStore(s => s.sidebarOpen)
   const bookmarksPanelOpen = usePdfStore(s => s.bookmarksPanelOpen)
   const searchOpen        = usePdfStore(s => s.searchOpen)
@@ -131,7 +125,6 @@ export default function RibbonToolbar(props: Props) {
   const undoStack         = usePdfStore(s => s.undoStack)
   const redoStack         = usePdfStore(s => s.redoStack)
   const encryptionSettings = usePdfStore(s => s.encryptionSettings)
-  const selectedPages     = usePdfStore(s => s.selectedPages)
   const activeTool           = usePdfStore(s => s.activeTool)
   const selectedAnnotationId = usePdfStore(s => s.selectedAnnotationId)
   const toolColor            = usePdfStore(s => s.toolColor)
@@ -146,18 +139,10 @@ export default function RibbonToolbar(props: Props) {
   const formsPanelOpen    = usePdfStore(s => s.formsPanelOpen)
   const formFields        = usePdfStore(s => s.formFields)
   const pageSizes         = usePdfStore(s => s.pageSizes)
-  const layersPanelOpen   = usePdfStore(s => s.layersPanelOpen)
-  const namedDestsPanelOpen = usePdfStore(s => s.namedDestsPanelOpen)
-  const layers            = usePdfStore(s => s.layers)
-  const namedDests        = usePdfStore(s => s.namedDests)
-  const linksPanelOpen    = usePdfStore(s => s.linksPanelOpen)
 
-  const setScale          = usePdfStore(s => s.setScale)
-  const setZoomMode       = usePdfStore(s => s.setZoomMode)
   const toggleSidebar     = usePdfStore(s => s.toggleSidebar)
   const toggleBookmarksPanel = usePdfStore(s => s.toggleBookmarksPanel)
   const setSearchOpen     = usePdfStore(s => s.setSearchOpen)
-  const scrollToPage      = usePdfStore(s => s.scrollToPage)
   const save              = usePdfStore(s => s.save)
   const saveAs            = usePdfStore(s => s.saveAs)
   const undo              = usePdfStore(s => s.undo)
@@ -176,9 +161,6 @@ export default function RibbonToolbar(props: Props) {
   const flattenForm       = usePdfStore(s => s.flattenForm)
   const identifyForms     = usePdfStore(s => s.identifyForms)
   const addAnnotation     = usePdfStore(s => s.addAnnotation)
-  const toggleLinksPanel  = usePdfStore(s => s.toggleLinksPanel)
-  const toggleLayersPanel = usePdfStore(s => s.toggleLayersPanel)
-  const toggleNamedDestsPanel = usePdfStore(s => s.toggleNamedDestsPanel)
 
   const { settings, updateSettings } = useSettingsStore()
   const theme = settings.theme
@@ -186,14 +168,7 @@ export default function RibbonToolbar(props: Props) {
   const stampFileRef = useRef<HTMLInputElement>(null)
   const imageFileRef = useRef<HTMLInputElement>(null)
 
-  const [pageInput,   setPageInput]   = useState('')
-  const [editingPage, setEditingPage] = useState(false)
-  const [zoomInput,   setZoomInput]   = useState('')
-  const [editingZoom, setEditingZoom] = useState(false)
-
   const hasPdf   = numPages > 0
-  const zoomPct  = Math.round(scale * 100)
-  const hasSel   = selectedPages.size > 0
   const pendingRedact = annotations.filter(a => a.type === 'redact').length
   const showLineWidth = ['ink','rectangle','ellipse','line','arrow',
     'polygon','polyline','cloud','callout',
@@ -202,28 +177,6 @@ export default function RibbonToolbar(props: Props) {
 
   const toggle     = (t: AnnotationTool) => setActiveTool(activeTool === t ? null : t)
   const toggleFTool= (t: FormCreationTool) => setFormCreationTool(formCreationTool === t ? null : t)
-
-  const commitPage = () => {
-    const n = parseInt(pageInput, 10)
-    if (!isNaN(n) && n >= 1 && n <= numPages) scrollToPage(n)
-    setEditingPage(false)
-  }
-  const commitZoom = () => {
-    const p = parseFloat(zoomInput)
-    if (!isNaN(p) && p > 0) setScale(Math.min(500, Math.max(10, p)) / 100)
-    setEditingZoom(false)
-  }
-  const zoomIn  = () => setScale(Math.min(5,    Math.round((scale + 0.25) * 100) / 100))
-  const zoomOut = () => setScale(Math.max(0.1, Math.round((scale - 0.25) * 100) / 100))
-
-  const handleZoomSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const v = e.target.value as ZoomMode | string
-    if (v === 'fit-width' || v === 'fit-page') setZoomMode(v)
-    else setScale(parseFloat(v))
-  }
-  const zoomVal = zoomMode === 'fit-width' ? 'fit-width'
-    : zoomMode === 'fit-page' ? 'fit-page'
-    : ZOOM_PRESETS.includes(scale) ? String(scale) : 'custom'
 
   const handleCustomStamp = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return
@@ -288,6 +241,20 @@ export default function RibbonToolbar(props: Props) {
     </button>
   )
 
+  const IBtn = ({
+    icon, active = false, disabled = false, title = '', onClick, danger = false,
+  }: {
+    icon: React.ReactNode; active?: boolean; disabled?: boolean
+    title?: string; onClick?: () => void; danger?: boolean
+  }) => (
+    <button
+      className={`rbn-icon-btn${active ? ' rbn-btn-sm-active' : ''}${danger ? ' rbn-btn-sm-danger' : ''}`}
+      title={title} onClick={onClick} disabled={disabled}
+    >
+      <span className="rbn-btn-sm-icon">{icon}</span>
+    </button>
+  )
+
   const Group = ({ label, children }: { label: string; children: React.ReactNode }) => (
     <>
       <div className="rbn-group">
@@ -297,44 +264,6 @@ export default function RibbonToolbar(props: Props) {
       <div className="rbn-group-sep" />
     </>
   )
-
-  const NavZoom = () => hasPdf ? (
-    <div className="rbn-right">
-      <button className="rbn-nav-btn" onClick={zoomOut} title="Zoom out (Ctrl+−)">−</button>
-      {editingZoom ? (
-        <input className="rbn-zoom-input" type="number" min={10} max={500} autoFocus
-          value={zoomInput} onChange={e => setZoomInput(e.target.value)} onBlur={commitZoom}
-          onKeyDown={e => { if (e.key === 'Enter') commitZoom(); if (e.key === 'Escape') setEditingZoom(false) }} />
-      ) : (
-        <select className="rbn-zoom-select" value={zoomVal} onChange={handleZoomSelect}
-          onDoubleClick={() => { setEditingZoom(true); setZoomInput(String(zoomPct)) }}>
-          {zoomVal === 'custom' && <option value="custom" disabled>{zoomPct}%</option>}
-          <option value="fit-page">Fit Page</option>
-          <option value="fit-width">Fit Width</option>
-          <option value="0.5">50%</option>
-          <option value="0.75">75%</option>
-          <option value="1">100%</option>
-          <option value="1.25">125%</option>
-          <option value="1.5">150%</option>
-          <option value="2">200%</option>
-          <option value="3">300%</option>
-        </select>
-      )}
-      <button className="rbn-nav-btn" onClick={zoomIn} title="Zoom in (Ctrl++)">+</button>
-      <div className="rbn-nav-sep" />
-      {editingPage ? (
-        <input className="rbn-page-input" type="number" min={1} max={numPages} autoFocus
-          value={pageInput} onChange={e => setPageInput(e.target.value)} onBlur={commitPage}
-          onKeyDown={e => { if (e.key === 'Enter') commitPage(); if (e.key === 'Escape') setEditingPage(false) }} />
-      ) : (
-        <span className="rbn-page-display"
-          onClick={() => { setEditingPage(true); setPageInput(String(currentPage)) }}
-          title="Click to jump to page">{currentPage}
-        </span>
-      )}
-      <span className="rbn-page-total">/ {numPages}</span>
-    </div>
-  ) : null
 
   // ── Tab: Home ─────────────────────────────────────────────────────────────
 
@@ -410,15 +339,15 @@ export default function RibbonToolbar(props: Props) {
       </Group>
 
       <Group label="Shapes">
-        <div className="rbn-grid2">
-          <SBtn icon="□" label="Rect" active={activeTool === 'rectangle'} onClick={() => toggle('rectangle')} title="Rectangle" />
-          <SBtn icon="○" label="Ellipse" active={activeTool === 'ellipse'} onClick={() => toggle('ellipse')} title="Ellipse / circle" />
-          <SBtn icon="╱" label="Line" active={activeTool === 'line'} onClick={() => toggle('line')} title="Line" />
-          <SBtn icon="→" label="Arrow" active={activeTool === 'arrow'} onClick={() => toggle('arrow')} title="Arrow" />
-          <SBtn icon="⬠" label="Polygon" active={activeTool === 'polygon'} onClick={() => toggle('polygon')} title="Polygon — click points, DblClick to finish" />
-          <SBtn icon="〰" label="Polyline" active={activeTool === 'polyline'} onClick={() => toggle('polyline')} title="Polyline — click points, DblClick to finish" />
-          <SBtn icon="☁" label="Cloud" active={activeTool === 'cloud'} onClick={() => toggle('cloud')} title="Cloud annotation — click points, DblClick to finish" />
-          <SBtn icon="⌃" label="Caret" active={activeTool === 'caret'} onClick={() => toggle('caret')} title="Caret insertion mark — single click to place" />
+        <div className="rbn-icon-grid">
+          <IBtn icon="▭" active={activeTool === 'rectangle'} onClick={() => toggle('rectangle')} title="Rectangle" />
+          <IBtn icon="◯" active={activeTool === 'ellipse'} onClick={() => toggle('ellipse')} title="Ellipse / circle" />
+          <IBtn icon="╱" active={activeTool === 'line'} onClick={() => toggle('line')} title="Line" />
+          <IBtn icon="→" active={activeTool === 'arrow'} onClick={() => toggle('arrow')} title="Arrow" />
+          <IBtn icon="⬠" active={activeTool === 'polygon'} onClick={() => toggle('polygon')} title="Polygon — click points, DblClick to finish" />
+          <IBtn icon="〰" active={activeTool === 'polyline'} onClick={() => toggle('polyline')} title="Polyline — click points, DblClick to finish" />
+          <IBtn icon="☁" active={activeTool === 'cloud'} onClick={() => toggle('cloud')} title="Cloud — click points, DblClick to finish" />
+          <IBtn icon="⌃" active={activeTool === 'caret'} onClick={() => toggle('caret')} title="Caret insertion mark — single click to place" />
         </div>
       </Group>
 
@@ -456,17 +385,13 @@ export default function RibbonToolbar(props: Props) {
         <input ref={stampFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleCustomStamp} />
       </Group>
 
-      <Group label="Measure">
-        <div className="rbn-stack">
-          <SBtn icon="↔" label="Distance" active={activeTool === 'measure-distance'} onClick={() => toggle('measure-distance')} title="Measure distance — click 2 points" />
-          <SBtn icon="⬡" label="Area" active={activeTool === 'measure-area'} onClick={() => toggle('measure-area')} title="Measure area — click points, DblClick to close" />
-          <SBtn icon="⬠" label="Perimeter" active={activeTool === 'measure-perimeter'} onClick={() => toggle('measure-perimeter')} title="Measure perimeter — click points, DblClick to close" />
+      <Group label="Measure & Link">
+        <div className="rbn-icon-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+          <IBtn icon="↔" active={activeTool === 'measure-distance'} onClick={() => toggle('measure-distance')} title="Measure distance — click 2 points" />
+          <IBtn icon="⬡" active={activeTool === 'measure-area'} onClick={() => toggle('measure-area')} title="Measure area — click points, DblClick to close" />
+          <IBtn icon="⬠" active={activeTool === 'measure-perimeter'} onClick={() => toggle('measure-perimeter')} title="Measure perimeter — click points, DblClick to close" />
+          <IBtn icon="🔗" active={activeTool === 'link'} onClick={() => toggle('link')} title="Create a link — drag a rectangle, then enter URL or page number" />
         </div>
-      </Group>
-
-      <Group label="Links">
-        <LBtn icon="🔗" label="Link" active={activeTool === 'link'} onClick={() => toggle('link')} title="Create a link — drag a rectangle, then enter URL or page number" />
-        <SBtn icon="≡" label="Links" active={linksPanelOpen} onClick={toggleLinksPanel} title="Links panel" />
       </Group>
 
       <Group label="Style">
@@ -591,15 +516,17 @@ export default function RibbonToolbar(props: Props) {
 
       <Group label="Page Operations">
         <div className="rbn-grid2">
-          <SBtn icon="🗑" label="Delete" onClick={onDeletePages} disabled={!hasSel} title="Delete selected pages" />
-          <SBtn icon="⟳" label="Rot CW" onClick={onRotateCW} disabled={!hasSel} title="Rotate selected pages clockwise 90°" />
-          <SBtn icon="⟲" label="Rot CCW" onClick={onRotateCCW} disabled={!hasSel} title="Rotate selected pages counter-clockwise 90°" />
-          <SBtn icon="⧉" label="Duplicate" onClick={onDuplicatePages} disabled={!hasSel} title="Duplicate selected pages" />
+          <SBtn icon="🗑" label="Delete" onClick={onDeletePages} title="Delete selected pages (or the current page)" />
+          <SBtn icon="⟳" label="Rot CW" onClick={onRotateCW} title="Rotate clockwise 90° — selected pages, or the current page" />
+          <SBtn icon="⟲" label="Rot CCW" onClick={onRotateCCW} title="Rotate counter-clockwise 90° — selected pages, or the current page" />
+          <SBtn icon="↻" label="Rot 180°" onClick={onRotate180} title="Rotate 180° — selected pages, or the current page" />
+          <SBtn icon="⧉" label="Duplicate" onClick={onDuplicatePages} title="Duplicate selected pages (or the current page)" />
+          <SBtn icon="↕" label="Reverse" onClick={onReverseOrder} title="Reverse the order of all pages" />
         </div>
       </Group>
 
       <Group label="Extract & Split">
-        <LBtn icon="📤" label="Extract" onClick={onExtractPages} disabled={!hasSel} title="Extract selected pages to a new PDF" />
+        <LBtn icon="📤" label="Extract" onClick={onExtractPages} title="Extract selected pages (or current page) to a new PDF" />
         <LBtn icon="✂" label="Split" onClick={onSplit} title="Split document into multiple files by page ranges" />
       </Group>
 
@@ -608,29 +535,12 @@ export default function RibbonToolbar(props: Props) {
         <SBtn icon="📥" label="Import Office" onClick={onOfficeImport} title="Convert and import Word or Excel file as PDF" />
       </Group>
 
-      <Group label="Order">
-        <div className="rbn-stack">
-          <SBtn icon="↕" label="Reverse Order" onClick={onReverseOrder} title="Reverse the order of all pages" />
-          <SBtn icon="↻" label="Rotate 180°" onClick={onRotate180} disabled={!hasSel} title="Rotate selected pages 180°" />
-        </div>
-      </Group>
-
       <Group label="Page Design">
-        <div className="rbn-stack">
+        <div className="rbn-grid2">
           <SBtn icon="📑" label="Header/Footer" onClick={onHeaderFooter} title="Add headers and footers to pages" />
           <SBtn icon="💧" label="Watermark" onClick={onWatermark} title="Add a text watermark to pages" />
-          <SBtn icon="🎨" label="Background" onClick={onBackground} title="Add a color background to pages" />
           <SBtn icon="🔢" label="Bates Nos." onClick={onBatesNumbers} title="Add Bates sequential numbering" />
           <SBtn icon="✂" label="Crop" onClick={onCropPages} title="Crop pages by setting the visible area" />
-        </div>
-      </Group>
-
-      <Group label="Advanced">
-        <div className="rbn-stack">
-          <SBtn icon="⇄" label="Swap Pages" onClick={onSwapPages} title="Swap positions of two pages" />
-          <SBtn icon="⬛" label="Resize Pages" onClick={onResizePages} title="Resize pages to a standard paper size" />
-          <SBtn icon="🗑" label="Del Empty" onClick={onDeleteEmptyPages} title="Delete all empty/blank pages" />
-          <SBtn icon="⊡" label="Normalize" onClick={onNormalizePages} title="Normalize page MediaBox origins to (0,0)" />
         </div>
       </Group>
     </>
@@ -803,36 +713,9 @@ export default function RibbonToolbar(props: Props) {
         )}
       </Group>
 
-      <Group label="Navigation">
-        <div className="rbn-stack">
-          <SBtn icon="📂" label="Layers" active={layersPanelOpen} onClick={toggleLayersPanel}
-            disabled={layers.length === 0}
-            title={layers.length > 0 ? 'Layers panel — toggle OCG layer visibility' : 'No layers in this document'} />
-          <SBtn icon="⚓" label="Dests" active={namedDestsPanelOpen} onClick={toggleNamedDestsPanel}
-            disabled={namedDests.length === 0}
-            title={namedDests.length > 0 ? 'Named destinations panel' : 'No named destinations in this document'} />
-        </div>
-      </Group>
-
       <Group label="Calibration">
         <LBtn icon="📐" label="Measure" onClick={onMeasureCalibration}
           title={`Set measurement unit (current: ${settings.measureUnit})`} />
-      </Group>
-
-      <Group label="AI & Translate">
-        <div className="rbn-stack">
-          <SBtn icon="🤖" label="AI Assistant" onClick={onAiAssistant}
-            title="AI-powered document Q&A, summarization, and analysis (requires Anthropic API key)" />
-        </div>
-      </Group>
-
-      <Group label="Cloud">
-        <div className="rbn-stack">
-          <SBtn icon="☁" label="Cloud" onClick={onCloudStorage}
-            title="Open or save PDFs from Google Drive, Dropbox, OneDrive, Box, or SharePoint" />
-          <SBtn icon="✍" label="DocuSign" onClick={onDocuSign}
-            title="Send PDF for e-signature via DocuSign" />
-        </div>
       </Group>
 
       <Group label="Import">
@@ -859,54 +742,17 @@ export default function RibbonToolbar(props: Props) {
         </div>
       </Group>
 
-      <Group label="Document">
-        <div className="rbn-grid2">
-          <SBtn icon="🏷" label="Tagged PDF" onClick={onTaggedPdf}
-            title="View document structure (reading order) and set accessibility metadata" />
-          <SBtn icon="📑" label="Layers" onClick={onImportToLayer}
-            title="Import pages from another PDF as an optional content layer" />
-          <SBtn icon="🎬" label="Transitions" onClick={onPageTransitions}
-            title="Set slide-show page transition effects" />
-          <SBtn icon="📑" label="TOC" onClick={onTocGenerator}
-            title="Generate a Table of Contents page from bookmarks" />
-        </div>
-      </Group>
-
-      <Group label="Manage">
-        <div className="rbn-stack">
-          <SBtn icon="🔍" label="Duplicates" onClick={onFindDuplicates}
-            title="Find and remove duplicate pages" />
-          <SBtn icon="📧" label="Email" onClick={onEmail}
-            title="Email this document via your default email client" />
-        </div>
-      </Group>
-
-      <Group label="Standards">
-        <div className="rbn-grid2">
-          <SBtn icon="📦" label="PDF/A" onClick={onPdfConvert}
-            title="Convert to PDF/A archival format (ISO 19005) — requires Ghostscript" />
-          <SBtn icon="🖨" label="PDF/X" onClick={onPdfConvert}
-            title="Convert to PDF/X print-production format — requires Ghostscript" />
-          <SBtn icon="🎨" label="Color" onClick={onPdfConvert}
-            title="Convert color space: Grayscale or CMYK — requires Ghostscript" />
-          <SBtn icon="🔧" label="Repair" onClick={onPdfConvert}
-            title="Clean, repair, and linearize PDF structure (mutool)" />
-        </div>
-      </Group>
-
-      <Group label="Native Tools">
-        <div className="rbn-stack">
-          <SBtn icon="⚙" label="Setup" onClick={onNativeBins}
-            title="Install/check native tools: Ghostscript, mutool, LibreOffice" />
-        </div>
-      </Group>
-
       <Group label="Preferences">
         <div className="rbn-stack">
           <SBtn icon="⚙" label="Settings" onClick={onSettings} title="Application preferences (Ctrl+,)" />
           <SBtn icon="⌨" label="Shortcuts" onClick={onShortcuts} title="Keyboard shortcut reference (F1)" />
         </div>
       </Group>
+
+      <div className="rbn-more-hint">
+        Cloud, PDF/A·X, Tagged PDF, TOC, Email, Duplicates, DocuSign &amp; more&nbsp;→&nbsp;
+        <strong>Tools</strong> menu in the top menu bar
+      </div>
     </>
   )
 
@@ -977,7 +823,6 @@ export default function RibbonToolbar(props: Props) {
         {activeTab === 'review'   && (hasPdf ? <ReviewTab   /> : <NoPdfMsg tab="Review"   />)}
         {activeTab === 'protect'  && (hasPdf ? <ProtectTab  /> : <NoPdfMsg tab="Protect"  />)}
         {activeTab === 'tools'    && (hasPdf ? <ToolsTab    /> : <NoPdfMsg tab="Tools"    />)}
-        <NavZoom />
       </div>
     </div>
   )
