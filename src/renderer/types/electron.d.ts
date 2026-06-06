@@ -30,6 +30,12 @@ declare global {
         pageIndex: number,
         rect: { x1: number; y1: number; x2: number; y2: number },
       ) => Promise<{ text: string; fontSize: number; found: boolean }>
+      pdfiumTextObjectAt: (
+        bytes: ArrayBuffer,
+        pageIndex: number,
+        x: number,
+        y: number,
+      ) => Promise<{ found: boolean; text: string; fontSize: number; color: string; x1: number; y1: number; x2: number; y2: number }>
       pdfiumEditText: (
         bytes: ArrayBuffer,
         pageIndex: number,

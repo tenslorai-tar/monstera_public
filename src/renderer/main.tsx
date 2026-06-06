@@ -17,6 +17,7 @@ if (!window.electronAPI) {
     pdfiumStatus: async () => ({ available: false }),
     pdfiumEditText: emptyBuf,
     pdfiumTextInRegion: async () => ({ text: '', fontSize: 0, found: false }),
+    pdfiumTextObjectAt: async () => ({ found: false, text: '', fontSize: 0, color: '#000000', x1: 0, y1: 0, x2: 0, y2: 0 }),
     pdfiumRenderPage: async () => ({ data: new ArrayBuffer(0), width: 0, height: 0 }),
     pdfiumEnsureSession: async () => false,
     pdfiumCloseSession: noop,

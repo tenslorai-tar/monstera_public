@@ -484,6 +484,32 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
         w: Math.abs(ex - draw.sx), h: Math.abs(ey - draw.sy), text: '' })
     } else if (draw.k === 'text-edit-size') {
       const sx = draw.sx, sy = draw.sy
+      // Click (not drag): edit the single text object under the cursor in place,
+      // sized exactly to it — the PDF-XChange-style "click into text" workflow.
+      if (Math.abs(ex - sx) < 6 && Math.abs(ey - sy) < 6) {
+        const [px, py] = toPdf(sx, sy)
+        ;(async () => {
+          try {
+            if (await pdfiumReady()) {
+              const bytes = usePdfStore.getState().pdfBytes
+              if (bytes) {
+                const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+                const obj = await window.electronAPI.pdfiumTextObjectAt(ab, pageNum - 1, px, py)
+                if (obj.found) {
+                  const [ox1, oy2] = toSvg(obj.x1, obj.y2) // top-left
+                  const [ox2, oy1] = toSvg(obj.x2, obj.y1) // bottom-right
+                  setDraw({ k: 'text-edit-edit', x: ox1, y: oy2,
+                    w: Math.max(24, ox2 - ox1), h: Math.max(10, oy1 - oy2),
+                    text: obj.text, fontSize: obj.fontSize, color: obj.color })
+                  return
+                }
+              }
+            }
+          } catch { /* fall through to cancel */ }
+          setDraw({ k: 'idle' })
+        })()
+        return
+      }
       if (Math.abs(ex - sx) < 10 || Math.abs(ey - sy) < 10) { setDraw({ k: 'idle' }); return }
       const bx = Math.min(sx, ex), by = Math.min(sy, ey)
       const bw = Math.abs(ex - sx), bh = Math.abs(ey - sy)

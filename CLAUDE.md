@@ -192,7 +192,7 @@ Monstera PDF Editor/
 
 ### Phase 7 — Advanced Editing ✅ (partial)
 - [x] Redaction tool — mark areas with drag, apply permanently via MuPDF (content truly removed, not just covered)
-- [x] Edit existing text — overlay approach (cover + replace): drag to select any region, white rect covers original, type replacement text. **Not** true in-place font-matched editing — MuPDF WASM has no text-stream editing API; real in-place editing would require a native MuPDF build or a different library
+- [x] Edit existing text — **true in-place editing via the PDFium engine** (koffi FFI, main process). Click any text with the Edit Text tool to edit that text object in place with its original font/size/colour preserved (`FPDFText_SetText` reflows the glyph advances); or drag a region to replace it. Falls back to a font-matched cover-and-replace overlay only when PDFium is unavailable. PDFium engine lives in `src/main/pdfiumEngine.ts`; see also the opt-in PDFium HD page renderer (Tools → Display → HD Render) and the persistent render session
 - [x] Typewriter tool — click anywhere on a page and type new text; no box border; saved as FreeText annotation
 - [x] Image insertion — insert PNG/JPEG onto any page, placed at page center; drag to move, drag corner handle to resize; deleted with eraser or select+Delete; baked into PDF content stream on save
 - [ ] Crop page

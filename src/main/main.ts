@@ -394,6 +394,14 @@ ipcMain.handle('pdfium:textInRegion', async (
   rect: { x1: number; y1: number; x2: number; y2: number },
 ) => pdfium.getTextInRegion(Buffer.from(bytes), pageIndex, rect))
 
+ipcMain.handle('pdfium:textObjectAt', async (
+  _event,
+  bytes: ArrayBuffer,
+  pageIndex: number,
+  x: number,
+  y: number,
+) => pdfium.getTextObjectAt(Buffer.from(bytes), pageIndex, x, y))
+
 ipcMain.handle('pdfium:editText', async (
   _event,
   bytes: ArrayBuffer,

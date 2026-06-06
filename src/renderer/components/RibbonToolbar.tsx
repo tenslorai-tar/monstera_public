@@ -452,7 +452,7 @@ export default function RibbonToolbar(props: Props) {
 
       <Group label="Content">
         <div className="rbn-stack">
-          <SBtn icon={<span style={{ fontSize:10 }}>ab→cd</span>} label="Edit Text" active={activeTool === 'text-edit'} onClick={() => toggle('text-edit')} title="Cover text region and type replacement" />
+          <SBtn icon={<span style={{ fontSize:10 }}>ab→cd</span>} label="Edit Text" active={activeTool === 'text-edit'} onClick={() => toggle('text-edit')} title="Click any text to edit it in place (font preserved), or drag to replace a region" />
           <SBtn icon="🖼" label="Image" onClick={() => imageFileRef.current?.click()} title="Insert a PNG / JPEG onto the page" />
           <SBtn icon="📷" label="Snapshot" active={activeTool === 'snapshot'} onClick={() => toggle('snapshot')} title="Drag a region on the page to capture it as a PNG" />
         </div>
