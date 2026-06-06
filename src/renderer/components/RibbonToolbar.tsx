@@ -84,6 +84,7 @@ interface Props {
   onScan: () => void
   onSanitize: () => void
   onEmailImport: () => void
+  onReadBarcode: () => void
 }
 
 const STAMP_NAMES: StampName[] = ['Approved', 'Draft', 'Confidential', 'Rejected', 'Custom']
@@ -110,7 +111,7 @@ export default function RibbonToolbar(props: Props) {
     onAiAssistant, onOfficeImport,
     onMarkdownToPdf, onCsvToPdf, onEditExternal, onOcrRegion, onDeskew,
     onWebcam,
-    onMultiPageStamp, onSplitView, onBarcode, onScan, onSanitize, onEmailImport,
+    onMultiPageStamp, onSplitView, onBarcode, onScan, onSanitize, onEmailImport, onReadBarcode,
   } = props
 
   const resetFormFields = usePdfStore(s => s.resetFormFields)
@@ -459,6 +460,8 @@ export default function RibbonToolbar(props: Props) {
           title="Select any text, image or shape on the page — move, resize, recolour or delete it" />
         <LBtn icon="▦" label="Barcode/QR" onClick={onBarcode}
           title="Generate a QR code or barcode and place it on the page" />
+        <LBtn icon="🔎" label="Read Codes" onClick={onReadBarcode}
+          title="Detect & decode barcodes/QR codes on the current page" />
       </Group>
 
       <Group label="Content">

@@ -27,6 +27,7 @@ import AccessibilityDialog from './components/AccessibilityDialog'
 import WordCountDialog from './components/WordCountDialog'
 import BarcodeDialog from './components/BarcodeDialog'
 import DocumentScanDialog from './components/DocumentScanDialog'
+import BarcodeReadDialog from './components/BarcodeReadDialog'
 import TranslateDialog from './components/TranslateDialog'
 import SpellCheckDialog from './components/SpellCheckDialog'
 import ResizePagesDialog from './components/ResizePagesDialog'
@@ -115,6 +116,7 @@ export default function App() {
   const [wordCountOpen,     setWordCountOpen]       = useState(false)
   const [barcodeOpen,       setBarcodeOpen]         = useState(false)
   const [scanOpen,          setScanOpen]            = useState(false)
+  const [barcodeReadOpen,   setBarcodeReadOpen]     = useState(false)
   const [translateOpen,     setTranslateOpen]       = useState(false)
   const [spellCheckOpen,    setSpellCheckOpen]      = useState(false)
   const [swapPagesOpen,        setSwapPagesOpen]        = useState(false)
@@ -406,6 +408,7 @@ export default function App() {
         onAccessibility={() => setAccessOpen(true)}
         onWordCount={() => setWordCountOpen(true)}
         onBarcode={() => setBarcodeOpen(true)}
+        onReadBarcode={() => setBarcodeReadOpen(true)}
         onScan={() => setScanOpen(true)}
         onEmailImport={async () => {
           try {
@@ -561,6 +564,7 @@ export default function App() {
       {wordCountOpen  && <WordCountDialog    onClose={() => setWordCountOpen(false)} />}
       {barcodeOpen    && <BarcodeDialog      onClose={() => setBarcodeOpen(false)} />}
       {scanOpen       && <DocumentScanDialog onClose={() => setScanOpen(false)} />}
+      {barcodeReadOpen && <BarcodeReadDialog onClose={() => setBarcodeReadOpen(false)} />}
       {translateOpen  && <TranslateDialog   onClose={() => setTranslateOpen(false)} />}
       {spellCheckOpen && <SpellCheckDialog  onClose={() => setSpellCheckOpen(false)} />}
 
