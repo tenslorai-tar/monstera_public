@@ -225,6 +225,20 @@ export async function deleteEmptyPages(bytes: Uint8Array): Promise<{ bytes: Uint
   return { bytes: await doc.save(), deleted: toDelete }
 }
 
+export async function replacePage(
+  bytes: Uint8Array,
+  pageNum: number,
+  srcBytes: Uint8Array,
+  srcPageNum: number
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const srcDoc = await PDFDocument.load(srcBytes)
+  const [copied] = await doc.copyPages(srcDoc, [srcPageNum - 1])
+  doc.removePage(pageNum - 1)
+  doc.insertPage(pageNum - 1, copied)
+  return doc.save()
+}
+
 export async function normalizeMediaBox(bytes: Uint8Array): Promise<Uint8Array> {
   const doc = await PDFDocument.load(bytes)
   const count = doc.getPageCount()

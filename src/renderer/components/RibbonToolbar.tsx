@@ -6,7 +6,7 @@ import type { FormCreationTool } from '../types/forms'
 import type { ZoomMode } from '../store/usePdfStore'
 import { newId } from '../utils/annotationUtils'
 
-type RibbonTab = 'home' | 'comment' | 'organize' | 'forms' | 'review' | 'tools'
+type RibbonTab = 'home' | 'comment' | 'edit' | 'organize' | 'forms' | 'review' | 'protect' | 'tools'
 
 interface Props {
   onOpen: () => void
@@ -51,6 +51,12 @@ interface Props {
   onResizePages: () => void
   onDeleteEmptyPages: () => void
   onNormalizePages: () => void
+  // Tier 2 new props
+  onFindRedact: () => void
+  onOptimize: () => void
+  onOpenUrl: () => void
+  onReplacePage: () => void
+  onMeasureCalibration: () => void
 }
 
 const ZOOM_PRESETS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]
@@ -66,6 +72,7 @@ export default function RibbonToolbar(props: Props) {
     onHeaderFooter, onWatermark, onBackground, onBatesNumbers, onCropPages,
     onCompare, onAccessibility, onWordCount, onTranslate, onSpellCheck,
     onSwapPages, onResizePages, onDeleteEmptyPages, onNormalizePages,
+    onFindRedact, onOptimize, onOpenUrl, onReplacePage, onMeasureCalibration,
   } = props
 
   const resetFormFields = usePdfStore(s => s.resetFormFields)
@@ -100,6 +107,11 @@ export default function RibbonToolbar(props: Props) {
   const formsPanelOpen    = usePdfStore(s => s.formsPanelOpen)
   const formFields        = usePdfStore(s => s.formFields)
   const pageSizes         = usePdfStore(s => s.pageSizes)
+  const layersPanelOpen   = usePdfStore(s => s.layersPanelOpen)
+  const namedDestsPanelOpen = usePdfStore(s => s.namedDestsPanelOpen)
+  const layers            = usePdfStore(s => s.layers)
+  const namedDests        = usePdfStore(s => s.namedDests)
+  const linksPanelOpen    = usePdfStore(s => s.linksPanelOpen)
 
   const setScale          = usePdfStore(s => s.setScale)
   const setZoomMode       = usePdfStore(s => s.setZoomMode)
@@ -128,11 +140,6 @@ export default function RibbonToolbar(props: Props) {
   const toggleLinksPanel  = usePdfStore(s => s.toggleLinksPanel)
   const toggleLayersPanel = usePdfStore(s => s.toggleLayersPanel)
   const toggleNamedDestsPanel = usePdfStore(s => s.toggleNamedDestsPanel)
-  const linksPanelOpen    = usePdfStore(s => s.linksPanelOpen)
-  const layersPanelOpen   = usePdfStore(s => s.layersPanelOpen)
-  const namedDestsPanelOpen = usePdfStore(s => s.namedDestsPanelOpen)
-  const layers            = usePdfStore(s => s.layers)
-  const namedDests        = usePdfStore(s => s.namedDests)
 
   const { settings, updateSettings } = useSettingsStore()
   const theme = settings.theme
@@ -212,7 +219,6 @@ export default function RibbonToolbar(props: Props) {
 
   // ── Shared sub-components ─────────────────────────────────────────────────
 
-  // Large button: icon stacked above label
   const LBtn = ({
     icon, label, active = false, disabled = false, title = '', onClick, danger = false,
   }: {
@@ -228,7 +234,6 @@ export default function RibbonToolbar(props: Props) {
     </button>
   )
 
-  // Small button: compact single-line (icon + optional text label)
   const SBtn = ({
     icon, label = '', active = false, disabled = false, title = '', onClick, danger = false,
   }: {
@@ -244,7 +249,6 @@ export default function RibbonToolbar(props: Props) {
     </button>
   )
 
-  // Tool group with bottom label
   const Group = ({ label, children }: { label: string; children: React.ReactNode }) => (
     <>
       <div className="rbn-group">
@@ -255,7 +259,6 @@ export default function RibbonToolbar(props: Props) {
     </>
   )
 
-  // ── Nav + zoom (always on right of content row) ───────────────────────────
   const NavZoom = () => hasPdf ? (
     <div className="rbn-right">
       <button className="rbn-nav-btn" onClick={zoomOut} title="Zoom out (Ctrl+−)">−</button>
@@ -294,7 +297,7 @@ export default function RibbonToolbar(props: Props) {
     </div>
   ) : null
 
-  // ── Tab content ───────────────────────────────────────────────────────────
+  // ── Tab: Home ─────────────────────────────────────────────────────────────
 
   const HomeTab = () => (
     <>
@@ -322,29 +325,24 @@ export default function RibbonToolbar(props: Props) {
               <SBtn icon="▤" label="Thumbnails" active={sidebarOpen} onClick={toggleSidebar} title="Page thumbnails sidebar (F4)" />
               <SBtn icon="🔖" label="Bookmarks" active={bookmarksPanelOpen} onClick={toggleBookmarksPanel} title="Bookmarks panel (F5)" />
               <SBtn icon="💬" label="Annotations" active={annotationsPanelOpen} onClick={toggleAnnotationsPanel} title="Annotations panel (F6)" />
+              <SBtn icon="📋" label="Fields" active={formsPanelOpen} onClick={toggleFormsPanel} title="Form fields panel (F7)" />
             </div>
           </Group>
 
-          <Group label="Document">
-            <div className="rbn-stack">
-              <SBtn icon="ℹ" label="Properties" onClick={onMetadata} title="View / edit document properties" />
-              <SBtn icon="🔒" label="Security" active={!!encryptionSettings} onClick={onSecurity} title="Password-protect / set permissions" />
-              <SBtn icon="🔍" label="OCR" onClick={onOcr} title="Run OCR on scanned pages" />
-            </div>
-            <div className="rbn-stack">
-              <SBtn icon="🔏" label="Sign" onClick={onDigitalSign} title="Digitally sign / verify" />
-              <SBtn icon="↗" label="Export" onClick={onExport} title="Export to images, text, or Word" />
-            </div>
-          </Group>
-
-          <Group label="Organize">
+          <Group label="Combine">
             <LBtn icon="⊕" label="Merge" onClick={onMerge} title="Merge other PDFs into this document" />
             <LBtn icon="✂" label="Split" onClick={onSplit} title="Split document by page ranges" />
+          </Group>
+
+          <Group label="Export">
+            <LBtn icon="↗" label="Export" onClick={onExport} title="Export pages as PNG/JPEG, text, Word, or annotations" />
           </Group>
         </>
       )}
     </>
   )
+
+  // ── Tab: Comment ──────────────────────────────────────────────────────────
 
   const CommentTab = () => (
     <>
@@ -384,13 +382,8 @@ export default function RibbonToolbar(props: Props) {
         </div>
       </Group>
 
-      <Group label="Add Text">
-        <LBtn icon={<span style={{ fontFamily:'monospace', fontSize:16 }}>Ꭲ</span>} label="Typewriter" active={activeTool === 'typewriter'} onClick={() => toggle('typewriter')} title="Typewriter — click anywhere to type" />
-        <LBtn icon="T" label="Text Box" active={activeTool === 'textbox'} onClick={() => toggle('textbox')} title="Text box — drag area then type" />
-        <LBtn icon="💬" label="Callout" active={activeTool === 'callout'} onClick={() => toggle('callout')} title="Callout — drag text box, leader arrow auto-placed" />
-      </Group>
-
       <Group label="Notes">
+        <LBtn icon="💬" label="Callout" active={activeTool === 'callout'} onClick={() => toggle('callout')} title="Callout — drag text box, leader arrow auto-placed" />
         <LBtn icon="📌" label="Sticky Note" active={activeTool === 'stickynote'} onClick={() => toggle('stickynote')} title="Sticky note / comment bubble" />
       </Group>
 
@@ -410,24 +403,17 @@ export default function RibbonToolbar(props: Props) {
         <input ref={stampFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleCustomStamp} />
       </Group>
 
-      <Group label="Edit Content">
+      <Group label="Measure">
         <div className="rbn-stack">
-          <SBtn icon={<span style={{ fontSize:10 }}>ab→cd</span>} label="Edit Text" active={activeTool === 'text-edit'} onClick={() => toggle('text-edit')} title="Cover text region and type replacement" />
-          <SBtn icon="🖼" label="Insert Image" onClick={() => imageFileRef.current?.click()} title="Insert a PNG / JPEG onto the page" />
-          <SBtn icon="📷" label="Snapshot" active={activeTool === 'snapshot'} onClick={() => toggle('snapshot')} title="Drag a region on the page to capture it as a PNG screenshot" />
+          <SBtn icon="↔" label="Distance" active={activeTool === 'measure-distance'} onClick={() => toggle('measure-distance')} title="Measure distance — click 2 points" />
+          <SBtn icon="⬡" label="Area" active={activeTool === 'measure-area'} onClick={() => toggle('measure-area')} title="Measure area — click points, DblClick to close" />
+          <SBtn icon="⬠" label="Perimeter" active={activeTool === 'measure-perimeter'} onClick={() => toggle('measure-perimeter')} title="Measure perimeter — click points, DblClick to close" />
         </div>
-        <input ref={imageFileRef} type="file" accept="image/png,image/jpeg,image/jpg" style={{ display:'none' }} onChange={handleInsertImage} />
       </Group>
 
-      <Group label="Redact">
-        <LBtn
-          icon={<span style={{ background:'#1a1a1a', color:'#f55', padding:'0 3px', borderRadius:2, fontSize:10, fontWeight:700, border:'1px solid #f55' }}>REDACT</span>}
-          label="Mark Area" active={activeTool === 'redact'} onClick={() => toggle('redact')}
-          title="Drag to mark an area for permanent redaction" danger />
-        {pendingRedact > 0 && (
-          <LBtn icon="⚠" label={`Apply ${pendingRedact}`} onClick={onRequestRedactConfirm}
-            title="Permanently remove all marked areas" danger />
-        )}
+      <Group label="Links">
+        <LBtn icon="🔗" label="Link" active={activeTool === 'link'} onClick={() => toggle('link')} title="Create a link — drag a rectangle, then enter URL or page number" />
+        <SBtn icon="≡" label="Links" active={linksPanelOpen} onClick={toggleLinksPanel} title="Links panel" />
       </Group>
 
       <Group label="Style">
@@ -466,30 +452,6 @@ export default function RibbonToolbar(props: Props) {
         </div>
       </Group>
 
-      <Group label="Links">
-        <LBtn icon="🔗" label="Link" active={activeTool === 'link'} onClick={() => toggle('link')} title="Create a link — drag a rectangle, then enter URL or page number" />
-        <div className="rbn-stack">
-          <SBtn icon="≡" label="Links" active={linksPanelOpen} onClick={toggleLinksPanel} title="Links panel — list and edit all links" />
-        </div>
-      </Group>
-
-      <Group label="Navigation">
-        <div className="rbn-stack">
-          <SBtn icon="📂" label="Layers" active={layersPanelOpen} onClick={toggleLayersPanel}
-            disabled={layers.length === 0} title={layers.length > 0 ? 'Layers panel — toggle OCG layer visibility' : 'No layers in this document'} />
-          <SBtn icon="⚓" label="Dests" active={namedDestsPanelOpen} onClick={toggleNamedDestsPanel}
-            disabled={namedDests.length === 0} title={namedDests.length > 0 ? 'Named destinations panel' : 'No named destinations in this document'} />
-        </div>
-      </Group>
-
-      <Group label="Measure">
-        <div className="rbn-stack">
-          <SBtn icon="↔" label="Distance" active={activeTool === 'measure-distance'} onClick={() => toggle('measure-distance')} title="Measure distance — click 2 points" />
-          <SBtn icon="⬡" label="Area" active={activeTool === 'measure-area'} onClick={() => toggle('measure-area')} title="Measure area — click points, DblClick to close" />
-          <SBtn icon="⬠" label="Perimeter" active={activeTool === 'measure-perimeter'} onClick={() => toggle('measure-perimeter')} title="Measure perimeter — click points, DblClick to close" />
-        </div>
-      </Group>
-
       <Group label="Manage">
         <div className="rbn-stack">
           <SBtn icon="≡" label="Panel" active={annotationsPanelOpen} onClick={toggleAnnotationsPanel} title="Annotations panel (F6)" />
@@ -500,6 +462,68 @@ export default function RibbonToolbar(props: Props) {
       </Group>
     </>
   )
+
+  // ── Tab: Edit (NEW) ───────────────────────────────────────────────────────
+
+  const EditTab = () => (
+    <>
+      <Group label="Add Text">
+        <LBtn icon={<span style={{ fontFamily:'monospace', fontSize:16 }}>Ꭲ</span>} label="Typewriter" active={activeTool === 'typewriter'} onClick={() => toggle('typewriter')} title="Typewriter — click anywhere to type new text" />
+        <LBtn icon="T" label="Text Box" active={activeTool === 'textbox'} onClick={() => toggle('textbox')} title="Text box — drag area then type" />
+      </Group>
+
+      <Group label="Content">
+        <div className="rbn-stack">
+          <SBtn icon={<span style={{ fontSize:10 }}>ab→cd</span>} label="Edit Text" active={activeTool === 'text-edit'} onClick={() => toggle('text-edit')} title="Cover text region and type replacement" />
+          <SBtn icon="🖼" label="Image" onClick={() => imageFileRef.current?.click()} title="Insert a PNG / JPEG onto the page" />
+          <SBtn icon="📷" label="Snapshot" active={activeTool === 'snapshot'} onClick={() => toggle('snapshot')} title="Drag a region on the page to capture it as a PNG" />
+        </div>
+        <input ref={imageFileRef} type="file" accept="image/png,image/jpeg,image/jpg" style={{ display:'none' }} onChange={handleInsertImage} />
+      </Group>
+
+      <Group label="Redact">
+        <LBtn
+          icon={<span style={{ background:'#1a1a1a', color:'#f55', padding:'0 3px', borderRadius:2, fontSize:10, fontWeight:700, border:'1px solid #f55' }}>REDACT</span>}
+          label="Mark Area" active={activeTool === 'redact'} onClick={() => toggle('redact')}
+          title="Drag to mark an area for permanent redaction" danger />
+        <LBtn icon="🔍" label="Find & Redact" onClick={onFindRedact}
+          title="Search for text and mark all matches for redaction" danger />
+        {pendingRedact > 0 && (
+          <LBtn icon="⚠" label={`Apply ${pendingRedact}`} onClick={onRequestRedactConfirm}
+            title="Permanently remove all marked areas" danger />
+        )}
+      </Group>
+
+      <Group label="Enhance">
+        <div className="rbn-stack">
+          <SBtn icon="🔄" label="Replace Page" onClick={onReplacePage} title="Replace a page with a page from another PDF" />
+          <SBtn icon="🗜" label="Optimize" onClick={onOptimize} title="Compress and optimize PDF file size" />
+          <SBtn icon="🌐" label="Open URL" onClick={onOpenUrl} title="Download and open a PDF from a web URL" />
+        </div>
+      </Group>
+
+      <Group label="Style">
+        <div className="rbn-control-block">
+          <div className="rbn-ctrl-row">
+            <span className="rbn-ctrl-lbl">Color</span>
+            <input type="color" value={toolColor} onChange={e => setToolColor(e.target.value)}
+              className="rbn-color-swatch" title="Text / annotation color" />
+          </div>
+          {showFontSize && (
+            <div className="rbn-ctrl-row">
+              <span className="rbn-ctrl-lbl">Font</span>
+              <input type="number" min={6} max={72} value={toolFontSize}
+                onChange={e => setToolFontSize(Math.max(6, parseInt(e.target.value) || 12))}
+                className="rbn-num-input" title="Font size" />
+              <span className="rbn-ctrl-val">pt</span>
+            </div>
+          )}
+        </div>
+      </Group>
+    </>
+  )
+
+  // ── Tab: Organize ─────────────────────────────────────────────────────────
 
   const OrganizeTab = () => (
     <>
@@ -557,6 +581,8 @@ export default function RibbonToolbar(props: Props) {
       </Group>
     </>
   )
+
+  // ── Tab: Forms ────────────────────────────────────────────────────────────
 
   const FormsTab = () => (
     <>
@@ -630,6 +656,8 @@ export default function RibbonToolbar(props: Props) {
     </>
   )
 
+  // ── Tab: Review ───────────────────────────────────────────────────────────
+
   const ReviewTab = () => (
     <>
       <Group label="OCR">
@@ -638,7 +666,7 @@ export default function RibbonToolbar(props: Props) {
 
       <Group label="Search">
         <LBtn icon="🔎" label="Find" active={searchOpen} onClick={() => setSearchOpen(!searchOpen)} title="Find in document (Ctrl+F)" />
-        <LBtn icon="↔" label="Replace" onClick={() => setSearchOpen(true)} title="Find & replace text in annotations and PDF content (Ctrl+H)" />
+        <LBtn icon="↔" label="Replace" onClick={() => setSearchOpen(true)} title="Find & replace text in annotations (Ctrl+H)" />
       </Group>
 
       <Group label="Compare">
@@ -659,44 +687,81 @@ export default function RibbonToolbar(props: Props) {
       <Group label="Export">
         <LBtn icon="↗" label="Export" onClick={onExport} title="Export pages as PNG/JPEG, extract text, or convert to Word" />
       </Group>
+    </>
+  )
+
+  // ── Tab: Protect (NEW) ────────────────────────────────────────────────────
+
+  const ProtectTab = () => (
+    <>
+      <Group label="Document Info">
+        <LBtn icon="ℹ" label="Properties" onClick={onMetadata} title="View and edit document metadata (title, author, subject, keywords)" />
+      </Group>
+
+      <Group label="Security">
+        <LBtn icon="🔒" label="Password" active={!!encryptionSettings} onClick={onSecurity}
+          title="Password-protect document, set permissions (print, copy, edit)" />
+        {encryptionSettings && (
+          <LBtn icon="🔓" label="Remove Password" onClick={onSecurity}
+            title="Remove password protection from this document" />
+        )}
+      </Group>
 
       <Group label="Signatures">
-        <div className="rbn-stack">
-          <SBtn icon="🔏" label="Sign PDF" onClick={onDigitalSign} title="Digitally sign this document with a certificate" />
-          <SBtn icon="✅" label="Verify" onClick={onDigitalSign} title="Verify existing digital signatures" />
-        </div>
+        <LBtn icon="🔏" label="Sign PDF" onClick={onDigitalSign} title="Sign document with a PFX/P12 certificate" />
+        <LBtn icon="✅" label="Verify" onClick={onDigitalSign} title="Verify digital signatures in this document" />
+      </Group>
+
+      <Group label="Accessibility">
+        <LBtn icon="♿" label="Check" onClick={onAccessibility} title="Check document for accessibility issues (screen reader, tags, lang)" />
       </Group>
     </>
   )
 
+  // ── Tab: Tools ────────────────────────────────────────────────────────────
+
   const ToolsTab = () => (
     <>
-      <Group label="Document">
-        <LBtn icon="ℹ" label="Properties" onClick={onMetadata} title="View and edit document metadata" />
-        <LBtn icon="🔒" label="Security" active={!!encryptionSettings} onClick={onSecurity} title="Password-protect and set document permissions" />
-      </Group>
-
-      <Group label="OCR & Text">
-        <LBtn icon="🔍" label="Run OCR" onClick={onOcr} title="Run OCR on scanned / image-only pages" />
-      </Group>
-
-      <Group label="Accessibility">
-        <LBtn icon="♿" label="Check" onClick={onAccessibility} title="Check document for accessibility issues" />
-      </Group>
-
-      <Group label="Digital Signatures">
-        <LBtn icon="🔏" label="Sign" onClick={onDigitalSign} title="Sign document with a PFX/P12 certificate" />
-        <LBtn icon="✅" label="Verify" onClick={onDigitalSign} title="Verify digital signatures in this document" />
-      </Group>
-
-      <Group label="Page Design">
+      <Group label="Display">
         <div className="rbn-stack">
-          <SBtn icon="📑" label="Header/Footer" onClick={onHeaderFooter} title="Add headers and footers" />
-          <SBtn icon="💧" label="Watermark" onClick={onWatermark} title="Add watermark text to pages" />
-          <SBtn icon="🎨" label="Background" onClick={onBackground} title="Set page background color" />
-          <SBtn icon="🔢" label="Bates Nos." onClick={onBatesNumbers} title="Add Bates numbering" />
-          <SBtn icon="✂" label="Crop" onClick={onCropPages} title="Crop page visible area" />
+          <SBtn icon="🌙" label="Dark Pages" active={settings.darkPageMode}
+            onClick={() => updateSettings({ darkPageMode: !settings.darkPageMode })}
+            title="Invert page colors for comfortable night reading" />
+          <SBtn icon="🔭" label="Loupe" active={settings.loupeEnabled}
+            onClick={() => updateSettings({ loupeEnabled: !settings.loupeEnabled })}
+            title="Enable circular magnifier that follows the cursor" />
+          <SBtn icon="📏" label="Rulers" active={settings.showRulers}
+            onClick={() => updateSettings({ showRulers: !settings.showRulers })}
+            title="Show inch rulers around pages" />
+          <SBtn icon="⊞" label="Grid" active={settings.showGrid}
+            onClick={() => updateSettings({ showGrid: !settings.showGrid })}
+            title="Show alignment grid on pages" />
         </div>
+        {settings.autoscrollSpeed > 0 && (
+          <div className="rbn-ctrl-row" style={{ marginTop: 4 }}>
+            <span className="rbn-ctrl-lbl" style={{ fontSize: 10 }}>Autoscroll</span>
+            <input type="range" min={0} max={10} step={1}
+              value={settings.autoscrollSpeed}
+              onChange={e => updateSettings({ autoscrollSpeed: +e.target.value })}
+              className="rbn-range" style={{ width: 60 }} />
+          </div>
+        )}
+      </Group>
+
+      <Group label="Navigation">
+        <div className="rbn-stack">
+          <SBtn icon="📂" label="Layers" active={layersPanelOpen} onClick={toggleLayersPanel}
+            disabled={layers.length === 0}
+            title={layers.length > 0 ? 'Layers panel — toggle OCG layer visibility' : 'No layers in this document'} />
+          <SBtn icon="⚓" label="Dests" active={namedDestsPanelOpen} onClick={toggleNamedDestsPanel}
+            disabled={namedDests.length === 0}
+            title={namedDests.length > 0 ? 'Named destinations panel' : 'No named destinations in this document'} />
+        </div>
+      </Group>
+
+      <Group label="Calibration">
+        <LBtn icon="📐" label="Measure" onClick={onMeasureCalibration}
+          title={`Set measurement unit (current: ${settings.measureUnit})`} />
       </Group>
 
       <Group label="Preferences">
@@ -713,9 +778,11 @@ export default function RibbonToolbar(props: Props) {
   const TABS: { id: RibbonTab; label: string }[] = [
     { id: 'home',     label: 'Home'     },
     { id: 'comment',  label: 'Comment'  },
+    { id: 'edit',     label: 'Edit'     },
     { id: 'organize', label: 'Organize' },
     { id: 'forms',    label: 'Forms'    },
     { id: 'review',   label: 'Review'   },
+    { id: 'protect',  label: 'Protect'  },
     { id: 'tools',    label: 'Tools'    },
   ]
 
@@ -767,9 +834,11 @@ export default function RibbonToolbar(props: Props) {
       <div className="ribbon-content">
         {activeTab === 'home'     && <HomeTab />}
         {activeTab === 'comment'  && (hasPdf ? <CommentTab  /> : <NoPdfMsg tab="Comment"  />)}
+        {activeTab === 'edit'     && (hasPdf ? <EditTab     /> : <NoPdfMsg tab="Edit"     />)}
         {activeTab === 'organize' && (hasPdf ? <OrganizeTab /> : <NoPdfMsg tab="Organize" />)}
         {activeTab === 'forms'    && (hasPdf ? <FormsTab    /> : <NoPdfMsg tab="Forms"    />)}
         {activeTab === 'review'   && (hasPdf ? <ReviewTab   /> : <NoPdfMsg tab="Review"   />)}
+        {activeTab === 'protect'  && (hasPdf ? <ProtectTab  /> : <NoPdfMsg tab="Protect"  />)}
         {activeTab === 'tools'    && (hasPdf ? <ToolsTab    /> : <NoPdfMsg tab="Tools"    />)}
         <NavZoom />
       </div>

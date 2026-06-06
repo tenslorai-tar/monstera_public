@@ -781,3 +781,87 @@ ipcMain.handle('mupdf:generateBookmarks', async (_event, bytes: ArrayBuffer): Pr
     return true
   }).slice(0, 200)  // cap at 200 suggestions
 })
+
+// ── PDF optimization ──────────────────────────────────────────────────────────
+
+ipcMain.handle('mupdf:optimize', async (
+  _event,
+  bytes: ArrayBuffer
+): Promise<{ bytes: ArrayBuffer; origSize: number; newSize: number }> => {
+  const mupdf = await getMupdf()
+  const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
+  const buf = doc.saveToBuffer('garbage=compact,compress=yes,compress-images=yes')
+  const result = buf.asUint8Array()
+  const out = result.buffer.slice(result.byteOffset, result.byteOffset + result.byteLength)
+  return { bytes: out, origSize: bytes.byteLength, newSize: result.byteLength }
+})
+
+// ── Open PDF from URL ─────────────────────────────────────────────────────────
+
+ipcMain.handle('file:openFromUrl', async (_event, url: string): Promise<ArrayBuffer> => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const https = require('https')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const http = require('http')
+  const urlObj = new URL(url)
+  const client = urlObj.protocol === 'https:' ? https : http
+  return new Promise((resolve, reject) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const req = client.get(url, { headers: { 'User-Agent': 'Monstera PDF Editor/1.0' } }, (res: any) => {
+      if (res.statusCode !== 200) { reject(new Error(`HTTP ${res.statusCode}`)); return }
+      const chunks: Buffer[] = []
+      res.on('data', (c: Buffer) => chunks.push(c))
+      res.on('end', () => {
+        const buf = Buffer.concat(chunks)
+        resolve(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength))
+      })
+      res.on('error', reject)
+    })
+    req.on('error', reject)
+  })
+})
+
+// ── Find text rectangles (for Find & Redact) ──────────────────────────────────
+
+ipcMain.handle('mupdf:findTextRects', async (
+  _event,
+  bytes: ArrayBuffer,
+  term: string
+): Promise<Array<{ pageNum: number; x1: number; y1: number; x2: number; y2: number }>> => {
+  const mupdf = await getMupdf()
+  const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
+  const numPages = doc.countPages()
+  const results: Array<{ pageNum: number; x1: number; y1: number; x2: number; y2: number }> = []
+
+  for (let i = 0; i < numPages; i++) {
+    const page = doc.loadPage(i)
+    const bounds = page.getBounds()
+    const pageH = bounds[3] - bounds[1]
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let hits: any[]
+    try { hits = page.search(term) } catch { continue }
+    if (!hits || hits.length === 0) continue
+
+    for (const quad of hits) {
+      let sx0: number, sy0: number, sx1: number, sy1: number
+      if (Array.isArray(quad) && Array.isArray(quad[0])) {
+        const xs = (quad as number[][]).map((p) => p[0])
+        const ys = (quad as number[][]).map((p) => p[1])
+        sx0 = Math.min(...xs); sy0 = Math.min(...ys)
+        sx1 = Math.max(...xs); sy1 = Math.max(...ys)
+      } else if (Array.isArray(quad) && typeof quad[0] === 'number') {
+        const q = quad as number[]
+        sx0 = Math.min(q[0], q[2], q[4], q[6])
+        sy0 = Math.min(q[1], q[3], q[5], q[7])
+        sx1 = Math.max(q[0], q[2], q[4], q[6])
+        sy1 = Math.max(q[1], q[3], q[5], q[7])
+      } else { continue }
+      results.push({
+        pageNum: i + 1,
+        x1: sx0, y1: pageH - sy1,
+        x2: sx1, y2: pageH - sy0,
+      })
+    }
+  }
+  return results
+})

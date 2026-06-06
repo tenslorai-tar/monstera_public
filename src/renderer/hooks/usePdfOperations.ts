@@ -122,6 +122,10 @@ export function usePdfOperations() {
     applyEdit(await pdfEdits.normalizeMediaBox(await requireBytes()))
   }, [applyEdit, getBakedBytes])
 
+  const replacePages = useCallback(async (pageNum: number, srcBytes: Uint8Array, srcPageNum: number) => {
+    applyEdit(await pdfEdits.replacePage(await requireBytes(), pageNum, srcBytes, srcPageNum))
+  }, [applyEdit, getBakedBytes])
+
   return {
     deletePages,
     rotatePages,
@@ -139,5 +143,6 @@ export function usePdfOperations() {
     resizePages,
     deleteEmptyPages,
     normalizePages,
+    replacePages,
   }
 }

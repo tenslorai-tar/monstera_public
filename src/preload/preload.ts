@@ -81,6 +81,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     title: string; pageNum: number; level: number;
   }>> => ipcRenderer.invoke('mupdf:generateBookmarks', bytes),
 
+  mupdfOptimize: (bytes: ArrayBuffer): Promise<{ bytes: ArrayBuffer; origSize: number; newSize: number }> =>
+    ipcRenderer.invoke('mupdf:optimize', bytes),
+
+  openFromUrl: (url: string): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('file:openFromUrl', url),
+
+  mupdfFindTextRects: (bytes: ArrayBuffer, term: string): Promise<Array<{ pageNum: number; x1: number; y1: number; x2: number; y2: number }>> =>
+    ipcRenderer.invoke('mupdf:findTextRects', bytes, term),
+
   setWindowTitle: (title: string): Promise<void> =>
     ipcRenderer.invoke('window:setTitle', title),
 

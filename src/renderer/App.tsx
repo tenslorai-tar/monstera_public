@@ -29,6 +29,11 @@ import TranslateDialog from './components/TranslateDialog'
 import SpellCheckDialog from './components/SpellCheckDialog'
 import ResizePagesDialog from './components/ResizePagesDialog'
 import SwapPagesDialog from './components/SwapPagesDialog'
+import FindRedactDialog from './components/FindRedactDialog'
+import OpenUrlDialog from './components/OpenUrlDialog'
+import OptimizeDialog from './components/OptimizeDialog'
+import MeasureCalibrationDialog from './components/MeasureCalibrationDialog'
+import ReplacePageDialog from './components/ReplacePageDialog'
 import LoupeOverlay from './components/LoupeOverlay'
 import * as docEnhance from './utils/documentEnhance'
 import { usePdfStore } from './store/usePdfStore'
@@ -84,9 +89,14 @@ export default function App() {
   const [wordCountOpen,     setWordCountOpen]       = useState(false)
   const [translateOpen,     setTranslateOpen]       = useState(false)
   const [spellCheckOpen,    setSpellCheckOpen]      = useState(false)
-  const [swapPagesOpen,     setSwapPagesOpen]       = useState(false)
-  const [resizePagesOpen,   setResizePagesOpen]     = useState(false)
-  const [deleteEmptyResult, setDeleteEmptyResult]  = useState<number[] | null>(null)
+  const [swapPagesOpen,        setSwapPagesOpen]        = useState(false)
+  const [resizePagesOpen,      setResizePagesOpen]      = useState(false)
+  const [deleteEmptyResult,    setDeleteEmptyResult]    = useState<number[] | null>(null)
+  const [findRedactOpen,       setFindRedactOpen]       = useState(false)
+  const [openUrlOpen,          setOpenUrlOpen]          = useState(false)
+  const [optimizeOpen,         setOptimizeOpen]         = useState(false)
+  const [measureCalOpen,       setMeasureCalOpen]       = useState(false)
+  const [replacePageOpen,      setReplacePageOpen]      = useState(false)
 
   const [passwordPrompt,    setPasswordPrompt]     = useState<PasswordPromptState>(null)
   const [passwordError,     setPasswordError]      = useState('')
@@ -307,6 +317,11 @@ export default function App() {
           setDeleteEmptyResult(del)
         }}
         onNormalizePages={ops.normalizePages}
+        onFindRedact={() => setFindRedactOpen(true)}
+        onOptimize={() => setOptimizeOpen(true)}
+        onOpenUrl={() => setOpenUrlOpen(true)}
+        onReplacePage={() => setReplacePageOpen(true)}
+        onMeasureCalibration={() => setMeasureCalOpen(true)}
       />
 
       {hasPdf ? (
@@ -430,6 +445,30 @@ export default function App() {
         </div>
       )}
 
+      {findRedactOpen  && <FindRedactDialog onClose={() => setFindRedactOpen(false)} />}
+      {optimizeOpen    && <OptimizeDialog   onClose={() => setOptimizeOpen(false)} />}
+      {measureCalOpen  && <MeasureCalibrationDialog onClose={() => setMeasureCalOpen(false)} />}
+      {openUrlOpen && (
+        <OpenUrlDialog
+          onClose={() => setOpenUrlOpen(false)}
+          onOpen={async (bytes, name) => {
+            setOpenUrlOpen(false)
+            await loadPdf(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, name, name)
+            addRecentFile(name, name)
+          }}
+        />
+      )}
+      {replacePageOpen && (
+        <ReplacePageDialog
+          numPages={numPages}
+          currentPage={currentPage}
+          onReplace={async (pageNum, srcBytes, srcPageNum) => {
+            setReplacePageOpen(false)
+            await ops.replacePages(pageNum, srcBytes, srcPageNum)
+          }}
+          onClose={() => setReplacePageOpen(false)}
+        />
+      )}
       {digitalSignOpen && <DigitalSignDialog onClose={() => setDigitalSignOpen(false)} />}
 
       {signaturePadOpen && (

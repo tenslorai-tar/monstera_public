@@ -3,7 +3,7 @@ import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
 
-type ExportTab = 'images' | 'text' | 'docx'
+type ExportTab = 'images' | 'text' | 'docx' | 'annotations'
 type ImageFormat = 'png' | 'jpeg'
 
 export default function ExportDialog({ onClose }: Props) {
@@ -12,6 +12,7 @@ export default function ExportDialog({ onClose }: Props) {
   const pageSizes = usePdfStore(s => s.pageSizes)
   const fileName = usePdfStore(s => s.fileName)
   const pdfBytes = usePdfStore(s => s.pdfBytes)
+  const annotations = usePdfStore(s => s.annotations)
 
   const [tab, setTab] = useState<ExportTab>('images')
   const [format, setFormat] = useState<ImageFormat>('png')
@@ -156,8 +157,8 @@ export default function ExportDialog({ onClose }: Props) {
         <div className="modal-title">↗ Export</div>
 
         {/* tabs */}
-        <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid var(--border)' }}>
-          {(['images', 'text', 'docx'] as ExportTab[]).map(t => (
+        <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
+          {(['images', 'text', 'docx', 'annotations'] as ExportTab[]).map(t => (
             <button key={t}
               onClick={() => setTab(t)}
               style={{
@@ -166,7 +167,7 @@ export default function ExportDialog({ onClose }: Props) {
                 color: tab === t ? '#fff' : 'var(--text-muted)',
                 borderRadius: '4px 4px 0 0', fontSize: 13, fontWeight: tab === t ? 600 : 400,
               }}>
-              {t === 'images' ? '🖼 Images' : t === 'text' ? '📄 Text (.txt)' : '📝 Word (.docx)'}
+              {t === 'images' ? '🖼 Images' : t === 'text' ? '📄 Text (.txt)' : t === 'docx' ? '📝 Word (.docx)' : '💬 Annotations'}
             </button>
           ))}
         </div>
@@ -242,6 +243,68 @@ export default function ExportDialog({ onClose }: Props) {
           </div>
         )}
 
+        {/* ── Annotations tab ──────────────────────────────── */}
+        {tab === 'annotations' && (
+          <div>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+              Export annotation data. {annotations.length} annotation{annotations.length !== 1 ? 's' : ''} in document.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button className="modal-btn-secondary" style={{ justifyContent: 'flex-start', gap: 8 }}
+                onClick={() => {
+                  const json = JSON.stringify(annotations, null, 2)
+                  const blob = new Blob([json], { type: 'application/json' })
+                  const url = URL.createObjectURL(blob)
+                  const a = document.createElement('a')
+                  a.href = url; a.download = `${baseName}_annotations.json`; a.click()
+                  URL.revokeObjectURL(url)
+                }}>
+                📋 Export All as JSON
+              </button>
+              <button className="modal-btn-secondary" style={{ justifyContent: 'flex-start', gap: 8 }}
+                onClick={() => {
+                  const measures = annotations.filter(a => a.type.startsWith('measure-'))
+                  const rows = ['Page,Type,Label,Points']
+                  for (const a of measures) {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const pts = (a as any).points ? JSON.stringify((a as any).points) : ''
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const label = (a as any).label ?? ''
+                    rows.push(`${a.pageNum},${a.type},"${label}","${pts}"`)
+                  }
+                  const blob = new Blob([rows.join('\n')], { type: 'text/csv' })
+                  const url = URL.createObjectURL(blob)
+                  const a = document.createElement('a')
+                  a.href = url; a.download = `${baseName}_measurements.csv`; a.click()
+                  URL.revokeObjectURL(url)
+                }}
+                disabled={!annotations.some(a => a.type.startsWith('measure-'))}>
+                📏 Export Measurements as CSV
+              </button>
+              <button className="modal-btn-secondary" style={{ justifyContent: 'flex-start', gap: 8 }}
+                onClick={() => {
+                  const links = annotations.filter(a => a.type === 'link')
+                  const rows = ['Page,URL/Destination,X1,Y1,X2,Y2']
+                  for (const a of links) {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const href = (a as any).href ?? (a as any).dest ?? ''
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const la = a as any
+                    rows.push(`${a.pageNum},"${href}",${la.x1 ?? ''},${la.y1 ?? ''},${la.x2 ?? ''},${la.y2 ?? ''}`)
+                  }
+                  const blob = new Blob([rows.join('\n')], { type: 'text/csv' })
+                  const url = URL.createObjectURL(blob)
+                  const a = document.createElement('a')
+                  a.href = url; a.download = `${baseName}_links.csv`; a.click()
+                  URL.revokeObjectURL(url)
+                }}
+                disabled={!annotations.some(a => a.type === 'link')}>
+                🔗 Export Links as CSV
+              </button>
+            </div>
+          </div>
+        )}
+
         {status && (
           <div style={{
             fontSize: 12, color: status.startsWith('✓') ? '#4caf50' : status.startsWith('Error') ? '#ff4444' : 'var(--text-muted)',
@@ -272,6 +335,7 @@ export default function ExportDialog({ onClose }: Props) {
               {busy ? 'Building DOCX…' : '↓ Export to Word'}
             </button>
           )}
+          {tab === 'annotations' && null}
         </div>
       </div>
     </div>
