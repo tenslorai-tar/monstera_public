@@ -359,10 +359,10 @@ export default function RibbonToolbar(props: Props) {
           </Group>
 
           <Group label="View">
-            <div className="rbn-stack">
+            <div className="rbn-grid2" style={{ gridTemplateColumns: '1fr 1fr', width: 'auto' }}>
               <SBtn icon="▤" label="Thumbnails" active={sidebarOpen} onClick={toggleSidebar} title="Page thumbnails sidebar (F4)" />
               <SBtn icon="🔖" label="Bookmarks" active={bookmarksPanelOpen} onClick={toggleBookmarksPanel} title="Bookmarks panel (F5)" />
-              <SBtn icon="💬" label="Annotations" active={annotationsPanelOpen} onClick={toggleAnnotationsPanel} title="Annotations panel (F6)" />
+              <SBtn icon="💬" label="Comments" active={annotationsPanelOpen} onClick={toggleAnnotationsPanel} title="Annotations panel (F6)" />
               <SBtn icon="📋" label="Fields" active={formsPanelOpen} onClick={toggleFormsPanel} title="Form fields panel (F7)" />
             </div>
             <LBtn icon="⧉" label="Split View" onClick={onSplitView} disabled={!hasPdf} title="Show two pages side by side" />
@@ -505,7 +505,7 @@ export default function RibbonToolbar(props: Props) {
       </Group>
 
       <Group label="Manage">
-        <div className="rbn-stack">
+        <div className="rbn-grid2">
           <SBtn icon="≡" label="Panel" active={annotationsPanelOpen} onClick={toggleAnnotationsPanel} title="Annotations panel (F6)" />
           <SBtn icon="🎨" label="Styles" onClick={onCommentStyles} title="Save and reuse annotation style presets" />
           <SBtn icon="📋" label="Summary" onClick={onSummarizeComments} disabled={annotations.length === 0} title="View comment summary and export to text" />
