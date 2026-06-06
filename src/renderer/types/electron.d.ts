@@ -35,7 +35,7 @@ declare global {
         pageIndex: number,
         x: number,
         y: number,
-      ) => Promise<{ found: boolean; text: string; fontSize: number; color: string; x1: number; y1: number; x2: number; y2: number }>
+      ) => Promise<{ found: boolean; text: string; fontSize: number; color: string; x1: number; y1: number; x2: number; y2: number; fontData: ArrayBuffer; fontLoadable: boolean }>
       pdfiumEditText: (
         bytes: ArrayBuffer,
         pageIndex: number,

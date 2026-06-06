@@ -400,7 +400,14 @@ ipcMain.handle('pdfium:textObjectAt', async (
   pageIndex: number,
   x: number,
   y: number,
-) => pdfium.getTextObjectAt(Buffer.from(bytes), pageIndex, x, y))
+) => {
+  const h = pdfium.getTextObjectAt(Buffer.from(bytes), pageIndex, x, y)
+  const { fontData, ...rest } = h
+  return {
+    ...rest,
+    fontData: fontData.buffer.slice(fontData.byteOffset, fontData.byteOffset + fontData.byteLength),
+  }
+})
 
 ipcMain.handle('pdfium:editText', async (
   _event,

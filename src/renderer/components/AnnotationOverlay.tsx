@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { usePdfStore } from '../store/usePdfStore'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { canvasToPdf, pdfToCanvas, newId } from '../utils/annotationUtils'
+import { loadPdfFont } from '../utils/pdfFonts'
 import type {
   Annotation, HighlightAnn, InkAnn,
   ShapeAnn, TextBoxAnn, StickyNoteAnn, StampAnn, RedactAnn,
@@ -24,7 +25,7 @@ type DrawPhase =
   | { k: 'textbox-edit'; x: number; y: number; w: number; h: number; text: string }
   | { k: 'typewriter-edit'; x: number; y: number; text: string }
   | { k: 'text-edit-size'; sx: number; sy: number; cx: number; cy: number }
-  | { k: 'text-edit-edit'; x: number; y: number; w: number; h: number; text: string; fontSize?: number; color?: string; bg?: string }
+  | { k: 'text-edit-edit'; x: number; y: number; w: number; h: number; text: string; fontSize?: number; color?: string; bg?: string; fontFamily?: string }
   | { k: 'callout-size'; sx: number; sy: number; cx: number; cy: number }
   | { k: 'callout-edit'; x: number; y: number; w: number; h: number; text: string; tipSvgX: number; tipSvgY: number }
   | { k: 'poly'; pts: Array<[number, number]>; curX: number; curY: number }
@@ -496,11 +497,16 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
                 const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
                 const obj = await window.electronAPI.pdfiumTextObjectAt(ab, pageNum - 1, px, py)
                 if (obj.found) {
+                  // Render the caret editor in the real page font when available.
+                  let fontFamily: string | undefined
+                  if (obj.fontLoadable && obj.fontData.byteLength > 0) {
+                    fontFamily = (await loadPdfFont(obj.fontData)) ?? undefined
+                  }
                   const [ox1, oy2] = toSvg(obj.x1, obj.y2) // top-left
                   const [ox2, oy1] = toSvg(obj.x2, obj.y1) // bottom-right
                   setDraw({ k: 'text-edit-edit', x: ox1, y: oy2,
                     w: Math.max(24, ox2 - ox1), h: Math.max(10, oy1 - oy2),
-                    text: obj.text, fontSize: obj.fontSize, color: obj.color })
+                    text: obj.text, fontSize: obj.fontSize, color: obj.color, fontFamily })
                   return
                 }
               }
@@ -1269,12 +1275,16 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
     const { x, y, w, h } = draw
     const fs = (draw.fontSize ?? toolFontSize)
     const col = draw.color ?? toolColor
+    // Caret-in-place mode: editor rendered in the real page font, tight border.
+    const inPlace = !!draw.fontFamily
+    const fam = draw.fontFamily ? `'${draw.fontFamily}', serif` : 'serif'
     return (
       <g>
         <foreignObject x={x} y={y} width={w} height={Math.max(h, fs * scale + 8)} style={{ pointerEvents: 'all' }}>
           <textarea style={{ width: '100%', height: '100%', background: 'white', color: col,
-            border: '2px solid #ff8800', outline: 'none', resize: 'none', fontFamily: 'serif',
-            fontSize: fs * scale, lineHeight: 1.2, padding: '0 2px', boxSizing: 'border-box' }}
+            border: inPlace ? '1px solid #4a9eff' : '2px solid #ff8800', outline: 'none', resize: 'none',
+            fontFamily: fam, fontSize: fs * scale, lineHeight: inPlace ? 1.0 : 1.2,
+            padding: '0 1px', boxSizing: 'border-box', overflow: 'hidden' }}
             autoFocus value={draw.text}
             onFocus={e => e.currentTarget.select()}
             onChange={e => setDraw(d => ({ ...(d as any), text: e.target.value } as DrawPhase))}
