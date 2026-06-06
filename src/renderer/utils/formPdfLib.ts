@@ -307,3 +307,39 @@ export function exportFormAsFdf(fields: FormField[], pdfPath?: string): string {
   lines.push('%%EOF')
   return lines.join('\n')
 }
+
+// ── import form data ──────────────────────────────────────────────────────────
+
+// Compute the patch needed to set a field's value from imported data.
+export function applyValueToField(f: FormField, raw: unknown): Partial<FormField> | null {
+  switch (f.type) {
+    case 'text': case 'date': case 'dropdown': case 'barcode':
+      return { value: String(raw ?? '') } as Partial<FormField>
+    case 'checkbox':
+      return { checked: raw === true || /^(true|yes|on|checked|1|x)$/i.test(String(raw)) } as Partial<FormField>
+    case 'radio':
+      return { selected: String(raw) === (f as RadioFormField).exportValue } as Partial<FormField>
+    case 'listbox':
+      return { values: Array.isArray(raw) ? raw.map(String) : String(raw).split(/[;,]/).map(s => s.trim()).filter(Boolean) } as Partial<FormField>
+    default:
+      return null
+  }
+}
+
+// Parse an FDF (or XFDF) data file into a fieldName → value map.
+export function parseFormDataFile(text: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  const unesc = (s: string) => s.replace(/\\([()\\])/g, '$1')
+  if (/<\s*xfdf/i.test(text)) {
+    // XFDF: <field name="x"><value>v</value></field>
+    const re = /<field\b[^>]*\bname\s*=\s*"([^"]*)"[^>]*>[\s\S]*?<value>([\s\S]*?)<\/value>/gi
+    let m: RegExpExecArray | null
+    while ((m = re.exec(text))) out[m[1]] = m[2].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    return out
+  }
+  // FDF: << /T (name) /V (value) >>
+  const re = /\/T\s*\(((?:[^()\\]|\\.)*)\)[^/]*?\/V\s*\(((?:[^()\\]|\\.)*)\)/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text))) out[unesc(m[1])] = unesc(m[2])
+  return out
+}

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { usePdfStore } from '../store/usePdfStore'
 import type { FormField } from '../types/forms'
-import { exportFormAsJson, exportFormAsFdf } from '../utils/formPdfLib'
+import { exportFormAsJson, exportFormAsFdf, applyValueToField, parseFormDataFile } from '../utils/formPdfLib'
 
 const TYPE_LABEL: Record<FormField['type'], string> = {
   text: 'Text',
@@ -35,9 +35,55 @@ export default function FormsPanel() {
   const toggleFormsPanel = usePdfStore(s => s.toggleFormsPanel)
   const flattenForm   = usePdfStore(s => s.flattenForm)
   const deleteFormField = usePdfStore(s => s.deleteFormField)
+  const updateFormField = usePdfStore(s => s.updateFormField)
   const filePath      = usePdfStore(s => s.filePath)
 
   const [exportMsg, setExportMsg] = useState('')
+
+  // Apply a fieldName→value map to matching fields.
+  const applyMap = (map: Record<string, unknown>): number => {
+    let n = 0
+    for (const f of formFields) {
+      if (!(f.fieldName in map)) continue
+      const patch = applyValueToField(f, map[f.fieldName])
+      if (patch) { updateFormField(f.id, patch); n++ }
+    }
+    return n
+  }
+
+  const handleImportData = async () => {
+    try {
+      const path = await window.electronAPI.openAnyFile([{ name: 'Form data', extensions: ['fdf', 'xfdf', 'json'] }])
+      if (!path) return
+      const buf = await window.electronAPI.readFileBytes(path)
+      const text = new TextDecoder().decode(buf)
+      const map = /\.json$/i.test(path) ? JSON.parse(text) : parseFormDataFile(text)
+      const n = applyMap(map)
+      setExportMsg(`Filled ${n} field${n !== 1 ? 's' : ''}`); setTimeout(() => setExportMsg(''), 2500)
+    } catch (e: any) { setExportMsg(`Error: ${e?.message ?? 'import failed'}`); setTimeout(() => setExportMsg(''), 3000) }
+  }
+
+  const handleImportCsv = async () => {
+    try {
+      const path = await window.electronAPI.openAnyFile([{ name: 'CSV', extensions: ['csv', 'txt'] }])
+      if (!path) return
+      const buf = await window.electronAPI.readFileBytes(path)
+      const text = new TextDecoder().decode(buf)
+      const XLSX = await import('xlsx')
+      const wb = XLSX.read(text, { type: 'string' })
+      const rows = XLSX.utils.sheet_to_json<string[]>(wb.Sheets[wb.SheetNames[0]], { header: 1, blankrows: false })
+      const map: Record<string, string> = {}
+      if (rows.length >= 2 && rows[0].length > 2) {
+        // header row = field names, second row = values
+        rows[0].forEach((name, i) => { if (name) map[String(name)] = String(rows[1][i] ?? '') })
+      } else {
+        // name,value pairs per row
+        for (const r of rows) if (r[0]) map[String(r[0])] = String(r[1] ?? '')
+      }
+      const n = applyMap(map)
+      setExportMsg(`Filled ${n} field${n !== 1 ? 's' : ''} from CSV`); setTimeout(() => setExportMsg(''), 2500)
+    } catch (e: any) { setExportMsg(`Error: ${e?.message ?? 'CSV import failed'}`); setTimeout(() => setExportMsg(''), 3000) }
+  }
 
   const byPage = new Map<number, FormField[]>()
   for (const f of formFields) {
@@ -100,6 +146,14 @@ export default function FormsPanel() {
           <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 6px' }}
             onClick={handleExportFdf} title="Export field values as FDF (standard PDF form data)">
             {} FDF
+          </button>
+          <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 6px' }}
+            onClick={handleImportData} title="Import field values from JSON / FDF / XFDF">
+            ↙ Import
+          </button>
+          <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 6px' }}
+            onClick={handleImportCsv} title="Populate fields from a CSV (header=names+values row, or name,value rows)">
+            ↙ CSV
           </button>
           {exportMsg && <span style={{ fontSize: 10, color: 'var(--accent)', opacity: 0.8 }}>{exportMsg}</span>}
         </div>
