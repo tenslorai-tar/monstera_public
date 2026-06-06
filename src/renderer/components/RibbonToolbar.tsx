@@ -5,6 +5,7 @@ import type { AnnotationTool, StampName, PlacedImageAnn } from '../types/annotat
 import type { FormCreationTool } from '../types/forms'
 import type { ZoomMode } from '../store/usePdfStore'
 import { newId } from '../utils/annotationUtils'
+import logoUrl from '../assets/monstera-logo.png'
 
 type RibbonTab = 'home' | 'comment' | 'edit' | 'organize' | 'forms' | 'review' | 'protect' | 'tools'
 
@@ -927,31 +928,7 @@ export default function RibbonToolbar(props: Props) {
       {/* ── Tab row ────────────────────────────────────────── */}
       <div className="ribbon-tabs">
         <div className="ribbon-logo">
-          <svg width="22" height="22" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="50" cy="50" r="48" fill="url(#logoGrad)" stroke="rgba(74,222,128,0.4)" strokeWidth="2"/>
-            <circle cx="38" cy="32" r="8" fill="rgba(255,255,255,0.15)"/>
-            {/* stem */}
-            <path d="M32 72 Q42 50 50 38 Q56 28 62 24" stroke="#5a8a2a" strokeWidth="5" strokeLinecap="round" fill="none"/>
-            {/* leaves */}
-            <ellipse cx="64" cy="22" rx="14" ry="9" transform="rotate(-30 64 22)" fill="url(#leafGrad1)"/>
-            <ellipse cx="56" cy="36" rx="13" ry="8" transform="rotate(20 56 36)" fill="url(#leafGrad2)"/>
-            <ellipse cx="44" cy="50" rx="12" ry="7" transform="rotate(-15 44 50)" fill="url(#leafGrad1)"/>
-            <ellipse cx="36" cy="62" rx="11" ry="6" transform="rotate(10 36 62)" fill="url(#leafGrad2)"/>
-            <defs>
-              <radialGradient id="logoGrad" cx="35%" cy="30%" r="65%">
-                <stop offset="0%" stopColor="#1f5c40"/>
-                <stop offset="100%" stopColor="#0a2a1c"/>
-              </radialGradient>
-              <linearGradient id="leafGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#c8f040"/>
-                <stop offset="100%" stopColor="#7ab820"/>
-              </linearGradient>
-              <linearGradient id="leafGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#a8e030"/>
-                <stop offset="100%" stopColor="#5a8a18"/>
-              </linearGradient>
-            </defs>
-          </svg>
+          <img src={logoUrl} alt="Monstera" className="ribbon-logo-img" draggable={false} />
           <span className="ribbon-logo-text">Monstera</span>
         </div>
 

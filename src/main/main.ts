@@ -248,7 +248,7 @@ function createWindow(): void {
     minHeight: 600,
     title: 'Monstera PDF Editor',
     backgroundColor: '#1e1e1e',
-    icon: path.join(__dirname, '../../assets/icons/icon.ico'),
+    icon: path.join(__dirname, '../../assets/icons/monstera-logo.png'),
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,

@@ -1,4 +1,5 @@
 import type { RecentFile } from '../hooks/useRecentFiles'
+import logoUrl from '../assets/monstera-logo.png'
 
 interface Props {
   recentFiles: RecentFile[]
@@ -9,46 +10,18 @@ interface Props {
   onClearError?: () => void
 }
 
-const MonsteraLogoSvg = () => (
-  <svg width="64" height="64" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="50" cy="50" r="48" fill="url(#sLogoGrad)" stroke="rgba(74,222,128,0.35)" strokeWidth="2"/>
-    <circle cx="36" cy="30" r="10" fill="rgba(255,255,255,0.12)"/>
-    <path d="M30 74 Q40 52 50 40 Q57 30 64 25" stroke="#4a7a1e" strokeWidth="5.5" strokeLinecap="round" fill="none"/>
-    <ellipse cx="66" cy="23" rx="15" ry="9" transform="rotate(-30 66 23)" fill="url(#sLeaf1)"/>
-    <ellipse cx="57" cy="37" rx="14" ry="8.5" transform="rotate(20 57 37)" fill="url(#sLeaf2)"/>
-    <ellipse cx="46" cy="51" rx="13" ry="7.5" transform="rotate(-15 46 51)" fill="url(#sLeaf1)"/>
-    <ellipse cx="36" cy="63" rx="11" ry="6.5" transform="rotate(10 36 63)" fill="url(#sLeaf2)"/>
-    <defs>
-      <radialGradient id="sLogoGrad" cx="32%" cy="28%" r="68%">
-        <stop offset="0%" stopColor="#1e5c3e"/>
-        <stop offset="100%" stopColor="#091f14"/>
-      </radialGradient>
-      <linearGradient id="sLeaf1" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#d4f448"/>
-        <stop offset="100%" stopColor="#80bb1e"/>
-      </linearGradient>
-      <linearGradient id="sLeaf2" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#b8e830"/>
-        <stop offset="100%" stopColor="#5e8a16"/>
-      </linearGradient>
-    </defs>
-  </svg>
-)
-
 export default function StartScreen({
   recentFiles, onOpen, onOpenRecent, onRemoveRecent, openError, onClearError,
 }: Props) {
   return (
     <div className="start-screen">
-      <div className="start-logo">
-        <MonsteraLogoSvg />
-      </div>
-
-      <div style={{ textAlign: 'center' }}>
-        <h1 className="start-title">Monstera PDF Editor</h1>
-        <p style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 6, fontWeight: 500 }}>
-          Professional PDF editing for everyone
-        </p>
+      <div className="start-brand">
+        <div className="start-logo">
+          <img src={logoUrl} alt="Monstera" className="start-logo-img" draggable={false} />
+        </div>
+        <h1 className="start-title">Monstera</h1>
+        <div className="start-subtitle">PDF EDITOR</div>
+        <p className="start-tagline">Professional PDF editing for everyone</p>
       </div>
 
       <button className="btn-primary start-open-btn" onClick={onOpen}>

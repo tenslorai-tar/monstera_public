@@ -6,31 +6,31 @@
   padding: 0;
 }
 
-/* ── Dark theme (default) — Forest Green ─────────────────── */
+/* ── Dark theme (default) — Deep Forest #000800 ──────────── */
 :root {
-  --bg-primary:    #0b1610;
-  --bg-secondary:  #101c15;
-  --bg-toolbar:    #0b1610;
-  --bg-ribbon:     #132019;
-  --bg-ribbon-tab: #0d1a12;
-  --bg-hover:      rgba(74, 222, 128, 0.08);
-  --bg-active:     rgba(74, 222, 128, 0.16);
-  --border:        #1c3024;
-  --border-light:  #274238;
-  --text-primary:  #ddeee5;
-  --text-secondary: #94bbaa;
-  --text-muted:    #5a8070;
-  --text-dim:      #304a3c;
+  --bg-primary:    #000800;
+  --bg-secondary:  #04130a;
+  --bg-toolbar:    #000800;
+  --bg-ribbon:     #061a0d;
+  --bg-ribbon-tab: #020d05;
+  --bg-hover:      rgba(74, 222, 128, 0.10);
+  --bg-active:     rgba(74, 222, 128, 0.18);
+  --border:        #123420;
+  --border-light:  #1d4a30;
+  --text-primary:  #ffffff;
+  --text-secondary: #c4e2d2;
+  --text-muted:    #82ac96;
+  --text-dim:      #3e5e4c;
   --accent:        #4ade80;
   --accent-hover:  #6beba0;
-  --accent-dim:    rgba(74, 222, 128, 0.16);
+  --accent-dim:    rgba(74, 222, 128, 0.18);
   --danger:        #f87171;
-  --danger-dim:    rgba(248, 113, 113, 0.14);
+  --danger-dim:    rgba(248, 113, 113, 0.16);
   --success:       #4ade80;
   --warning:       #fbbf24;
-  --shadow-sm:     0 1px 4px rgba(0, 0, 0, 0.55);
-  --shadow-md:     0 4px 16px rgba(0, 0, 0, 0.7);
-  --shadow-lg:     0 8px 40px rgba(0, 0, 0, 0.85);
+  --shadow-sm:     0 1px 4px rgba(0, 0, 0, 0.6);
+  --shadow-md:     0 4px 16px rgba(0, 0, 0, 0.75);
+  --shadow-lg:     0 8px 40px rgba(0, 0, 0, 0.9);
   --radius-sm:     4px;
   --radius:        6px;
   --radius-lg:     10px;

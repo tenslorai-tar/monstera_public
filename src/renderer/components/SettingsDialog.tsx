@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useSettingsStore } from '../store/useSettingsStore'
 import type { Theme, DefaultZoom } from '../store/useSettingsStore'
 
@@ -34,11 +34,21 @@ export default function SettingsDialog({ onClose }: Props) {
     return `${Math.round((z as number) * 100)}%`
   }
 
-  return (
-    <div className="modal-overlay">
-      <div className="modal-box" style={{ width: 440 }}>
-        <div className="modal-title">⚙ Settings</div>
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
 
+  return (
+    <div className="modal-overlay" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="modal-box settings-modal">
+        <div className="settings-header">
+          <span className="settings-header-title">⚙ Settings</span>
+          <button className="settings-close-btn" onClick={onClose} title="Close (Esc)" aria-label="Close">✕</button>
+        </div>
+
+        <div className="settings-body">
         {/* Theme */}
         <div className="modal-field">
           <label className="modal-label">Theme</label>
@@ -204,7 +214,7 @@ export default function SettingsDialog({ onClose }: Props) {
         </div>
 
         {/* Anthropic API key */}
-        <div className="modal-field">
+        <div className="modal-field settings-span-2">
           <label className="modal-label">Anthropic API key (for AI Assistant)</label>
           <input type="password" className="modal-input" style={{ fontSize: 12 }}
             value={(local as any).anthropicApiKey ?? ''}
@@ -214,7 +224,7 @@ export default function SettingsDialog({ onClose }: Props) {
         </div>
 
         {/* RTL text direction */}
-        <div className="modal-field">
+        <div className="modal-field settings-span-2">
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
             <input type="checkbox" checked={!!(local as any).rtlText}
               onChange={e => setLocal(l => ({ ...l, rtlText: e.target.checked } as any))} />
@@ -222,8 +232,9 @@ export default function SettingsDialog({ onClose }: Props) {
           </label>
           <span className="modal-hint">Enable for Arabic, Hebrew, Persian, Urdu, etc.</span>
         </div>
+        </div>{/* /settings-body */}
 
-        <div className="modal-actions" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+        <div className="settings-footer">
           <button className="modal-btn-secondary" onClick={reset} style={{ marginRight: 'auto' }}>
             Reset to defaults
           </button>

@@ -353,24 +353,30 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
         const wrapper = svg?.closest('.pdf-page-wrapper')
         const canvas = wrapper?.querySelector<HTMLCanvasElement>('canvas.pdf-page-canvas')
         if (canvas) {
-          const rx = Math.round(Math.min(draw.sx, ex))
-          const ry = Math.round(Math.min(draw.sy, ey))
-          const rw = Math.round(Math.abs(ex - draw.sx))
-          const rh = Math.round(Math.abs(ey - draw.sy))
+          // canvas intrinsic pixels may differ from CSS pixels (HiDPI render scale)
+          const ratioX = canvas.width / canvas.clientWidth
+          const ratioY = canvas.height / canvas.clientHeight
+          const rx = Math.round(Math.min(draw.sx, ex) * ratioX)
+          const ry = Math.round(Math.min(draw.sy, ey) * ratioY)
+          const rw = Math.round(Math.abs(ex - draw.sx) * ratioX)
+          const rh = Math.round(Math.abs(ey - draw.sy) * ratioY)
           const temp = document.createElement('canvas')
           temp.width = rw; temp.height = rh
           const ctx2 = temp.getContext('2d')!
           ctx2.drawImage(canvas, rx, ry, rw, rh, 0, 0, rw, rh)
-          temp.toBlob(blob => {
+          temp.toBlob(async blob => {
             if (!blob) return
-            const url = URL.createObjectURL(blob)
-            const a = document.createElement('a')
-            a.href = url; a.download = `snapshot-page${pageNum}.png`; a.click()
-            URL.revokeObjectURL(url)
+            try {
+              const buf = await blob.arrayBuffer()
+              const path = await window.electronAPI.saveFileDialog(`snapshot-page${pageNum}.png`)
+              if (path) await window.electronAPI.writeFile(path, buf)
+            } catch { /* user cancelled or save failed */ }
           }, 'image/png')
         }
       }
-      setDraw({ k: 'idle' }); return
+      setDraw({ k: 'idle' })
+      usePdfStore.getState().setActiveTool(null)
+      return
     }
 
     if (draw.k === 'shape') {
