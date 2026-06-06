@@ -12,7 +12,9 @@
     "build": "npm run build:vite && npm run build:electron && electron-builder",
     "build:vite": "vite build",
     "build:electron": "tsc -p tsconfig.electron.json",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "setup-bins": "node scripts/download-bins.js",
+    "setup-bins:force": "node scripts/download-bins.js --force"
   },
   "build": {
     "appId": "com.personal.monstera-pdf-editor",
@@ -24,6 +26,9 @@
       "dist/**/*",
       "dist-electron/**/*",
       "assets/**/*"
+    ],
+    "extraResources": [
+      { "from": "assets/bin", "to": "app/assets/bin", "filter": ["**/*"] }
     ],
     "win": {
       "target": [

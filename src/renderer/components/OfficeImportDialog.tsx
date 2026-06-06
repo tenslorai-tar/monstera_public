@@ -1,86 +1,136 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
 
-type ImportType = 'docx' | 'xlsx'
+type ImportType = 'word' | 'excel' | 'pptx' | 'other'
+
+const TYPE_META: Record<ImportType, { label: string; icon: string; ext: string[] }> = {
+  word:  { label: 'Word',       icon: '📝', ext: ['docx','doc','odt','rtf'] },
+  excel: { label: 'Excel',      icon: '📊', ext: ['xlsx','xls','ods','csv'] },
+  pptx:  { label: 'PowerPoint', icon: '📽', ext: ['pptx','ppt','odp'] },
+  other: { label: 'Other',      icon: '📄', ext: ['*'] },
+}
 
 export default function OfficeImportDialog({ onClose }: Props) {
-  const applyEdit   = usePdfStore(s => s.applyEdit)
-  const loadPdf     = usePdfStore(s => s.loadPdf)
+  const applyEdit = usePdfStore(s => s.applyEdit)
+  const loadPdf   = usePdfStore(s => s.loadPdf)
 
-  const [type,     setType]     = useState<ImportType>('docx')
+  const [type,     setType]     = useState<ImportType>('word')
   const [filePath, setFilePath] = useState('')
   const [status,   setStatus]   = useState('')
   const [busy,     setBusy]     = useState(false)
-  const [mode,     setMode]     = useState<'new' | 'append'>('new')
+  const [mode,     setMode]     = useState<'new'|'append'>('new')
+  const [loAvail,  setLoAvail]  = useState<boolean | null>(null)
+
+  const api = window.electronAPI as unknown as {
+    libreofficeIsAvailable: () => Promise<boolean>
+    libreofficeImportFile:  (p: string) => Promise<ArrayBuffer>
+    openOfficeFileDialog:   () => Promise<string | null>
+    openAnyFile:            (f: unknown[]) => Promise<string | null>
+    readFileBytes:          (p: string) => Promise<ArrayBuffer>
+    importDocx:             (b: ArrayBuffer) => Promise<ArrayBuffer>
+    importXlsx:             (b: ArrayBuffer) => Promise<ArrayBuffer>
+    importDocxSmart:        (p: string) => Promise<ArrayBuffer>
+    binsOpenUrl:            (url: string) => Promise<void>
+  }
+
+  useEffect(() => {
+    api.libreofficeIsAvailable().then(setLoAvail).catch(() => setLoAvail(false))
+  }, [])
 
   const browse = async () => {
-    const filters = type === 'docx'
-      ? [{ name: 'Word Documents', extensions: ['docx', 'doc'] }]
-      : [{ name: 'Excel Spreadsheets', extensions: ['xlsx', 'xls', 'csv'] }]
-    const path = await (window.electronAPI as any).openAnyFile(filters)
-    if (path) { setFilePath(path); setStatus('') }
+    const meta = TYPE_META[type]
+    const filters = type === 'other'
+      ? [{ name: 'Office Documents', extensions: ['docx','doc','xlsx','xls','pptx','ppt','odt','ods','odp','rtf','csv'] }]
+      : [{ name: `${meta.label} Files`, extensions: meta.ext }]
+    const p = await api.openAnyFile(filters)
+    if (p) { setFilePath(p); setStatus('') }
   }
 
   const doImport = async () => {
     if (!filePath) { setStatus('Please select a file first.'); return }
     setBusy(true)
-    setStatus('Converting…')
+    const ext = filePath.split('.').pop()?.toLowerCase() ?? ''
+    setStatus(loAvail ? 'Converting with LibreOffice (full layout fidelity)…' : 'Converting…')
     try {
-      const srcBytes = await window.electronAPI.readFileBytes(filePath)
-      const pdfBytes: ArrayBuffer = type === 'docx'
-        ? await (window.electronAPI as any).importDocx(srcBytes)
-        : await (window.electronAPI as any).importXlsx(srcBytes)
+      let pdfBytes: ArrayBuffer
 
-      const name = filePath.split(/[\\/]/).pop()?.replace(/\.(docx?|xlsx?|csv)$/i, '.pdf') ?? 'imported.pdf'
+      if (loAvail) {
+        // LibreOffice: best quality for all Office formats
+        pdfBytes = await api.libreofficeImportFile(filePath)
+      } else if (['docx','doc','odt','rtf'].includes(ext)) {
+        pdfBytes = await api.importDocxSmart(filePath)
+      } else if (['xlsx','xls','csv'].includes(ext)) {
+        const srcBytes = await api.readFileBytes(filePath)
+        pdfBytes = await api.importXlsx(srcBytes)
+      } else {
+        throw new Error('LibreOffice is required to import this file type. Install it via Tools → Native Tools Setup.')
+      }
+
+      const name = filePath.split(/[\\/]/).pop()?.replace(/\.\w+$/, '.pdf') ?? 'imported.pdf'
 
       if (mode === 'new') {
         await loadPdf(pdfBytes, name, name)
       } else {
         applyEdit(new Uint8Array(pdfBytes))
       }
-
       setStatus('✓ Imported successfully.')
-      setTimeout(() => { onClose() }, 1200)
+      setTimeout(onClose, 1200)
     } catch (e: unknown) {
       setStatus(`Error: ${(e as Error).message}`)
-    } finally {
-      setBusy(false)
     }
+    setBusy(false)
   }
 
   return (
     <div className="modal-overlay">
-      <div className="modal-box" style={{ width: 460 }}>
+      <div className="modal-box" style={{ width: 480 }}>
         <div className="modal-title">📥 Import Office Document</div>
 
-        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
-          Convert a Word or Excel file to PDF. Layout is best-effort — complex formatting may differ from the original.
-        </p>
+        {/* LibreOffice status badge */}
+        {loAvail !== null && (
+          <div style={{
+            marginBottom: 14, padding: '8px 12px', borderRadius: 6, fontSize: 11,
+            background: loAvail ? 'rgba(76,175,80,0.08)' : 'rgba(255,112,67,0.08)',
+            border: `1px solid ${loAvail ? 'rgba(76,175,80,0.3)' : 'rgba(255,112,67,0.3)'}`,
+            color: 'var(--text)',
+          }}>
+            {loAvail
+              ? '✓ LibreOffice detected — full layout fidelity for Word, Excel, PowerPoint, and more.'
+              : '⚠ LibreOffice not found. Word and Excel use a simplified converter. For full layout fidelity, '}
+            {!loAvail && (
+              <button style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 11, padding: 0, textDecoration: 'underline' }}
+                onClick={() => api.binsOpenUrl('https://www.libreoffice.org/download/download/')}>
+                install LibreOffice
+              </button>
+            )}
+            {!loAvail && '.'}
+          </div>
+        )}
 
-        {/* Type selector */}
+        {/* Format tabs */}
         <div className="modal-field">
-          <label className="modal-label">File type</label>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {(['docx', 'xlsx'] as ImportType[]).map(t => (
-              <button key={t}
-                onClick={() => { setType(t); setFilePath('') }}
+          <label className="modal-label">Document type</label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {(Object.entries(TYPE_META) as [ImportType, typeof TYPE_META[ImportType]][]).map(([k, v]) => (
+              <button key={k}
+                onClick={() => { setType(k); setFilePath(''); setStatus('') }}
+                disabled={!loAvail && k === 'pptx'}
                 style={{
-                  flex: 1, padding: '8px 0', border: '1px solid',
-                  borderColor: type === t ? 'var(--accent)' : 'var(--border)',
-                  borderRadius: 5, cursor: 'pointer', fontSize: 13,
-                  background: type === t ? 'rgba(74,158,255,0.12)' : 'var(--bg-secondary)',
-                  color: type === t ? 'var(--accent)' : 'var(--text-primary)',
-                  fontWeight: type === t ? 600 : 400,
+                  flex: 1, padding: '7px 4px', border: '1px solid', borderRadius: 5, cursor: loAvail || k !== 'pptx' ? 'pointer' : 'not-allowed', fontSize: 12,
+                  borderColor: type === k ? 'var(--accent)' : 'var(--border)',
+                  background: type === k ? 'rgba(74,158,255,0.12)' : 'var(--bg-secondary)',
+                  color: (!loAvail && k === 'pptx') ? 'var(--text-muted)' : type === k ? 'var(--accent)' : 'var(--text-primary)',
+                  fontWeight: type === k ? 600 : 400,
+                  opacity: (!loAvail && k === 'pptx') ? 0.5 : 1,
                 }}>
-                {t === 'docx' ? '📝 Word (.docx)' : '📊 Excel (.xlsx)'}
+                {v.icon} {v.label}
               </button>
             ))}
           </div>
         </div>
 
-        {/* File picker */}
         <div className="modal-field">
           <label className="modal-label">File</label>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -92,7 +142,6 @@ export default function OfficeImportDialog({ onClose }: Props) {
           </div>
         </div>
 
-        {/* Import mode */}
         <div className="modal-field">
           <label className="modal-label">Import as</label>
           <div style={{ display: 'flex', gap: 16 }}>

@@ -1,6 +1,7 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron'
 import path from 'path'
 import fs from 'fs'
+import * as nativeBins from './nativeBins'
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
@@ -178,10 +179,22 @@ function buildAppMenu(win: BrowserWindow): Menu {
           ],
         },
         { type: 'separator' },
-        { label: 'Import Office File (DOCX/XLSX)…', click: send('officeImport') },
+        { label: 'Import Office File…', click: send('officeImport') },
         { type: 'separator' },
         { label: 'Run OCR…',   click: send('ocr') },
         { label: 'Export…',    click: send('export') },
+        { type: 'separator' },
+        {
+          label: 'PDF Standards & Conversion',
+          submenu: [
+            { label: 'Convert to PDF/A (Archival)…',   click: send('pdfConvert') },
+            { label: 'Convert to PDF/X (Print)…',      click: send('pdfConvert') },
+            { label: 'Convert to Grayscale / CMYK…',   click: send('pdfConvert') },
+            { label: 'Repair & Linearize PDF…',        click: send('pdfConvert') },
+          ],
+        },
+        { type: 'separator' },
+        { label: 'Native Tools Setup…', click: send('nativeBins') },
         { type: 'separator' },
         { label: 'Preferences…', accelerator: 'CmdOrCtrl+,', click: send('settings') },
       ],
@@ -1143,4 +1156,173 @@ ipcMain.handle('mupdf:findTextRects', async (
     }
   }
   return results
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NATIVE BINARY OPERATIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── Binary status & setup ─────────────────────────────────────────────────────
+
+ipcMain.handle('bins:getStatus', () => nativeBins.getBinStatus())
+
+ipcMain.handle('bins:openUrl', async (_event, url: string) => {
+  await shell.openExternal(url)
+})
+
+ipcMain.handle('bins:downloadMutool', async (event) => {
+  const https = require('https') as typeof import('https')
+  const http  = require('http')  as typeof import('http')
+  const os    = require('os')    as typeof import('os')
+
+  function dlFile(url: string, dest: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      function follow(u: string, hops = 0): void {
+        if (hops > 8) { reject(new Error('Too many redirects')); return }
+        const mod = u.startsWith('https') ? https : http
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const req = (mod as any).get(u, { headers: { 'User-Agent': 'monstera-pdf-editor/1.0' } }, (res: import('http').IncomingMessage) => {
+          if ([301,302,303,307,308].includes(res.statusCode ?? 0)) { follow(res.headers.location!, hops+1); return }
+          if ((res.statusCode ?? 0) !== 200) { reject(new Error(`HTTP ${res.statusCode}`)); return }
+          const total = parseInt(String(res.headers['content-length'] ?? '0'))
+          let received = 0
+          const file = fs.createWriteStream(dest)
+          res.on('data', (chunk: Buffer) => {
+            received += chunk.length
+            if (total > 0) event.sender.send('bins:downloadProgress', { pct: Math.round(received/total*100), mb: (received/1024/1024).toFixed(1) })
+          })
+          res.pipe(file)
+          file.on('finish', () => { file.close(); resolve() })
+          res.on('error', reject); file.on('error', reject)
+        })
+        req.on('error', reject)
+      }
+      follow(url)
+    })
+  }
+
+  let downloadUrl = 'https://github.com/ArtifexSoftware/mupdf/releases/download/1.24.11/mupdf-1.24.11-windows.zip'
+  try {
+    downloadUrl = await new Promise<string>((resolve) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const req = (https as any).get('https://api.github.com/repos/ArtifexSoftware/mupdf/releases/latest',
+        { headers: { 'User-Agent': 'monstera-pdf-editor/1.0' } },
+        (res: import('http').IncomingMessage) => {
+          let data = ''
+          res.on('data', (d: Buffer) => { data += d.toString() })
+          res.on('end', () => {
+            try {
+              const release = JSON.parse(data)
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const asset = (release.assets || []).find((a: any) => a.name.toLowerCase().includes('windows') && a.name.endsWith('.zip'))
+              resolve(asset ? asset.browser_download_url : downloadUrl)
+            } catch { resolve(downloadUrl) }
+          })
+          res.on('error', () => resolve(downloadUrl))
+        })
+      req.on('error', () => resolve(downloadUrl))
+      req.setTimeout(8000, () => { req.destroy(); resolve(downloadUrl) })
+    })
+  } catch { /* use default */ }
+
+  event.sender.send('bins:downloadProgress', { pct: 0, status: 'Connecting…' })
+  const zipPath = path.join(os.tmpdir(), `mupdf-${Date.now()}.zip`)
+  try {
+    await dlFile(downloadUrl, zipPath)
+    event.sender.send('bins:downloadProgress', { pct: 100, status: 'Extracting…' })
+
+    const extractDir = path.join(os.tmpdir(), `mupdf-extract-${Date.now()}`)
+    fs.mkdirSync(extractDir, { recursive: true })
+    const { execSync } = require('child_process') as typeof import('child_process')
+    execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${extractDir}' -Force"`)
+
+    function findExe(dir: string, name: string): string | null {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, e.name)
+        if (e.isDirectory()) { const f = findExe(full, name); if (f) return f }
+        else if (e.name.toLowerCase() === name) return full
+      }
+      return null
+    }
+
+    const src = findExe(extractDir, 'mutool.exe')
+    if (!src) throw new Error('mutool.exe not found in archive')
+    const dest = path.join(nativeBins.BIN_DIR, 'mutool.exe')
+    fs.mkdirSync(nativeBins.BIN_DIR, { recursive: true })
+    fs.copyFileSync(src, dest)
+    try { fs.rmSync(extractDir, { recursive: true, force: true }) } catch {}
+    return dest
+  } finally {
+    try { if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath) } catch {}
+  }
+})
+
+// ── Ghostscript ───────────────────────────────────────────────────────────────
+
+function abuf(buf: Buffer): ArrayBuffer {
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
+}
+
+ipcMain.handle('gs:toPdfa',     async (_e, b: ArrayBuffer, level: 1|2|3) => abuf(await nativeBins.gsToPdfA(b, level)))
+ipcMain.handle('gs:toPdfx',     async (_e, b: ArrayBuffer)               => abuf(await nativeBins.gsToPdfX(b)))
+ipcMain.handle('gs:toGrayscale',async (_e, b: ArrayBuffer)               => abuf(await nativeBins.gsToGrayscale(b)))
+ipcMain.handle('gs:toCmyk',     async (_e, b: ArrayBuffer)               => abuf(await nativeBins.gsToCmyk(b)))
+ipcMain.handle('gs:optimize',   async (_e, b: ArrayBuffer, preset: nativeBins.GsOptPreset) => abuf(await nativeBins.gsOptimize(b, preset)))
+ipcMain.handle('gs:linearize',  async (_e, b: ArrayBuffer)               => abuf(await nativeBins.gsLinearize(b)))
+ipcMain.handle('gs:sanitize',   async (_e, b: ArrayBuffer)               => abuf(await nativeBins.gsSanitize(b)))
+ipcMain.handle('gs:rasterize',  async (_e, b: ArrayBuffer, dpi: number)  => abuf(await nativeBins.gsRasterize(b, dpi)))
+
+// ── MuPDF mutool ──────────────────────────────────────────────────────────────
+
+ipcMain.handle('mutool:clean', async (_e, b: ArrayBuffer, opts: Parameters<typeof nativeBins.mutoolClean>[1]) =>
+  abuf(await nativeBins.mutoolClean(b, opts)))
+
+ipcMain.handle('mutool:info',         async (_e, b: ArrayBuffer) => nativeBins.mutoolInfo(b))
+ipcMain.handle('mutool:extractFiles', async (_e, b: ArrayBuffer) => nativeBins.mutoolExtractFiles(b))
+
+// ── LibreOffice ───────────────────────────────────────────────────────────────
+
+ipcMain.handle('libreoffice:isAvailable', () => !!nativeBins.getLibreOfficePath())
+
+ipcMain.handle('libreoffice:importFile', async (_e, filePath: string) => {
+  const ext   = path.extname(filePath).toLowerCase()
+  const bytes = fs.readFileSync(filePath)
+  return abuf(await nativeBins.libreOfficeToPdf(bytes, ext))
+})
+
+ipcMain.handle('libreoffice:importBytes', async (_e, bytes: ArrayBuffer, ext: string) =>
+  abuf(await nativeBins.libreOfficeToPdf(bytes, ext)))
+
+ipcMain.handle('libreoffice:exportDocx', async (_e, b: ArrayBuffer) => abuf(await nativeBins.libreOfficeToDocx(b)))
+ipcMain.handle('libreoffice:exportPptx', async (_e, b: ArrayBuffer) => abuf(await nativeBins.libreOfficeToPptx(b)))
+
+// Office file open dialog
+ipcMain.handle('dialog:openOfficeFile', async () => {
+  const r = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [
+      { name: 'Office Documents', extensions: ['docx','doc','xlsx','xls','pptx','ppt','odt','ods','odp','rtf','csv'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  })
+  return r.canceled ? null : r.filePaths[0]
+})
+
+// Smart DOCX import: LibreOffice first, mammoth fallback
+ipcMain.handle('file:importDocxSmart', async (_e, filePath: string) => {
+  if (nativeBins.getLibreOfficePath()) {
+    const bytes = fs.readFileSync(filePath)
+    return abuf(await nativeBins.libreOfficeToPdf(bytes, path.extname(filePath).toLowerCase()))
+  }
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const mammoth = require('mammoth')
+  const result = await mammoth.convertToHtml({ path: filePath })
+  const html: string = result.value
+  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;font-size:12px;margin:30px 40px;line-height:1.6;}h1,h2,h3{margin-top:1em;}table{border-collapse:collapse;width:100%;}td,th{border:1px solid #bbb;padding:4px 8px;}th{background:#e8eaf6;}</style></head><body>${html}</body></html>`
+  const offscreen = new BrowserWindow({ show: false, width: 800, height: 1100, webPreferences: { nodeIntegration: false, contextIsolation: true } })
+  await offscreen.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(fullHtml)}`)
+  await new Promise<void>(r => setTimeout(r, 800))
+  const pdfBuf = await offscreen.webContents.printToPDF({ pageSize: 'A4', printBackground: true, margins: { top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 } })
+  offscreen.close()
+  return abuf(pdfBuf)
 })

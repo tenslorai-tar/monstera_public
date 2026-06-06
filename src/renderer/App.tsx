@@ -39,6 +39,8 @@ import AiAssistantDialog from './components/AiAssistantDialog'
 import OfficeImportDialog from './components/OfficeImportDialog'
 import CloudStorageDialog from './components/CloudStorageDialog'
 import DocuSignDialog from './components/DocuSignDialog'
+import NativeBinsDialog from './components/NativeBinsDialog'
+import PdfConvertDialog from './components/PdfConvertDialog'
 import * as docEnhance from './utils/documentEnhance'
 import { usePdfStore } from './store/usePdfStore'
 import { useSettingsStore } from './store/useSettingsStore'
@@ -105,6 +107,8 @@ export default function App() {
   const [officeImportOpen,     setOfficeImportOpen]     = useState(false)
   const [cloudStorageOpen,     setCloudStorageOpen]     = useState(false)
   const [docuSignOpen,         setDocuSignOpen]         = useState(false)
+  const [nativeBinsOpen,       setNativeBinsOpen]       = useState(false)
+  const [pdfConvertOpen,       setPdfConvertOpen]       = useState(false)
 
   const [passwordPrompt,    setPasswordPrompt]     = useState<PasswordPromptState>(null)
   const [passwordError,     setPasswordError]      = useState('')
@@ -209,6 +213,8 @@ export default function App() {
         case 'officeImport':   setOfficeImportOpen(true); break
         case 'cloudStorage':   setCloudStorageOpen(true); break
         case 'docuSign':       setDocuSignOpen(true); break
+        case 'nativeBins':     setNativeBinsOpen(true); break
+        case 'pdfConvert':     setPdfConvertOpen(true); break
         case 'wordCount':      setWordCountOpen(true); break
         case 'translate':      setTranslateOpen(true); break
         case 'spellCheck':     setSpellCheckOpen(true); break
@@ -338,6 +344,8 @@ export default function App() {
         onOfficeImport={() => setOfficeImportOpen(true)}
         onCloudStorage={() => setCloudStorageOpen(true)}
         onDocuSign={() => setDocuSignOpen(true)}
+        onNativeBins={() => setNativeBinsOpen(true)}
+        onPdfConvert={() => setPdfConvertOpen(true)}
       />
 
       {hasPdf ? (
@@ -468,6 +476,8 @@ export default function App() {
       {officeImportOpen  && <OfficeImportDialog  onClose={() => setOfficeImportOpen(false)} />}
       {cloudStorageOpen  && <CloudStorageDialog  onClose={() => setCloudStorageOpen(false)} />}
       {docuSignOpen      && <DocuSignDialog      onClose={() => setDocuSignOpen(false)} />}
+      {nativeBinsOpen    && <NativeBinsDialog    onClose={() => setNativeBinsOpen(false)} />}
+      {pdfConvertOpen    && <PdfConvertDialog    onClose={() => setPdfConvertOpen(false)} />}
       {openUrlOpen && (
         <OpenUrlDialog
           onClose={() => setOpenUrlOpen(false)}

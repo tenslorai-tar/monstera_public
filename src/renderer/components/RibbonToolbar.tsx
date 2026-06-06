@@ -62,6 +62,9 @@ interface Props {
   onOfficeImport: () => void
   onCloudStorage: () => void
   onDocuSign: () => void
+  // Native binary ops
+  onNativeBins: () => void
+  onPdfConvert: () => void
 }
 
 const ZOOM_PRESETS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]
@@ -88,6 +91,7 @@ export default function RibbonToolbar(props: Props) {
     onSwapPages, onResizePages, onDeleteEmptyPages, onNormalizePages,
     onFindRedact, onOptimize, onOpenUrl, onReplacePage, onMeasureCalibration,
     onAiAssistant, onOfficeImport, onCloudStorage, onDocuSign,
+    onNativeBins, onPdfConvert,
   } = props
 
   const resetFormFields = usePdfStore(s => s.resetFormFields)
@@ -810,7 +814,27 @@ export default function RibbonToolbar(props: Props) {
       <Group label="Import">
         <div className="rbn-stack">
           <SBtn icon="📥" label="Office" onClick={onOfficeImport}
-            title="Convert Word (.docx) or Excel (.xlsx) files to PDF" />
+            title="Convert Word, Excel, PowerPoint, ODF → PDF (LibreOffice when available)" />
+        </div>
+      </Group>
+
+      <Group label="Standards">
+        <div className="rbn-stack">
+          <SBtn icon="📦" label="PDF/A" onClick={onPdfConvert}
+            title="Convert to PDF/A archival format (ISO 19005) — requires Ghostscript" />
+          <SBtn icon="🖨" label="PDF/X" onClick={onPdfConvert}
+            title="Convert to PDF/X print-production format — requires Ghostscript" />
+          <SBtn icon="🎨" label="Color" onClick={onPdfConvert}
+            title="Convert color space: Grayscale or CMYK — requires Ghostscript" />
+          <SBtn icon="🔧" label="Repair" onClick={onPdfConvert}
+            title="Clean, repair, and linearize PDF structure (mutool)" />
+        </div>
+      </Group>
+
+      <Group label="Native Tools">
+        <div className="rbn-stack">
+          <SBtn icon="⚙" label="Setup" onClick={onNativeBins}
+            title="Install/check native tools: Ghostscript, mutool, LibreOffice" />
         </div>
       </Group>
 

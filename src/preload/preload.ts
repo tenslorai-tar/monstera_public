@@ -135,4 +135,65 @@ contextBridge.exposeInMainWorld('electronAPI', {
   removeMenuActionListener: (): void => {
     ipcRenderer.removeAllListeners('menu:action')
   },
+
+  // ── Native binary management ─────────────────────────────────────────────────
+
+  binsGetStatus: (): Promise<{
+    mutool:      { path: string; available: boolean }
+    ghostscript: { path: string; available: boolean }
+    libreoffice: { path: string; available: boolean }
+  }> => ipcRenderer.invoke('bins:getStatus'),
+
+  binsOpenUrl: (url: string): Promise<void> =>
+    ipcRenderer.invoke('bins:openUrl', url),
+
+  binsDownloadMutool: (): Promise<string> =>
+    ipcRenderer.invoke('bins:downloadMutool'),
+
+  onBinsDownloadProgress: (cb: (data: { pct: number; mb?: string; status?: string }) => void): void => {
+    ipcRenderer.on('bins:downloadProgress', (_e, data) => cb(data))
+  },
+
+  removeBinsDownloadListener: (): void => {
+    ipcRenderer.removeAllListeners('bins:downloadProgress')
+  },
+
+  // ── Ghostscript operations ───────────────────────────────────────────────────
+
+  gsToPdfa:      (bytes: ArrayBuffer, level: 1 | 2 | 3): Promise<ArrayBuffer> => ipcRenderer.invoke('gs:toPdfa', bytes, level),
+  gsToPdfx:      (bytes: ArrayBuffer): Promise<ArrayBuffer>                    => ipcRenderer.invoke('gs:toPdfx', bytes),
+  gsToGrayscale: (bytes: ArrayBuffer): Promise<ArrayBuffer>                    => ipcRenderer.invoke('gs:toGrayscale', bytes),
+  gsToCmyk:      (bytes: ArrayBuffer): Promise<ArrayBuffer>                    => ipcRenderer.invoke('gs:toCmyk', bytes),
+  gsOptimize:    (bytes: ArrayBuffer, preset: string): Promise<ArrayBuffer>    => ipcRenderer.invoke('gs:optimize', bytes, preset),
+  gsLinearize:   (bytes: ArrayBuffer): Promise<ArrayBuffer>                    => ipcRenderer.invoke('gs:linearize', bytes),
+  gsSanitize:    (bytes: ArrayBuffer): Promise<ArrayBuffer>                    => ipcRenderer.invoke('gs:sanitize', bytes),
+  gsRasterize:   (bytes: ArrayBuffer, dpi: number): Promise<ArrayBuffer>       => ipcRenderer.invoke('gs:rasterize', bytes, dpi),
+
+  // ── MuPDF mutool operations ──────────────────────────────────────────────────
+
+  mutoolClean: (bytes: ArrayBuffer, opts: {
+    repair?: boolean; garbage?: 0|1|2|3|4; compress?: boolean; linearize?: boolean; sanitize?: boolean
+  }): Promise<ArrayBuffer> => ipcRenderer.invoke('mutool:clean', bytes, opts),
+
+  mutoolInfo: (bytes: ArrayBuffer): Promise<string> =>
+    ipcRenderer.invoke('mutool:info', bytes),
+
+  mutoolExtractFiles: (bytes: ArrayBuffer): Promise<Array<{ name: string; size: number; dataBase64: string }>> =>
+    ipcRenderer.invoke('mutool:extractFiles', bytes),
+
+  // ── LibreOffice operations ───────────────────────────────────────────────────
+
+  libreofficeIsAvailable: (): Promise<boolean> =>
+    ipcRenderer.invoke('libreoffice:isAvailable'),
+
+  libreofficeImportFile:  (filePath: string): Promise<ArrayBuffer>  => ipcRenderer.invoke('libreoffice:importFile', filePath),
+  libreofficeImportBytes: (bytes: ArrayBuffer, ext: string): Promise<ArrayBuffer> => ipcRenderer.invoke('libreoffice:importBytes', bytes, ext),
+  libreofficeExportDocx:  (bytes: ArrayBuffer): Promise<ArrayBuffer> => ipcRenderer.invoke('libreoffice:exportDocx', bytes),
+  libreofficeExportPptx:  (bytes: ArrayBuffer): Promise<ArrayBuffer> => ipcRenderer.invoke('libreoffice:exportPptx', bytes),
+
+  openOfficeFileDialog: (): Promise<string | null> =>
+    ipcRenderer.invoke('dialog:openOfficeFile'),
+
+  importDocxSmart: (filePath: string): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('file:importDocxSmart', filePath),
 })
