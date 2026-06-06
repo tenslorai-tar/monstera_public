@@ -46,6 +46,13 @@ async function pdfiumReady(): Promise<boolean> {
   return _pdfiumAvail
 }
 
+// Map a base-14 font family to its CSS equivalent for on-canvas rendering.
+function cssFont(font?: string): string {
+  if (font === 'Times-Roman') return 'serif'
+  if (font === 'Courier') return 'monospace'
+  return 'sans-serif'
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 function StampShape({ color, stampName, w, h }: { color: string; stampName: string; w: number; h: number }) {
@@ -126,6 +133,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   const toolOpacity = usePdfStore(s => s.toolOpacity)
   const toolLineWidth = usePdfStore(s => s.toolLineWidth)
   const toolFontSize = usePdfStore(s => s.toolFontSize)
+  const toolFont = usePdfStore(s => s.toolFont)
   const stampName = usePdfStore(s => s.stampName)
   const customStampDataUrl = usePdfStore(s => s.customStampDataUrl)
   const openStickyNoteId = usePdfStore(s => s.openStickyNoteId)
@@ -606,7 +614,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       const [, y_bot] = toPdf(draw.x, draw.y + draw.h)
       const [x2] = toPdf(draw.x + draw.w, draw.y)
       addAnnotation({ id: newId(), type: 'textbox', pageNum,
-        color: toolColor, opacity: toolOpacity,
+        color: toolColor, opacity: toolOpacity, font: toolFont,
         x, y: y_bot, width: x2 - x, height: y_top - y_bot,
         text, fontSize: toolFontSize, createdAt: Date.now() } as TextBoxAnn)
     }
@@ -619,7 +627,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       const [px] = toPdf(draw.x, draw.y)
       const [, py_bot] = toPdf(draw.x, draw.y + toolFontSize * scale * 1.5)
       addAnnotation({ id: newId(), type: 'typewriter', pageNum,
-        color: toolColor, opacity: toolOpacity,
+        color: toolColor, opacity: toolOpacity, font: toolFont,
         x: px, y: py_bot, text, fontSize: toolFontSize, createdAt: Date.now() } as TypewriterAnn)
     }
     setDraw({ k: 'idle' })
@@ -819,7 +827,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
           <div style={{
             width: '100%', height: '100%', padding: 4,
             fontSize: a.fontSize * scale, color: a.color, opacity: a.opacity,
-            fontFamily: 'sans-serif', border: sel ? '1px dashed #4a9eff' : '1px solid rgba(255,255,255,0.2)',
+            fontFamily: cssFont(a.font), border: sel ? '1px dashed #4a9eff' : '1px solid rgba(255,255,255,0.2)',
             boxSizing: 'border-box', overflow: 'hidden', wordBreak: 'break-word',
             background: 'rgba(255,255,220,0.08)', pointerEvents: 'all', whiteSpace: 'pre-wrap',
           }}>{a.text}</div>
@@ -911,7 +919,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
           onClick={e => handleAnnotClick(a, e)} style={annStyle(a)}>
           <div style={{
             fontSize: a.fontSize * scale, color: a.color, opacity: a.opacity,
-            fontFamily: 'sans-serif', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            fontFamily: cssFont(a.font), whiteSpace: 'pre-wrap', wordBreak: 'break-word',
             border: sel ? '1px dashed #4a9eff' : 'none', outline: 'none', padding: 2, boxSizing: 'border-box',
           }}>{a.text}</div>
         </foreignObject>

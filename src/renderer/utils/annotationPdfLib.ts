@@ -17,6 +17,11 @@ function mkC(doc: PDFDocument, hex: string) {
   return doc.context.obj([r, g, b])
 }
 
+// Map a chosen family to a base-14 PDF font name that viewers render natively.
+function daFont(font?: string): string {
+  return (font === 'Times-Roman' || font === 'Courier') ? font : 'Helvetica'
+}
+
 function ensureAnnots(doc: PDFDocument, idx: number): PDFArray {
   const page = doc.getPage(idx)
   const key = PDFName.of('Annots')
@@ -115,7 +120,7 @@ function writeTextBox(doc: PDFDocument, a: TextBoxAnn) {
     Subtype: PDFName.of('FreeText'),
     Rect: doc.context.obj([a.x, a.y, a.x + a.width, a.y + a.height]),
     Contents: PDFString.of(a.text),
-    DA: PDFString.of(`/Helvetica ${a.fontSize} Tf`),
+    DA: PDFString.of(`/${daFont(a.font)} ${a.fontSize} Tf`),
     BS: doc.context.obj({ W: PDFNumber.of(1) }),
     C: mkC(doc, a.color),
     CA: PDFNumber.of(a.opacity),
@@ -160,7 +165,7 @@ function writeTypewriter(doc: PDFDocument, a: TypewriterAnn) {
     Subtype: PDFName.of('FreeText'),
     Rect: doc.context.obj([a.x, a.y, a.x + 400, a.y + a.fontSize * 2]),
     Contents: PDFString.of(a.text),
-    DA: PDFString.of(`/Helvetica ${a.fontSize} Tf`),
+    DA: PDFString.of(`/${daFont(a.font)} ${a.fontSize} Tf`),
     BS: doc.context.obj({ W: PDFNumber.of(0) }),
     C: mkC(doc, a.color),
     CA: PDFNumber.of(a.opacity),
@@ -188,7 +193,7 @@ function writeTextEdit(doc: PDFDocument, a: TextEditAnn) {
     Subtype: PDFName.of('FreeText'),
     Rect: doc.context.obj([a.x, a.y, a.x + a.width, a.y + a.height]),
     Contents: PDFString.of(a.text),
-    DA: PDFString.of(`/Helvetica ${a.fontSize} Tf`),
+    DA: PDFString.of(`/${daFont(a.font)} ${a.fontSize} Tf`),
     BS: doc.context.obj({ W: PDFNumber.of(0) }),
     C: mkC(doc, a.color),
     CA: PDFNumber.of(a.opacity),
@@ -225,7 +230,7 @@ function writeCallout(doc: PDFDocument, a: CalloutAnn) {
     Subtype: PDFName.of('FreeText'),
     Rect: doc.context.obj([a.x, a.y, x2, y2]),
     Contents: PDFString.of(a.text),
-    DA: PDFString.of(`/Helvetica ${a.fontSize} Tf`),
+    DA: PDFString.of(`/${daFont(a.font)} ${a.fontSize} Tf`),
     BS: doc.context.obj({ W: PDFNumber.of(a.lineWidth) }),
     C: mkC(doc, a.color),
     CA: PDFNumber.of(a.opacity),

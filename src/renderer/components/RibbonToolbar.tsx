@@ -137,6 +137,7 @@ export default function RibbonToolbar(props: Props) {
   const toolOpacity       = usePdfStore(s => s.toolOpacity)
   const toolLineWidth     = usePdfStore(s => s.toolLineWidth)
   const toolFontSize      = usePdfStore(s => s.toolFontSize)
+  const toolFont          = usePdfStore(s => s.toolFont)
   const stampName         = usePdfStore(s => s.stampName)
   const annotationsPanelOpen = usePdfStore(s => s.annotationsPanelOpen)
   const annotations       = usePdfStore(s => s.annotations)
@@ -158,6 +159,7 @@ export default function RibbonToolbar(props: Props) {
   const setToolOpacity    = usePdfStore(s => s.setToolOpacity)
   const setToolLineWidth  = usePdfStore(s => s.setToolLineWidth)
   const setToolFontSize   = usePdfStore(s => s.setToolFontSize)
+  const setToolFont       = usePdfStore(s => s.setToolFont)
   const setStampName      = usePdfStore(s => s.setStampName)
   const setCustomStampDataUrl = usePdfStore(s => s.setCustomStampDataUrl)
   const toggleAnnotationsPanel = usePdfStore(s => s.toggleAnnotationsPanel)
@@ -425,13 +427,23 @@ export default function RibbonToolbar(props: Props) {
             </div>
           )}
           {showFontSize && (
-            <div className="rbn-ctrl-row">
-              <span className="rbn-ctrl-lbl">Font</span>
-              <input type="number" min={6} max={72} value={toolFontSize}
-                onChange={e => setToolFontSize(Math.max(6, parseInt(e.target.value) || 12))}
-                className="rbn-num-input" title="Font size" />
-              <span className="rbn-ctrl-val">pt</span>
-            </div>
+            <>
+              <div className="rbn-ctrl-row">
+                <span className="rbn-ctrl-lbl">Font</span>
+                <input type="number" min={6} max={72} value={toolFontSize}
+                  onChange={e => setToolFontSize(Math.max(6, parseInt(e.target.value) || 12))}
+                  className="rbn-num-input" title="Font size" />
+                <span className="rbn-ctrl-val">pt</span>
+              </div>
+              <div className="rbn-ctrl-row">
+                <span className="rbn-ctrl-lbl">Family</span>
+                <select className="rbn-select-sm" value={toolFont} onChange={e => setToolFont(e.target.value)} title="Font family for new text">
+                  <option value="Helvetica">Sans (Helvetica)</option>
+                  <option value="Times-Roman">Serif (Times)</option>
+                  <option value="Courier">Mono (Courier)</option>
+                </select>
+              </div>
+            </>
           )}
         </div>
       </Group>
@@ -503,13 +515,23 @@ export default function RibbonToolbar(props: Props) {
               className="rbn-color-swatch" title="Text / annotation color" />
           </div>
           {showFontSize && (
-            <div className="rbn-ctrl-row">
-              <span className="rbn-ctrl-lbl">Font</span>
-              <input type="number" min={6} max={72} value={toolFontSize}
-                onChange={e => setToolFontSize(Math.max(6, parseInt(e.target.value) || 12))}
-                className="rbn-num-input" title="Font size" />
-              <span className="rbn-ctrl-val">pt</span>
-            </div>
+            <>
+              <div className="rbn-ctrl-row">
+                <span className="rbn-ctrl-lbl">Font</span>
+                <input type="number" min={6} max={72} value={toolFontSize}
+                  onChange={e => setToolFontSize(Math.max(6, parseInt(e.target.value) || 12))}
+                  className="rbn-num-input" title="Font size" />
+                <span className="rbn-ctrl-val">pt</span>
+              </div>
+              <div className="rbn-ctrl-row">
+                <span className="rbn-ctrl-lbl">Family</span>
+                <select className="rbn-select-sm" value={toolFont} onChange={e => setToolFont(e.target.value)} title="Font family for new text">
+                  <option value="Helvetica">Sans (Helvetica)</option>
+                  <option value="Times-Roman">Serif (Times)</option>
+                  <option value="Courier">Mono (Courier)</option>
+                </select>
+              </div>
+            </>
           )}
         </div>
       </Group>

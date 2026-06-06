@@ -120,6 +120,7 @@ interface PdfStore {
   toolOpacity: number
   toolLineWidth: number
   toolFontSize: number
+  toolFont: string
   stampName: StampName
   customStampDataUrl: string | null
   annotationsPanelOpen: boolean
@@ -192,6 +193,7 @@ interface PdfStore {
   setToolOpacity: (o: number) => void
   setToolLineWidth: (w: number) => void
   setToolFontSize: (s: number) => void
+  setToolFont: (f: string) => void
   setStampName: (n: StampName) => void
   setCustomStampDataUrl: (url: string | null) => void
   toggleAnnotationsPanel: () => void
@@ -263,6 +265,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   toolOpacity: 0.7,
   toolLineWidth: 2,
   toolFontSize: 12,
+  toolFont: 'Helvetica',
   stampName: 'Approved',
   customStampDataUrl: null,
   annotationsPanelOpen: false,
@@ -588,6 +591,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   setToolOpacity: (o) => set({ toolOpacity: o }),
   setToolLineWidth: (w) => set({ toolLineWidth: w }),
   setToolFontSize: (s) => set({ toolFontSize: s }),
+  setToolFont: (f) => set({ toolFont: f }),
   setStampName: (n) => set({ stampName: n }),
   setCustomStampDataUrl: (url) => set({ customStampDataUrl: url }),
   toggleAnnotationsPanel: () => set(s => ({ annotationsPanelOpen: !s.annotationsPanelOpen })),

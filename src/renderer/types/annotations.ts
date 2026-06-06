@@ -22,6 +22,7 @@ export interface AnnBase {
   color: string     // '#rrggbb'
   opacity: number   // 0–1
   createdAt: number
+  font?: string     // base-14 font family for text annotations: Helvetica | Times-Roman | Courier
 }
 
 export interface HighlightAnn extends AnnBase {
