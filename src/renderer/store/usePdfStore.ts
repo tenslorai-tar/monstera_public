@@ -230,6 +230,8 @@ interface PdfStore {
   toggleFormsPanel: () => void
   flattenForm: () => Promise<void>
   identifyForms: () => Promise<number>
+  resetFormFields: () => void
+  exportFormData: () => string
 
   flattenAnnotations: () => Promise<void>
   closePdf: () => void
@@ -627,6 +629,29 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     }
     if (added > 0) set({ formMode: true, formsPanelOpen: true })
     return added
+  },
+
+  resetFormFields: () => set(s => ({
+    formFields: s.formFields.map(f => {
+      if (f.type === 'text' || f.type === 'date') return { ...f, value: '' }
+      if (f.type === 'checkbox') return { ...f, checked: false }
+      if (f.type === 'radio') return { ...f, selected: false }
+      if (f.type === 'dropdown' || f.type === 'listbox') return { ...f, selectedOptions: [] }
+      return f
+    }),
+    isDirty: true,
+  })),
+
+  exportFormData: () => {
+    const { formFields } = get()
+    const data: Record<string, unknown> = {}
+    for (const f of formFields) {
+      if (f.type === 'text' || f.type === 'date') data[f.fieldName] = (f as any).value ?? ''
+      else if (f.type === 'checkbox') data[f.fieldName] = (f as any).checked ?? false
+      else if (f.type === 'radio') data[f.fieldName] = (f as any).selected ? (f as any).exportValue : null
+      else if (f.type === 'dropdown' || f.type === 'listbox') data[f.fieldName] = (f as any).selectedOptions ?? []
+    }
+    return JSON.stringify(data, null, 2)
   },
 
   // ── Bookmark actions ──────────────────────────────────────────────────────────

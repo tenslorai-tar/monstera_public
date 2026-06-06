@@ -104,6 +104,24 @@ export function usePdfOperations() {
     applyEdit(await pdfEdits.reversePages(await requireBytes()))
   }, [applyEdit, getBakedBytes])
 
+  const swapPages = useCallback(async (page1: number, page2: number) => {
+    applyEdit(await pdfEdits.swapPages(await requireBytes(), page1, page2))
+  }, [applyEdit, getBakedBytes])
+
+  const resizePages = useCallback(async (pageNums: number[] | 'all', width: number, height: number) => {
+    applyEdit(await pdfEdits.resizePages(await requireBytes(), pageNums, width, height))
+  }, [applyEdit, getBakedBytes])
+
+  const deleteEmptyPages = useCallback(async (): Promise<number[]> => {
+    const result = await pdfEdits.deleteEmptyPages(await requireBytes())
+    if (result.deleted.length > 0) applyEdit(result.bytes)
+    return result.deleted
+  }, [applyEdit, getBakedBytes])
+
+  const normalizePages = useCallback(async () => {
+    applyEdit(await pdfEdits.normalizeMediaBox(await requireBytes()))
+  }, [applyEdit, getBakedBytes])
+
   return {
     deletePages,
     rotatePages,
@@ -117,5 +135,9 @@ export function usePdfOperations() {
     splitByRanges,
     splitOnePerPage,
     reversePages,
+    swapPages,
+    resizePages,
+    deleteEmptyPages,
+    normalizePages,
   }
 }

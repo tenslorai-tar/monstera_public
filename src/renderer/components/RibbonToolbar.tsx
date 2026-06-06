@@ -47,6 +47,10 @@ interface Props {
   onWordCount: () => void
   onTranslate: () => void
   onSpellCheck: () => void
+  onSwapPages: () => void
+  onResizePages: () => void
+  onDeleteEmptyPages: () => void
+  onNormalizePages: () => void
 }
 
 const ZOOM_PRESETS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]
@@ -61,7 +65,11 @@ export default function RibbonToolbar(props: Props) {
     onCommentStyles, onSummarizeComments, onFlattenAnnotations,
     onHeaderFooter, onWatermark, onBackground, onBatesNumbers, onCropPages,
     onCompare, onAccessibility, onWordCount, onTranslate, onSpellCheck,
+    onSwapPages, onResizePages, onDeleteEmptyPages, onNormalizePages,
   } = props
+
+  const resetFormFields = usePdfStore(s => s.resetFormFields)
+  const exportFormData  = usePdfStore(s => s.exportFormData)
 
   const [activeTab, setActiveTab] = useState<RibbonTab>('home')
 
@@ -406,6 +414,7 @@ export default function RibbonToolbar(props: Props) {
         <div className="rbn-stack">
           <SBtn icon={<span style={{ fontSize:10 }}>ab→cd</span>} label="Edit Text" active={activeTool === 'text-edit'} onClick={() => toggle('text-edit')} title="Cover text region and type replacement" />
           <SBtn icon="🖼" label="Insert Image" onClick={() => imageFileRef.current?.click()} title="Insert a PNG / JPEG onto the page" />
+          <SBtn icon="📷" label="Snapshot" active={activeTool === 'snapshot'} onClick={() => toggle('snapshot')} title="Drag a region on the page to capture it as a PNG screenshot" />
         </div>
         <input ref={imageFileRef} type="file" accept="image/png,image/jpeg,image/jpg" style={{ display:'none' }} onChange={handleInsertImage} />
       </Group>
@@ -537,6 +546,15 @@ export default function RibbonToolbar(props: Props) {
           <SBtn icon="✂" label="Crop" onClick={onCropPages} title="Crop pages by setting the visible area" />
         </div>
       </Group>
+
+      <Group label="Advanced">
+        <div className="rbn-stack">
+          <SBtn icon="⇄" label="Swap Pages" onClick={onSwapPages} title="Swap positions of two pages" />
+          <SBtn icon="⬛" label="Resize Pages" onClick={onResizePages} title="Resize pages to a standard paper size" />
+          <SBtn icon="🗑" label="Del Empty" onClick={onDeleteEmptyPages} title="Delete all empty/blank pages" />
+          <SBtn icon="⊡" label="Normalize" onClick={onNormalizePages} title="Normalize page MediaBox origins to (0,0)" />
+        </div>
+      </Group>
     </>
   )
 
@@ -592,7 +610,14 @@ export default function RibbonToolbar(props: Props) {
               <SBtn icon="⊞" label="Flatten" onClick={flattenForm}
                 disabled={formFields.filter(f => !f.isNew).length === 0}
                 title="Bake all field values permanently into the page content" />
-              <SBtn icon="↺" label="Reset" onClick={() => {}} title="Reset all fields to default values" />
+              <SBtn icon="↺" label="Reset" onClick={resetFormFields} title="Reset all fields to their default/empty values" />
+              <SBtn icon="↗" label="Export" onClick={() => {
+                const json = exportFormData()
+                const blob = new Blob([json], { type: 'application/json' })
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a'); a.href = url; a.download = 'form-data.json'; a.click()
+                URL.revokeObjectURL(url)
+              }} title="Export form field values as JSON" />
             </div>
           </Group>
 

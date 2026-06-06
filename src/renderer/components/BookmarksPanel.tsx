@@ -13,11 +13,14 @@ export default function BookmarksPanel() {
   const setBookmarks    = usePdfStore(s => s.setBookmarks)
   const pdfBytes        = usePdfStore(s => s.pdfBytes)
 
-  const [editingId,   setEditingId]   = useState<string | null>(null)
-  const [editTitle,   setEditTitle]   = useState('')
-  const [addingTitle, setAddingTitle] = useState('')
-  const [showAdd,     setShowAdd]     = useState(false)
-  const [generating,  setGenerating]  = useState(false)
+  const [editingId,    setEditingId]    = useState<string | null>(null)
+  const [editTitle,    setEditTitle]    = useState('')
+  const [addingTitle,  setAddingTitle]  = useState('')
+  const [showAdd,      setShowAdd]      = useState(false)
+  const [generating,   setGenerating]   = useState(false)
+  const [showFindReplace, setShowFindReplace] = useState(false)
+  const [findText,     setFindText]     = useState('')
+  const [replaceText,  setReplaceText]  = useState('')
   const dragRef = useRef<string | null>(null)
 
   const handleSortByPage = () => {
@@ -35,6 +38,34 @@ export default function BookmarksPanel() {
       if (!seen.has(bm.pageNum)) { seen.add(bm.pageNum); merged.push(bm) }
     }
     setBookmarks(merged)
+  }
+
+  const handleExportText = () => {
+    const lines = bookmarks.map(b => `${b.pageNum}\t${b.title}`)
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = 'bookmarks.txt'; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleExportHtml = () => {
+    const items = bookmarks.map(b =>
+      `  <li><a href="#page=${b.pageNum}">${b.title.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</a> <small>(p.${b.pageNum})</small></li>`
+    ).join('\n')
+    const html = `<!DOCTYPE html>\n<html>\n<head><meta charset="utf-8"><title>Bookmarks</title></head>\n<body>\n<ul>\n${items}\n</ul>\n</body>\n</html>`
+    const blob = new Blob([html], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = 'bookmarks.html'; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleFindReplace = () => {
+    if (!findText) return
+    const updated = bookmarks.map(b => ({
+      ...b,
+      title: b.title.split(findText).join(replaceText),
+    }))
+    setBookmarks(updated)
   }
 
   const handleGenerateFromHeadings = async () => {
@@ -108,6 +139,32 @@ export default function BookmarksPanel() {
           <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 5px' }}
             title="Generate bookmarks from text headings" onClick={handleGenerateFromHeadings}
             disabled={generating}>{generating ? '…' : '✨ Headings'}</button>
+          <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 5px' }}
+            title="Find and replace text in bookmark titles"
+            onClick={() => setShowFindReplace(v => !v)}>↔ F&R</button>
+          <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 5px' }}
+            title="Export bookmarks as plain text" onClick={handleExportText}>↗ .txt</button>
+          <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 5px' }}
+            title="Export bookmarks as HTML" onClick={handleExportHtml}>↗ .html</button>
+        </div>
+      )}
+
+      {showFindReplace && (
+        <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)',
+          display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <input className="modal-input" style={{ fontSize: 11, padding: '3px 6px' }}
+            placeholder="Find in titles…" value={findText}
+            onChange={e => setFindText(e.target.value)} autoFocus />
+          <input className="modal-input" style={{ fontSize: 11, padding: '3px 6px' }}
+            placeholder="Replace with…" value={replaceText}
+            onChange={e => setReplaceText(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleFindReplace()} />
+          <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+            <button className="modal-btn-secondary" style={{ fontSize: 10, padding: '2px 8px' }}
+              onClick={() => setShowFindReplace(false)}>Cancel</button>
+            <button className="modal-btn-primary" style={{ fontSize: 10, padding: '2px 8px' }}
+              disabled={!findText} onClick={handleFindReplace}>Replace All</button>
+          </div>
         </div>
       )}
 

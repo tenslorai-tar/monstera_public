@@ -1,5 +1,6 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import { usePdfStore, PAGE_GAP } from '../store/usePdfStore'
+import { useSettingsStore } from '../store/useSettingsStore'
 import PdfPage from './PdfPage'
 import Sidebar from './Sidebar'
 import AnnotationsPanel from './AnnotationsPanel'
@@ -25,6 +26,10 @@ export default function PdfViewer() {
   const namedDestsPanelOpen = usePdfStore(s => s.namedDestsPanelOpen)
   const scrollRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<HTMLDivElement>(null)
+
+  const { settings } = useSettingsStore()
+  const [isAutoscrolling, setIsAutoscrolling] = useState(false)
+  const autoscrollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Track container size for fit-width / fit-page zoom modes
   useEffect(() => {
@@ -91,6 +96,25 @@ export default function PdfViewer() {
     return () => el.removeEventListener('wheel', handleWheel)
   }, [handleWheel])
 
+  // Autoscroll
+  useEffect(() => {
+    if (autoscrollRef.current) clearInterval(autoscrollRef.current)
+    if (!isAutoscrolling || settings.autoscrollSpeed <= 0) return
+    const px = settings.autoscrollSpeed * 1.5
+    autoscrollRef.current = setInterval(() => {
+      const el = scrollRef.current
+      if (!el) return
+      if (el.scrollTop >= el.scrollHeight - el.clientHeight) {
+        setIsAutoscrolling(false)
+      } else {
+        el.scrollTop += px
+      }
+    }, 16)
+    return () => { if (autoscrollRef.current) clearInterval(autoscrollRef.current) }
+  }, [isAutoscrolling, settings.autoscrollSpeed])
+
+  const canAutoscroll = settings.autoscrollSpeed > 0
+
   return (
     <div className="viewer-area" ref={viewerRef}>
       <Sidebar />
@@ -109,6 +133,25 @@ export default function PdfViewer() {
           ))}
         </div>
       </div>
+
+      {/* Autoscroll floating button */}
+      {canAutoscroll && (
+        <button
+          onClick={() => setIsAutoscrolling(v => !v)}
+          title={isAutoscrolling ? 'Stop autoscroll' : `Start autoscroll (speed ${settings.autoscrollSpeed})`}
+          style={{
+            position: 'absolute', bottom: 12, right: 12, zIndex: 20,
+            width: 36, height: 36, borderRadius: '50%', border: '1px solid var(--border)',
+            background: isAutoscrolling ? 'rgba(74,158,255,0.25)' : 'var(--bg-secondary)',
+            color: isAutoscrolling ? 'var(--accent)' : 'var(--text-muted)',
+            cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+          }}
+        >
+          {isAutoscrolling ? '⏸' : '▶▶'}
+        </button>
+      )}
+
       {annotationsPanelOpen && <AnnotationsPanel />}
       {formsPanelOpen && <FormsPanel />}
       {bookmarksPanelOpen && <BookmarksPanel />}

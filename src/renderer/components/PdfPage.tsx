@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { TextLayer } from 'pdfjs-dist'
 import { usePdfStore, getOcgConfig } from '../store/usePdfStore'
+import { useSettingsStore } from '../store/useSettingsStore'
 import { textCache } from '../utils/textCache'
 import type { SearchMatch } from '../store/usePdfStore'
 import AnnotationOverlay from './AnnotationOverlay'
 import FormOverlay from './FormOverlay'
 import OcrTextLayer from './OcrTextLayer'
+import RulerOverlay from './RulerOverlay'
 
 interface Props {
   pageNum: number
@@ -42,6 +44,7 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
   const activeMatchIndex = usePdfStore(s => s.activeMatchIndex)
   const activeTool = usePdfStore(s => s.activeTool)
   const layerRevision = usePdfStore(s => s.layerRevision)
+  const { settings } = useSettingsStore()
 
   const [inView, setInView] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -160,6 +163,14 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
             pageW={pageW}
             pageH={pageH}
           />
+          {(settings.showRulers || settings.showGrid) && (
+            <RulerOverlay
+              scale={scale}
+              pageWidth={pageW}
+              pageHeight={pageH}
+              showGrid={settings.showGrid}
+            />
+          )}
         </>
       ) : (
         <div className="pdf-page-placeholder" />

@@ -28,6 +28,7 @@ type DrawPhase =
   | { k: 'callout-edit'; x: number; y: number; w: number; h: number; text: string; tipSvgX: number; tipSvgY: number }
   | { k: 'poly'; pts: Array<[number, number]>; curX: number; curY: number }
   | { k: 'link-pending'; x1: number; y1: number; x2: number; y2: number; href: string; destPage: string }
+  | { k: 'snapshot'; sx: number; sy: number; cx: number; cy: number }
 
 type ImageDrag =
   | { k: 'idle' }
@@ -285,6 +286,8 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
         imageDataUrl: stampName === 'Custom' ? (customStampDataUrl ?? undefined) : undefined,
       }
       addAnnotation(ann)
+    } else if (activeTool === 'snapshot') {
+      setDraw({ k: 'snapshot', sx, sy, cx: sx, cy: sy })
     } else {
       setDraw({ k: 'shape', sx, sy, cx: sx, cy: sy })
     }
@@ -312,7 +315,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
 
     if (draw.k === 'idle') return
     const [cx, cy] = getSvgXY(e)
-    if (draw.k === 'shape' || draw.k === 'textbox-size' || draw.k === 'text-edit-size' || draw.k === 'callout-size') {
+    if (draw.k === 'shape' || draw.k === 'snapshot' || draw.k === 'textbox-size' || draw.k === 'text-edit-size' || draw.k === 'callout-size') {
       setDraw(d => ({ ...d, cx, cy } as DrawPhase))
     } else if (draw.k === 'ink') {
       setDraw(d => ({ ...(d as { k: 'ink'; cur: Array<[number,number]>; done: Array<Array<[number,number]>> }),
@@ -335,6 +338,32 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       const tipSvgX = x - 40, tipSvgY = y + h + 40
       setDraw({ k: 'callout-edit', x, y, w, h, text: '', tipSvgX, tipSvgY })
       return
+    }
+
+    if (draw.k === 'snapshot') {
+      if (Math.abs(ex - draw.sx) >= 8 && Math.abs(ey - draw.sy) >= 8) {
+        const svg = svgRef.current
+        const wrapper = svg?.closest('.pdf-page-wrapper')
+        const canvas = wrapper?.querySelector<HTMLCanvasElement>('canvas.pdf-page-canvas')
+        if (canvas) {
+          const rx = Math.round(Math.min(draw.sx, ex))
+          const ry = Math.round(Math.min(draw.sy, ey))
+          const rw = Math.round(Math.abs(ex - draw.sx))
+          const rh = Math.round(Math.abs(ey - draw.sy))
+          const temp = document.createElement('canvas')
+          temp.width = rw; temp.height = rh
+          const ctx2 = temp.getContext('2d')!
+          ctx2.drawImage(canvas, rx, ry, rw, rh, 0, 0, rw, rh)
+          temp.toBlob(blob => {
+            if (!blob) return
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url; a.download = `snapshot-page${pageNum}.png`; a.click()
+            URL.revokeObjectURL(url)
+          }, 'image/png')
+        }
+      }
+      setDraw({ k: 'idle' }); return
     }
 
     if (draw.k === 'shape') {
@@ -919,6 +948,14 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
           stroke={toolColor} strokeWidth={toolLineWidth * scale} strokeOpacity={toolOpacity} strokeDasharray="4,3" />
         {pts.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r={3} fill={toolColor} fillOpacity={0.7} />)}
       </>
+    }
+
+    if (draw.k === 'snapshot') {
+      const { sx, sy, cx, cy } = draw
+      const x = Math.min(sx, cx), y = Math.min(sy, cy)
+      const w = Math.abs(cx - sx), h = Math.abs(cy - sy)
+      return <rect x={x} y={y} width={w} height={h}
+        fill="rgba(74,158,255,0.08)" stroke="#4a9eff" strokeWidth={1.5} strokeDasharray="6,3" />
     }
 
     if (draw.k === 'callout-size') {

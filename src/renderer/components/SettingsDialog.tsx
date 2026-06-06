@@ -120,10 +120,68 @@ export default function SettingsDialog({ onClose }: Props) {
           </label>
         </div>
 
-        <div className="modal-actions" style={{ justifyContent: 'space-between' }}>
+        {/* Rulers */}
+        <div className="modal-field">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!local.showRulers}
+              onChange={e => setLocal(l => ({ ...l, showRulers: e.target.checked }))} />
+            <span style={{ fontSize: 13 }}>Show rulers on each page</span>
+          </label>
+        </div>
+
+        {/* Grid */}
+        <div className="modal-field">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!local.showGrid}
+              onChange={e => setLocal(l => ({ ...l, showGrid: e.target.checked }))} />
+            <span style={{ fontSize: 13 }}>Show grid on each page (1-inch grid)</span>
+          </label>
+        </div>
+
+        {/* Autoscroll speed */}
+        <div className="modal-field">
+          <label className="modal-label">Autoscroll speed (0 = disabled)</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input type="range" min={0} max={10} step={1}
+              value={local.autoscrollSpeed ?? 0}
+              onChange={e => setLocal(l => ({ ...l, autoscrollSpeed: parseInt(e.target.value) }))}
+              style={{ flex: 1 }} />
+            <span style={{ fontSize: 12, minWidth: 24 }}>{local.autoscrollSpeed ?? 0}</span>
+          </div>
+          <span className="modal-hint">Enable with the ▶▶ button in the status bar while a PDF is open.</span>
+        </div>
+
+        <div className="modal-actions" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
           <button className="modal-btn-secondary" onClick={reset} style={{ marginRight: 'auto' }}>
             Reset to defaults
           </button>
+          <button className="modal-btn-secondary" title="Export settings to a JSON file"
+            onClick={() => {
+              const json = JSON.stringify(local, null, 2)
+              const blob = new Blob([json], { type: 'application/json' })
+              const url = URL.createObjectURL(blob)
+              const a = document.createElement('a')
+              a.href = url; a.download = 'monstera-settings.json'; a.click()
+              URL.revokeObjectURL(url)
+            }}>
+            ↗ Export
+          </button>
+          <label className="modal-btn-secondary" style={{ cursor: 'pointer' }} title="Import settings from a JSON file">
+            ↙ Import
+            <input type="file" accept=".json" style={{ display: 'none' }}
+              onChange={e => {
+                const file = e.target.files?.[0]; if (!file) return
+                const reader = new FileReader()
+                reader.onload = ev => {
+                  try {
+                    const parsed = JSON.parse(ev.target?.result as string)
+                    setLocal(l => ({ ...l, ...parsed }))
+                  } catch { /* ignore bad JSON */ }
+                }
+                reader.readAsText(file)
+                e.target.value = ''
+              }} />
+          </label>
           <button className="modal-btn-secondary" onClick={onClose}>Cancel</button>
           <button className="modal-btn-primary" onClick={apply}>Apply</button>
         </div>

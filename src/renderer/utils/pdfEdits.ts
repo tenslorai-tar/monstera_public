@@ -1,4 +1,4 @@
-import { PDFDocument, degrees as libDegrees } from 'pdf-lib'
+import { PDFDocument, PDFName, PDFArray, degrees as libDegrees } from 'pdf-lib'
 import type { PDFDocument as PDFDocumentType } from 'pdf-lib'
 
 function copyMeta(src: PDFDocumentType, dst: PDFDocumentType): void {
@@ -169,4 +169,77 @@ export async function splitOnePerPage(srcBytes: Uint8Array): Promise<Uint8Array[
     results.push(await dst.save())
   }
   return results
+}
+
+export async function swapPages(bytes: Uint8Array, page1: number, page2: number): Promise<Uint8Array> {
+  if (page1 === page2) return bytes
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  if (page1 < 1 || page2 < 1 || page1 > count || page2 > count) return bytes
+  const order = Array.from({ length: count }, (_, i) => i)
+  const tmp = order[page1 - 1]
+  order[page1 - 1] = order[page2 - 1]
+  order[page2 - 1] = tmp
+  const newDoc = await PDFDocument.create()
+  copyMeta(doc, newDoc)
+  const pages = await newDoc.copyPages(doc, order)
+  pages.forEach(p => newDoc.addPage(p))
+  return newDoc.save()
+}
+
+export async function resizePages(
+  bytes: Uint8Array,
+  pageNums: number[] | 'all',
+  width: number,
+  height: number
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const list = pageNums === 'all'
+    ? Array.from({ length: count }, (_, i) => i + 1)
+    : pageNums.filter(n => n >= 1 && n <= count)
+  for (const n of list) {
+    const page = doc.getPage(n - 1)
+    page.setSize(width, height)
+  }
+  return doc.save()
+}
+
+export async function deleteEmptyPages(bytes: Uint8Array): Promise<{ bytes: Uint8Array; deleted: number[] }> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  const toDelete: number[] = []
+  for (let i = 0; i < count; i++) {
+    const page = doc.getPage(i)
+    // A page is considered empty if its content stream is absent
+    const contentStream = page.node.get(PDFName.of('Contents'))
+    if (!contentStream) {
+      toDelete.push(i + 1)
+    }
+  }
+  if (toDelete.length === 0 || toDelete.length === count) {
+    return { bytes, deleted: [] }
+  }
+  const sorted = [...toDelete].sort((a, b) => b - a)
+  for (const n of sorted) doc.removePage(n - 1)
+  return { bytes: await doc.save(), deleted: toDelete }
+}
+
+export async function normalizeMediaBox(bytes: Uint8Array): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(bytes)
+  const count = doc.getPageCount()
+  for (let i = 0; i < count; i++) {
+    const page = doc.getPage(i)
+    const mb = page.node.get(PDFName.of('MediaBox')) as PDFArray | undefined
+    if (!mb) continue
+    const x = mb.lookup(0) as unknown as { asNumber: () => number }
+    const y = mb.lookup(1) as unknown as { asNumber: () => number }
+    const x0 = x.asNumber(), y0 = y.asNumber()
+    if (x0 === 0 && y0 === 0) continue
+    const w = (mb.lookup(2) as unknown as { asNumber: () => number }).asNumber()
+    const h = (mb.lookup(3) as unknown as { asNumber: () => number }).asNumber()
+    page.node.set(PDFName.of('MediaBox'), doc.context.obj([0, 0, w - x0, h - y0]))
+    page.node.delete(PDFName.of('CropBox'))
+  }
+  return doc.save()
 }

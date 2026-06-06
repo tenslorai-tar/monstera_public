@@ -9,6 +9,7 @@ export type AnnotationTool =
   | 'typewriter' | 'text-edit' | 'place-image'
   | 'measure-distance' | 'measure-area' | 'measure-perimeter'
   | 'link'
+  | 'snapshot'
 
 export type StampName = 'Approved' | 'Draft' | 'Confidential' | 'Rejected' | 'Custom'
 

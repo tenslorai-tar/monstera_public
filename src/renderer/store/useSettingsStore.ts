@@ -9,6 +9,9 @@ export interface AppSettings {
   ocrLanguage: string
   autosaveIntervalMinutes: number   // 0 = disabled
   showPageNumbers: boolean
+  showRulers: boolean
+  showGrid: boolean
+  autoscrollSpeed: number           // 0 = disabled, 1-10 scale
 }
 
 const STORAGE_KEY = 'monstera-settings'
@@ -28,6 +31,9 @@ function defaults(): AppSettings {
     ocrLanguage: 'eng',
     autosaveIntervalMinutes: 0,
     showPageNumbers: true,
+    showRulers: false,
+    showGrid: false,
+    autoscrollSpeed: 0,
   }
 }
 

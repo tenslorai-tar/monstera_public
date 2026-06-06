@@ -27,6 +27,8 @@ import AccessibilityDialog from './components/AccessibilityDialog'
 import WordCountDialog from './components/WordCountDialog'
 import TranslateDialog from './components/TranslateDialog'
 import SpellCheckDialog from './components/SpellCheckDialog'
+import ResizePagesDialog from './components/ResizePagesDialog'
+import SwapPagesDialog from './components/SwapPagesDialog'
 import * as docEnhance from './utils/documentEnhance'
 import { usePdfStore } from './store/usePdfStore'
 import { useSettingsStore } from './store/useSettingsStore'
@@ -81,6 +83,9 @@ export default function App() {
   const [wordCountOpen,     setWordCountOpen]       = useState(false)
   const [translateOpen,     setTranslateOpen]       = useState(false)
   const [spellCheckOpen,    setSpellCheckOpen]      = useState(false)
+  const [swapPagesOpen,     setSwapPagesOpen]       = useState(false)
+  const [resizePagesOpen,   setResizePagesOpen]     = useState(false)
+  const [deleteEmptyResult, setDeleteEmptyResult]  = useState<number[] | null>(null)
 
   const [passwordPrompt,    setPasswordPrompt]     = useState<PasswordPromptState>(null)
   const [passwordError,     setPasswordError]      = useState('')
@@ -210,6 +215,10 @@ export default function App() {
         case 'background':    setBackgroundOpen(true); break
         case 'batesNumbers':  setBatesOpen(true); break
         case 'cropPages':     setCropOpen(true); break
+        case 'swapPages':         setSwapPagesOpen(true); break
+        case 'resizePages':       setResizePagesOpen(true); break
+        case 'deleteEmptyPages':  ops.deleteEmptyPages().then(del => setDeleteEmptyResult(del)); break
+        case 'normalizePages':    ops.normalizePages(); break
         default:
           if (action.startsWith('tool:')) {
             const tool = action.slice(5) as Parameters<typeof s.setActiveTool>[0]
@@ -290,6 +299,13 @@ export default function App() {
         onWordCount={() => setWordCountOpen(true)}
         onTranslate={() => setTranslateOpen(true)}
         onSpellCheck={() => setSpellCheckOpen(true)}
+        onSwapPages={() => setSwapPagesOpen(true)}
+        onResizePages={() => setResizePagesOpen(true)}
+        onDeleteEmptyPages={async () => {
+          const del = await ops.deleteEmptyPages()
+          setDeleteEmptyResult(del)
+        }}
+        onNormalizePages={ops.normalizePages}
       />
 
       {hasPdf ? (
@@ -383,6 +399,35 @@ export default function App() {
       {wordCountOpen  && <WordCountDialog    onClose={() => setWordCountOpen(false)} />}
       {translateOpen  && <TranslateDialog   onClose={() => setTranslateOpen(false)} />}
       {spellCheckOpen && <SpellCheckDialog  onClose={() => setSpellCheckOpen(false)} />}
+
+      {swapPagesOpen && (
+        <SwapPagesDialog
+          numPages={numPages}
+          onSwap={async (p1, p2) => { setSwapPagesOpen(false); await ops.swapPages(p1, p2) }}
+          onClose={() => setSwapPagesOpen(false)}
+        />
+      )}
+      {resizePagesOpen && (
+        <ResizePagesDialog
+          numPages={numPages}
+          onApply={async (pageNums, w, h) => { setResizePagesOpen(false); await ops.resizePages(pageNums, w, h) }}
+          onClose={() => setResizePagesOpen(false)}
+        />
+      )}
+      {deleteEmptyResult !== null && (
+        <div className="modal-overlay">
+          <div className="modal-box" style={{ width: 380 }}>
+            <div className="modal-title">🗑 Delete Empty Pages</div>
+            {deleteEmptyResult.length === 0
+              ? <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>No empty pages found.</p>
+              : <p style={{ fontSize: 13 }}>Deleted {deleteEmptyResult.length} empty page(s): {deleteEmptyResult.join(', ')}.</p>
+            }
+            <div className="modal-actions">
+              <button className="modal-btn-primary" onClick={() => setDeleteEmptyResult(null)}>OK</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {digitalSignOpen && <DigitalSignDialog onClose={() => setDigitalSignOpen(false)} />}
 
