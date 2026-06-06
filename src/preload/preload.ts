@@ -242,6 +242,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   mutoolExtractFiles: (bytes: ArrayBuffer): Promise<Array<{ name: string; size: number; dataBase64: string }>> =>
     ipcRenderer.invoke('mutool:extractFiles', bytes),
+  mutoolConvert: (bytes: ArrayBuffer, ext: string): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('mutool:convert', bytes, ext),
+
+  // ── qpdf / Poppler / Tesseract ───────────────────────────────────────────────
+  qpdfLinearize: (bytes: ArrayBuffer): Promise<ArrayBuffer> => ipcRenderer.invoke('qpdf:linearize', bytes),
+  qpdfRepair:    (bytes: ArrayBuffer): Promise<ArrayBuffer> => ipcRenderer.invoke('qpdf:repair', bytes),
+  qpdfDecrypt:   (bytes: ArrayBuffer, pw: string): Promise<ArrayBuffer> => ipcRenderer.invoke('qpdf:decrypt', bytes, pw),
+  popplerTextLayout:   (bytes: ArrayBuffer): Promise<string> => ipcRenderer.invoke('poppler:textLayout', bytes),
+  popplerExtractImages: (bytes: ArrayBuffer): Promise<Array<{ name: string; dataBase64: string }>> =>
+    ipcRenderer.invoke('poppler:extractImages', bytes),
+  tesseractOcrImage: (png: ArrayBuffer, lang: string): Promise<string> =>
+    ipcRenderer.invoke('tesseract:ocrImage', png, lang),
 
   // ── LibreOffice operations ───────────────────────────────────────────────────
 

@@ -409,6 +409,25 @@ export default function App() {
         onWordCount={() => setWordCountOpen(true)}
         onBarcode={() => setBarcodeOpen(true)}
         onReadBarcode={() => setBarcodeReadOpen(true)}
+        onExtractImages={async () => {
+          const s = usePdfStore.getState()
+          try {
+            const b = await s.getBakedBytes()
+            const ab = b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer
+            const imgs = await window.electronAPI.popplerExtractImages(ab)
+            if (imgs.length === 0) { alert('No embedded images found in this document.'); return }
+            const dir = await window.electronAPI.chooseDirectory()
+            if (!dir) return
+            const files = imgs.map(im => ({
+              name: im.name,
+              bytes: Uint8Array.from(atob(im.dataBase64), c => c.charCodeAt(0)).buffer as ArrayBuffer,
+            }))
+            await window.electronAPI.writeBytesToDir(dir, files)
+            alert(`Extracted ${imgs.length} image${imgs.length !== 1 ? 's' : ''} to the chosen folder.`)
+          } catch (e: any) {
+            alert(`Extract images failed: ${e?.message ?? 'requires Poppler'}`)
+          }
+        }}
         onScan={() => setScanOpen(true)}
         onEmailImport={async () => {
           try {

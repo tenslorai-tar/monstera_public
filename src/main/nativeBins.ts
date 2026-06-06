@@ -51,18 +51,74 @@ export function getLibreOfficePath(): string {
   return findInPath('soffice.exe')
 }
 
+function findInProgramFiles(rel: string): string {
+  for (const base of ['C:\\Program Files', 'C:\\Program Files (x86)']) {
+    const p = path.join(base, rel)
+    if (fs.existsSync(p)) return p
+  }
+  return ''
+}
+
+export function getQpdfPath(): string {
+  const bundled = path.join(BIN_DIR, 'qpdf.exe')
+  if (fs.existsSync(bundled)) return bundled
+  for (const base of ['C:\\Program Files', 'C:\\Program Files (x86)']) {
+    if (!fs.existsSync(base)) continue
+    try {
+      const dir = fs.readdirSync(base).filter((d: string) => /^qpdf/i.test(d)).sort().reverse()[0]
+      if (dir) { const exe = path.join(base, dir, 'bin', 'qpdf.exe'); if (fs.existsSync(exe)) return exe }
+    } catch { /* skip */ }
+  }
+  return findInPath('qpdf.exe')
+}
+
+function getPopplerExe(name: string): string {
+  const bundled = path.join(BIN_DIR, name)
+  if (fs.existsSync(bundled)) return bundled
+  for (const base of ['C:\\Program Files', 'C:\\Program Files (x86)']) {
+    if (!fs.existsSync(base)) continue
+    try {
+      const dir = fs.readdirSync(base).filter((d: string) => /^poppler/i.test(d)).sort().reverse()[0]
+      if (dir) {
+        for (const sub of ['Library\\bin', 'bin', '']) {
+          const exe = path.join(base, dir, sub, name)
+          if (fs.existsSync(exe)) return exe
+        }
+      }
+    } catch { /* skip */ }
+  }
+  return findInPath(name)
+}
+export const getPdftotextPath = () => getPopplerExe('pdftotext.exe')
+export const getPdfimagesPath = () => getPopplerExe('pdfimages.exe')
+
+export function getTesseractPath(): string {
+  const bundled = path.join(BIN_DIR, 'tesseract.exe')
+  if (fs.existsSync(bundled)) return bundled
+  const std = findInProgramFiles('Tesseract-OCR\\tesseract.exe')
+  if (std) return std
+  return findInPath('tesseract.exe')
+}
+
 export interface BinStatus {
   mutool:      { path: string; available: boolean }
   ghostscript: { path: string; available: boolean }
   libreoffice: { path: string; available: boolean }
+  qpdf:        { path: string; available: boolean }
+  poppler:     { path: string; available: boolean }
+  tesseract:   { path: string; available: boolean }
 }
 
 export function getBinStatus(): BinStatus {
   const m = getMutoolPath(), g = getGhostscriptPath(), l = getLibreOfficePath()
+  const q = getQpdfPath(), p = getPdftotextPath(), t = getTesseractPath()
   return {
     mutool:      { path: m, available: !!m },
     ghostscript: { path: g, available: !!g },
     libreoffice: { path: l, available: !!l },
+    qpdf:        { path: q, available: !!q },
+    poppler:     { path: p, available: !!p },
+    tesseract:   { path: t, available: !!t },
   }
 }
 
@@ -347,4 +403,86 @@ export function libreOfficeToPptx(bytes: ArrayBuffer | Uint8Array): Promise<Buff
 
 export function libreOfficeToXlsx(bytes: ArrayBuffer | Uint8Array): Promise<Buffer> {
   return libreOfficeConvert(bytes, '.pdf', 'xlsx:Calc MS Excel 2007 XML', 'calc_pdf_import')
+}
+
+// ── mutool convert (XPS / CBZ / SVG / EPUB / FB2 → PDF) ───────────────────────
+export async function mutoolConvert(bytes: ArrayBuffer | Uint8Array, inputExt: string): Promise<Buffer> {
+  const mt = getMutoolPath()
+  if (!mt) throw new Error('mutool not found. Install via Tools → Native Tools → Setup.')
+  const ext = inputExt.startsWith('.') ? inputExt : '.' + inputExt
+  const inPath = tmpPath(ext)
+  const outPath = tmpPath('.pdf')
+  try {
+    fs.writeFileSync(inPath, toBuffer(bytes))
+    await runProcess(mt, ['convert', '-o', outPath, inPath])
+    if (!fs.existsSync(outPath)) throw new Error('mutool produced no output')
+    return fs.readFileSync(outPath)
+  } finally {
+    for (const f of [inPath, outPath]) { try { if (fs.existsSync(f)) fs.unlinkSync(f) } catch { /* ignore */ } }
+  }
+}
+
+// ── qpdf (lossless structure operations) ─────────────────────────────────────
+function requireQpdf(): string {
+  const q = getQpdfPath()
+  if (!q) throw new Error('qpdf not found.\nInstall from: https://github.com/qpdf/qpdf/releases\nor run "choco install qpdf", then restart Monstera.')
+  return q
+}
+export function qpdfLinearize(bytes: ArrayBuffer | Uint8Array): Promise<Buffer> {
+  const q = requireQpdf()
+  return withTempIO(bytes, async (i, o) => { await runProcess(q, ['--linearize', i, o]) })
+}
+export function qpdfRepair(bytes: ArrayBuffer | Uint8Array): Promise<Buffer> {
+  const q = requireQpdf()
+  // Rewriting through qpdf recovers damaged xref/structure; coalesce object streams.
+  return withTempIO(bytes, async (i, o) => { await runProcess(q, ['--object-streams=generate', i, o]) })
+}
+export function qpdfDecrypt(bytes: ArrayBuffer | Uint8Array, password: string): Promise<Buffer> {
+  const q = requireQpdf()
+  return withTempIO(bytes, async (i, o) => { await runProcess(q, [`--password=${password}`, '--decrypt', i, o]) })
+}
+
+// ── Poppler (layout text + image extraction) ─────────────────────────────────
+export async function popplerTextLayout(bytes: ArrayBuffer | Uint8Array): Promise<string> {
+  const pt = getPdftotextPath()
+  if (!pt) throw new Error('Poppler (pdftotext) not found.\nInstall via "choco install poppler" or https://github.com/oschwartz10612/poppler-windows/releases, then restart.')
+  const inPath = tmpPath('.pdf'); const outPath = tmpPath('.txt')
+  try {
+    fs.writeFileSync(inPath, toBuffer(bytes))
+    await runProcess(pt, ['-layout', '-enc', 'UTF-8', inPath, outPath])
+    return fs.existsSync(outPath) ? fs.readFileSync(outPath, 'utf8') : ''
+  } finally {
+    for (const f of [inPath, outPath]) { try { if (fs.existsSync(f)) fs.unlinkSync(f) } catch { /* ignore */ } }
+  }
+}
+export async function popplerExtractImages(bytes: ArrayBuffer | Uint8Array): Promise<Array<{ name: string; dataBase64: string }>> {
+  const pi = getPdfimagesPath()
+  if (!pi) throw new Error('Poppler (pdfimages) not found.\nInstall via "choco install poppler" or the poppler-windows release, then restart.')
+  const inPath = tmpPath('.pdf')
+  const dir = path.join(os.tmpdir(), `monstera-img-${process.pid}-${Date.now()}`)
+  try {
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(inPath, toBuffer(bytes))
+    await runProcess(pi, ['-all', inPath, path.join(dir, 'img')])
+    return fs.readdirSync(dir).sort().map(name => ({ name, dataBase64: fs.readFileSync(path.join(dir, name)).toString('base64') }))
+  } finally {
+    try { if (fs.existsSync(inPath)) fs.unlinkSync(inPath) } catch { /* ignore */ }
+    try { fs.rmSync(dir, { recursive: true, force: true }) } catch { /* ignore */ }
+  }
+}
+
+// ── Native Tesseract OCR (faster than the WASM build) ────────────────────────
+export async function tesseractOcrImage(pngBytes: ArrayBuffer | Uint8Array, lang = 'eng'): Promise<string> {
+  const tx = getTesseractPath()
+  if (!tx) throw new Error('Tesseract not found.\nInstall from https://github.com/UB-Mannheim/tesseract/wiki, then restart.')
+  const inPath = tmpPath('.png'); const outBase = tmpPath('').replace(/\.$/, '')
+  try {
+    fs.writeFileSync(inPath, toBuffer(pngBytes))
+    await runProcess(tx, [inPath, outBase, '-l', lang])
+    const txt = outBase + '.txt'
+    return fs.existsSync(txt) ? fs.readFileSync(txt, 'utf8') : ''
+  } finally {
+    try { if (fs.existsSync(inPath)) fs.unlinkSync(inPath) } catch { /* ignore */ }
+    try { const t = outBase + '.txt'; if (fs.existsSync(t)) fs.unlinkSync(t) } catch { /* ignore */ }
+  }
 }

@@ -95,25 +95,31 @@ export default function ExportDialog({ onClose }: Props) {
   // ── Export text ───────────────────────────────────────────────────────────
 
   const exportText = async () => {
-    if (!pdfDoc) return
+    if (!pdfDoc || !pdfBytes) return
     setBusy(true)
     setStatus('Extracting text…')
-    const lines: string[] = []
-    for (let p = 1; p <= numPages; p++) {
-      const page = await pdfDoc.getPage(p)
-      const content = await page.getTextContent()
-      const pageText = content.items
-        .map((item: any) => item.str ?? '')
-        .join(' ')
-        .replace(/ {2,}/g, ' ')
-        .trim()
-      if (pageText) {
-        lines.push(`--- Page ${p} ---`)
-        lines.push(pageText)
-        lines.push('')
+    let text = ''
+    // Prefer Poppler's layout-preserving extraction (keeps columns/tables aligned).
+    try {
+      const ab = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength) as ArrayBuffer
+      const lo = await window.electronAPI.popplerTextLayout(ab)
+      if (lo && lo.trim()) text = lo
+    } catch { /* fall back to PDF.js below */ }
+    if (!text) {
+      const lines: string[] = []
+      for (let p = 1; p <= numPages; p++) {
+        const page = await pdfDoc.getPage(p)
+        const content = await page.getTextContent()
+        const pageText = content.items
+          .map((item: any) => item.str ?? '')
+          .join(' ')
+          .replace(/ {2,}/g, ' ')
+          .trim()
+        if (pageText) { lines.push(`--- Page ${p} ---`); lines.push(pageText); lines.push('') }
       }
+      text = lines.join('\n')
     }
-    const blob = new Blob([lines.join('\n')], { type: 'text/plain' })
+    const blob = new Blob([text], { type: 'text/plain' })
     const buf = await blob.arrayBuffer()
     const savePath = await window.electronAPI.saveFileDialog(`${baseName}.txt`)
     if (savePath) {

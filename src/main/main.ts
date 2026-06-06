@@ -1414,14 +1414,31 @@ ipcMain.handle('mutool:clean', async (_e, b: ArrayBuffer, opts: Parameters<typeo
 
 ipcMain.handle('mutool:info',         async (_e, b: ArrayBuffer) => nativeBins.mutoolInfo(b))
 ipcMain.handle('mutool:extractFiles', async (_e, b: ArrayBuffer) => nativeBins.mutoolExtractFiles(b))
+ipcMain.handle('mutool:convert',      async (_e, b: ArrayBuffer, ext: string) => abuf(await nativeBins.mutoolConvert(b, ext)))
+
+// ── qpdf (lossless structure) ───────────────────────────────────────────────
+ipcMain.handle('qpdf:linearize', async (_e, b: ArrayBuffer) => abuf(await nativeBins.qpdfLinearize(b)))
+ipcMain.handle('qpdf:repair',    async (_e, b: ArrayBuffer) => abuf(await nativeBins.qpdfRepair(b)))
+ipcMain.handle('qpdf:decrypt',   async (_e, b: ArrayBuffer, pw: string) => abuf(await nativeBins.qpdfDecrypt(b, pw)))
+
+// ── Poppler ─────────────────────────────────────────────────────────────────
+ipcMain.handle('poppler:textLayout',    async (_e, b: ArrayBuffer) => nativeBins.popplerTextLayout(b))
+ipcMain.handle('poppler:extractImages',  async (_e, b: ArrayBuffer) => nativeBins.popplerExtractImages(b))
+
+// ── Native Tesseract ────────────────────────────────────────────────────────
+ipcMain.handle('tesseract:ocrImage', async (_e, png: ArrayBuffer, lang: string) => nativeBins.tesseractOcrImage(png, lang))
 
 // ── LibreOffice ───────────────────────────────────────────────────────────────
 
 ipcMain.handle('libreoffice:isAvailable', () => !!nativeBins.getLibreOfficePath())
 
+const MUTOOL_INPUT_EXTS = ['.xps', '.oxps', '.cbz', '.cbr', '.svg', '.epub', '.fb2', '.mobi']
+
 ipcMain.handle('libreoffice:importFile', async (_e, filePath: string) => {
   const ext   = path.extname(filePath).toLowerCase()
   const bytes = fs.readFileSync(filePath)
+  // XPS/CBZ/SVG/EPUB and friends are handled by mutool; Office formats by LibreOffice.
+  if (MUTOOL_INPUT_EXTS.includes(ext)) return abuf(await nativeBins.mutoolConvert(bytes, ext))
   return abuf(await nativeBins.libreOfficeToPdf(bytes, ext))
 })
 
@@ -1439,7 +1456,7 @@ ipcMain.handle('dialog:openOfficeFile', async () => {
   const r = await dialog.showOpenDialog({
     properties: ['openFile'],
     filters: [
-      { name: 'Documents & Graphics', extensions: ['docx','doc','xlsx','xls','pptx','ppt','odt','ods','odp','rtf','csv','txt','vsd','vsdx','pub','wmf','emf','odg','fodt','fods','fodp'] },
+      { name: 'Documents & Graphics', extensions: ['docx','doc','xlsx','xls','pptx','ppt','odt','ods','odp','rtf','csv','txt','vsd','vsdx','pub','wmf','emf','odg','fodt','fods','fodp','xps','oxps','cbz','cbr','svg','epub','fb2'] },
       { name: 'All Files', extensions: ['*'] },
     ],
   })

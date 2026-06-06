@@ -71,6 +71,22 @@ export default function OptimizeDialog({ onClose }: Props) {
     setBusy(false)
   }
 
+  const runQpdf = async (op: 'linearize' | 'repair') => {
+    setBusy(true); setStatus(op === 'linearize' ? 'Linearizing (qpdf)…' : 'Repairing (qpdf)…'); setResult(null)
+    try {
+      const bytes = await getBakedBytes()
+      const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+      const res = op === 'linearize'
+        ? await window.electronAPI.qpdfLinearize(ab)
+        : await window.electronAPI.qpdfRepair(ab)
+      applyEdit(new Uint8Array(res))
+      setStatus(op === 'linearize' ? '✓ Linearized for fast web view.' : '✓ Repaired & losslessly rewritten.')
+    } catch (e: unknown) {
+      setStatus(`Error: ${(e as Error).message}`)
+    }
+    setBusy(false)
+  }
+
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 460 }}>
@@ -126,6 +142,19 @@ export default function OptimizeDialog({ onClose }: Props) {
             {status}
           </div>
         )}
+
+        <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Structure (qpdf — lossless)</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="modal-btn-secondary" onClick={() => runQpdf('linearize')} disabled={busy}
+              title="Optimize for fast web view (linearize) without re-compressing content">⚡ Linearize</button>
+            <button className="modal-btn-secondary" onClick={() => runQpdf('repair')} disabled={busy}
+              title="Repair & losslessly rewrite a damaged PDF's structure">🔧 Repair</button>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+            Lossless — keeps content/quality intact. Requires qpdf (install via Native Tools).
+          </div>
+        </div>
 
         <div className="modal-actions">
           <button className="modal-btn-secondary" onClick={onClose}>Close</button>

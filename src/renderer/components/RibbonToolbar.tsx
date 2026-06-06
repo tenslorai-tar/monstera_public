@@ -85,6 +85,7 @@ interface Props {
   onSanitize: () => void
   onEmailImport: () => void
   onReadBarcode: () => void
+  onExtractImages: () => void
 }
 
 const STAMP_NAMES: StampName[] = ['Approved', 'Draft', 'Confidential', 'Rejected', 'Custom']
@@ -111,7 +112,7 @@ export default function RibbonToolbar(props: Props) {
     onAiAssistant, onOfficeImport,
     onMarkdownToPdf, onCsvToPdf, onEditExternal, onOcrRegion, onDeskew,
     onWebcam,
-    onMultiPageStamp, onSplitView, onBarcode, onScan, onSanitize, onEmailImport, onReadBarcode,
+    onMultiPageStamp, onSplitView, onBarcode, onScan, onSanitize, onEmailImport, onReadBarcode, onExtractImages,
   } = props
 
   const resetFormFields = usePdfStore(s => s.resetFormFields)
@@ -765,6 +766,8 @@ export default function RibbonToolbar(props: Props) {
             title="Detect and correct skew in scanned pages" />
           <SBtn icon="📷" label="Webcam" onClick={onWebcam}
             title="Capture an image from webcam and insert into the PDF" />
+          <SBtn icon="🖼" label="Extract Imgs" onClick={onExtractImages}
+            title="Extract all embedded images to a folder (Poppler)" />
         </div>
       </Group>
 

@@ -134,6 +134,9 @@ declare global {
         mutool: { path: string; available: boolean }
         ghostscript: { path: string; available: boolean }
         libreoffice: { path: string; available: boolean }
+        qpdf?: { path: string; available: boolean }
+        poppler?: { path: string; available: boolean }
+        tesseract?: { path: string; available: boolean }
       }>
       binsOpenUrl: (url: string) => Promise<void>
       binsDownloadMutool: () => Promise<string>
@@ -154,6 +157,14 @@ declare global {
       }) => Promise<ArrayBuffer>
       mutoolInfo: (bytes: ArrayBuffer) => Promise<string>
       mutoolExtractFiles: (bytes: ArrayBuffer) => Promise<Array<{ name: string; size: number; dataBase64: string }>>
+      mutoolConvert: (bytes: ArrayBuffer, ext: string) => Promise<ArrayBuffer>
+
+      qpdfLinearize: (bytes: ArrayBuffer) => Promise<ArrayBuffer>
+      qpdfRepair: (bytes: ArrayBuffer) => Promise<ArrayBuffer>
+      qpdfDecrypt: (bytes: ArrayBuffer, pw: string) => Promise<ArrayBuffer>
+      popplerTextLayout: (bytes: ArrayBuffer) => Promise<string>
+      popplerExtractImages: (bytes: ArrayBuffer) => Promise<Array<{ name: string; dataBase64: string }>>
+      tesseractOcrImage: (png: ArrayBuffer, lang: string) => Promise<string>
 
       libreofficeIsAvailable: () => Promise<boolean>
       libreofficeImportFile: (filePath: string) => Promise<ArrayBuffer>
