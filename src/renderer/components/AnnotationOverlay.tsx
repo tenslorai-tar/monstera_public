@@ -24,7 +24,7 @@ type DrawPhase =
   | { k: 'textbox-edit'; x: number; y: number; w: number; h: number; text: string }
   | { k: 'typewriter-edit'; x: number; y: number; text: string }
   | { k: 'text-edit-size'; sx: number; sy: number; cx: number; cy: number }
-  | { k: 'text-edit-edit'; x: number; y: number; w: number; h: number; text: string }
+  | { k: 'text-edit-edit'; x: number; y: number; w: number; h: number; text: string; fontSize?: number; color?: string; bg?: string }
   | { k: 'callout-size'; sx: number; sy: number; cx: number; cy: number }
   | { k: 'callout-edit'; x: number; y: number; w: number; h: number; text: string; tipSvgX: number; tipSvgY: number }
   | { k: 'poly'; pts: Array<[number, number]>; curX: number; curY: number }
@@ -109,6 +109,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   const measureScale = settings.measureScale ?? 1
 
   const activeTool = usePdfStore(s => s.activeTool)
+  const panMode = usePdfStore(s => s.panMode)
   const annotations = usePdfStore(s => s.annotations)
   const selectedAnnotationId = usePdfStore(s => s.selectedAnnotationId)
   const toolColor = usePdfStore(s => s.toolColor)
@@ -160,6 +161,58 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   const getSvgXY = (e: React.MouseEvent): [number, number] => {
     const rect = svgRef.current!.getBoundingClientRect()
     return [e.clientX - rect.left, e.clientY - rect.top]
+  }
+
+  // Edit Text: read the original text + its font size/colour that lie under a
+  // dragged region (from the PDF.js text layer) so the edit box is pre-filled
+  // with the existing words instead of forcing the user to retype from scratch.
+  const readRegionText = (sx: number, sy: number, ex: number, ey: number):
+    { text: string; fontSize?: number; color?: string; bg?: string } => {
+    const svg = svgRef.current
+    const wrapper = svg?.closest('.pdf-page-wrapper')
+    const layer = wrapper?.querySelector<HTMLElement>('.text-layer')
+    const svgRect = svg?.getBoundingClientRect()
+    if (!layer || !svgRect) return { text: '' }
+    const selL = svgRect.left + Math.min(sx, ex)
+    const selR = svgRect.left + Math.max(sx, ex)
+    const selT = svgRect.top + Math.min(sy, ey)
+    const selB = svgRect.top + Math.max(sy, ey)
+    const spans = Array.from(layer.querySelectorAll<HTMLElement>('span'))
+    const hits: { el: HTMLElement; r: DOMRect }[] = []
+    for (const el of spans) {
+      if (!el.textContent) continue
+      const r = el.getBoundingClientRect()
+      // intersection test (require meaningful vertical + horizontal overlap)
+      const ox = Math.min(selR, r.right) - Math.max(selL, r.left)
+      const oy = Math.min(selB, r.bottom) - Math.max(selT, r.top)
+      if (ox > 1 && oy > r.height * 0.3) hits.push({ el, r })
+    }
+    if (hits.length === 0) return { text: '' }
+    // Group into lines by vertical position, then order left→right
+    hits.sort((a, b) => a.r.top - b.r.top || a.r.left - b.r.left)
+    const lines: { y: number; items: typeof hits }[] = []
+    for (const h of hits) {
+      const line = lines.find(l => Math.abs(l.y - h.r.top) < h.r.height * 0.6)
+      if (line) line.items.push(h)
+      else lines.push({ y: h.r.top, items: [h] })
+    }
+    const text = lines
+      .map(l => l.items.sort((a, b) => a.r.left - b.r.left).map(i => i.el.textContent).join(''))
+      .join('\n')
+      .replace(/\s+\n/g, '\n').trim()
+    const cs = getComputedStyle(hits[0].el)
+    const pxToHex = (c: string): string | undefined => {
+      const m = c.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
+      if (!m) return undefined
+      const h = (n: string) => parseInt(n, 10).toString(16).padStart(2, '0')
+      return `#${h(m[1])}${h(m[2])}${h(m[3])}`
+    }
+    const fontPx = parseFloat(cs.fontSize)
+    return {
+      text,
+      fontSize: fontPx > 0 ? Math.round((fontPx / scale) * 10) / 10 : undefined,
+      color: pxToHex(cs.color),
+    }
   }
 
   // ── Poly tool: click to add points, dblclick to finish ──────────────────
@@ -414,8 +467,10 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
         w: Math.abs(ex - draw.sx), h: Math.abs(ey - draw.sy), text: '' })
     } else if (draw.k === 'text-edit-size') {
       if (Math.abs(ex - draw.sx) < 10 || Math.abs(ey - draw.sy) < 10) { setDraw({ k: 'idle' }); return }
+      const orig = readRegionText(draw.sx, draw.sy, ex, ey)
       setDraw({ k: 'text-edit-edit', x: Math.min(draw.sx, ex), y: Math.min(draw.sy, ey),
-        w: Math.abs(ex - draw.sx), h: Math.abs(ey - draw.sy), text: '' })
+        w: Math.abs(ex - draw.sx), h: Math.abs(ey - draw.sy),
+        text: orig.text, fontSize: orig.fontSize, color: orig.color })
     }
   }
 
@@ -507,9 +562,9 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       const [, y_bot] = toPdf(draw.x, draw.y + draw.h)
       const [x2] = toPdf(draw.x + draw.w, draw.y)
       addAnnotation({ id: newId(), type: 'text-edit', pageNum,
-        color: toolColor, opacity: toolOpacity,
+        color: draw.color ?? toolColor, opacity: toolOpacity,
         x, y: y_bot, width: x2 - x, height: y_top - y_bot,
-        text, fontSize: toolFontSize, createdAt: Date.now() } as TextEditAnn)
+        text, fontSize: draw.fontSize ?? toolFontSize, createdAt: Date.now() } as TextEditAnn)
     }
     setDraw({ k: 'idle' })
   }
@@ -775,9 +830,9 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
           <rect x={svgX} y={svgY_top} width={a.width * scale} height={a.height * scale} fill="white" />
           <foreignObject x={svgX} y={svgY_top} width={a.width * scale} height={a.height * scale}>
             <div style={{
-              width: '100%', height: '100%', padding: 2,
-              fontSize: a.fontSize * scale, color: a.color, opacity: a.opacity,
-              fontFamily: 'sans-serif', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              width: '100%', height: '100%', padding: '0 2px',
+              fontSize: a.fontSize * scale, color: a.color, opacity: a.opacity, lineHeight: 1.2,
+              fontFamily: 'serif', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
               border: sel ? '1px dashed #4a9eff' : '1px solid transparent',
               boxSizing: 'border-box', background: 'white',
             }}>{a.text}</div>
@@ -1122,16 +1177,19 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   const renderTextEditBox = () => {
     if (draw.k !== 'text-edit-edit') return null
     const { x, y, w, h } = draw
+    const fs = (draw.fontSize ?? toolFontSize)
+    const col = draw.color ?? toolColor
     return (
       <foreignObject x={x} y={y} width={w} height={h} style={{ pointerEvents: 'all' }}>
-        <textarea style={{ width: '100%', height: '100%', background: 'white', color: toolColor,
-          border: '2px solid #ff8800', outline: 'none', resize: 'none', fontFamily: 'sans-serif',
-          fontSize: toolFontSize * scale, padding: 4, boxSizing: 'border-box' }}
+        <textarea style={{ width: '100%', height: '100%', background: 'white', color: col,
+          border: '2px solid #ff8800', outline: 'none', resize: 'none', fontFamily: 'serif',
+          fontSize: fs * scale, lineHeight: 1.2, padding: '0 2px', boxSizing: 'border-box' }}
           autoFocus value={draw.text}
+          onFocus={e => e.currentTarget.select()}
           onChange={e => setDraw(d => ({ ...(d as any), text: e.target.value } as DrawPhase))}
           onBlur={e => commitTextEdit(e.target.value)}
           onKeyDown={e => { if (e.key === 'Escape') setDraw({ k: 'idle' }) }}
-          placeholder="Type replacement text…" />
+          placeholder="Edit text…" />
       </foreignObject>
     )
   }
@@ -1221,9 +1279,14 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
 
   // ── Pointer events setup ─────────────────────────────────────────────────
 
+  // Text-select mode (left-palette "Text": no tool + pan off) must let mouse events
+  // fall through to the PDF.js text layer below, so the SVG overlay goes transparent.
+  const textSelectMode = activeTool === null && !panMode
   const svgPointerEvents: React.CSSProperties['pointerEvents'] =
-    isDragDrawTool || isTextEditTool || isCalloutTool || isPolyTool || isCaretTool || imgDrag.k !== 'idle'
-      || draw.k === 'link-pending'
+    textSelectMode
+      ? 'none'
+      : isDragDrawTool || isTextEditTool || isCalloutTool || isPolyTool || isCaretTool || imgDrag.k !== 'idle'
+        || draw.k === 'link-pending'
       ? 'all'
       : isMarkupTool ? 'none' : 'all'
 
