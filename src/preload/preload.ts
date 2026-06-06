@@ -69,6 +69,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     bytes: ArrayBuffer, pageIndex: number, index: number,
   ): Promise<ArrayBuffer> =>
     ipcRenderer.invoke('pdfium:deleteObject', bytes, pageIndex, index),
+  pdfiumReplaceText: (
+    bytes: ArrayBuffer, term: string, replacement: string, matchCase: boolean,
+  ): Promise<{ bytes: ArrayBuffer; count: number }> =>
+    ipcRenderer.invoke('pdfium:replaceText', bytes, term, replacement, matchCase),
   pdfiumEditText: (
     bytes: ArrayBuffer,
     pageIndex: number,

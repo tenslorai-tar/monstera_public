@@ -521,3 +521,53 @@ export function deleteObject(bytes: Buffer, pageIndex: number, index: number): B
     if (L.RemoveObject(page, obj)) L.DestroyObject(obj)
   })
 }
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * Replace every occurrence of `term` with `replacement` across the document's
+ * real page text (each matching text object is rewritten via FPDFText_SetText,
+ * keeping its font). Returns the edited bytes and the number of replacements.
+ */
+export function replaceAllText(
+  bytes: Buffer, term: string, replacement: string, matchCase: boolean,
+): { bytes: Buffer; count: number } {
+  if (!term) return { bytes, count: 0 }
+  const L = load()
+  const doc = L.LoadMemDocument(bytes, bytes.length, null)
+  if (!doc) throw new Error('PDFium could not open the document')
+  const re = new RegExp(escapeRegExp(term), matchCase ? 'g' : 'gi')
+  let count = 0
+  try {
+    const pages = L.GetPageCount(doc)
+    for (let p = 0; p < pages; p++) {
+      const page = L.LoadPage(doc, p)
+      if (!page) continue
+      const tp = L.TextLoadPage(page)
+      const n = L.CountObjects(page)
+      let changed = false
+      for (let i = 0; i < n; i++) {
+        const obj = L.GetObject(page, i)
+        if (L.GetType(obj) !== PDFOBJ_TEXT) continue
+        const len = L.GetText(obj, tp, null, 0)
+        const buf = Buffer.alloc(len)
+        L.GetText(obj, tp, buf, len)
+        const cur = buf.toString('utf16le').replace(/ /g, '')
+        const matches = cur.match(re)
+        if (matches && matches.length) {
+          const next = cur.replace(re, replacement)
+          if (L.SetText(obj, Buffer.from(next + ' ', 'utf16le'))) { count += matches.length; changed = true }
+        }
+      }
+      if (changed) L.GenerateContent(page)
+      L.TextClosePage(tp)
+      L.ClosePage(page)
+    }
+    if (count === 0) return { bytes, count: 0 }
+    return { bytes: saveDoc(L, doc), count }
+  } finally {
+    L.CloseDocument(doc)
+  }
+}

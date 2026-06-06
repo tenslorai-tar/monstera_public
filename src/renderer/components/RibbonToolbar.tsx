@@ -82,6 +82,7 @@ interface Props {
   onSplitView: () => void
   onBarcode: () => void
   onScan: () => void
+  onSanitize: () => void
 }
 
 const STAMP_NAMES: StampName[] = ['Approved', 'Draft', 'Confidential', 'Rejected', 'Custom']
@@ -108,7 +109,7 @@ export default function RibbonToolbar(props: Props) {
     onAiAssistant, onOfficeImport,
     onMarkdownToPdf, onCsvToPdf, onEditExternal, onOcrRegion, onDeskew,
     onWebcam,
-    onMultiPageStamp, onSplitView, onBarcode, onScan,
+    onMultiPageStamp, onSplitView, onBarcode, onScan, onSanitize,
   } = props
 
   const resetFormFields = usePdfStore(s => s.resetFormFields)
@@ -684,6 +685,11 @@ export default function RibbonToolbar(props: Props) {
       <Group label="Signatures">
         <LBtn icon="🔏" label="Sign PDF" onClick={onDigitalSign} title="Sign document with a PFX/P12 certificate" />
         <LBtn icon="✅" label="Verify" onClick={onDigitalSign} title="Verify digital signatures in this document" />
+      </Group>
+
+      <Group label="Sanitize">
+        <LBtn icon="🧹" label="Sanitize" onClick={onSanitize}
+          title="Remove hidden data — metadata, scripts, embedded junk — and rewrite the file cleanly (mutool)" />
       </Group>
 
       <Group label="Accessibility">

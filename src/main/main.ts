@@ -429,6 +429,13 @@ ipcMain.handle('pdfium:setObjectFill', async (
 ipcMain.handle('pdfium:deleteObject', async (_e, bytes: ArrayBuffer, pageIndex: number, index: number) =>
   toAb(pdfium.deleteObject(Buffer.from(bytes), pageIndex, index)))
 
+ipcMain.handle('pdfium:replaceText', async (
+  _e, bytes: ArrayBuffer, term: string, replacement: string, matchCase: boolean,
+) => {
+  const r = pdfium.replaceAllText(Buffer.from(bytes), term, replacement, matchCase)
+  return { bytes: toAb(r.bytes), count: r.count }
+})
+
 ipcMain.handle('pdfium:editText', async (
   _event,
   bytes: ArrayBuffer,

@@ -22,6 +22,7 @@ if (!window.electronAPI) {
     pdfiumTransformObject: emptyBuf,
     pdfiumSetObjectFill: emptyBuf,
     pdfiumDeleteObject: emptyBuf,
+    pdfiumReplaceText: async () => ({ bytes: new ArrayBuffer(0), count: 0 }),
     pdfiumRenderPage: async () => ({ data: new ArrayBuffer(0), width: 0, height: 0 }),
     pdfiumEnsureSession: async () => false,
     pdfiumCloseSession: noop,

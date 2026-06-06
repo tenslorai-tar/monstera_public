@@ -50,6 +50,9 @@ declare global {
       pdfiumDeleteObject: (
         bytes: ArrayBuffer, pageIndex: number, index: number,
       ) => Promise<ArrayBuffer>
+      pdfiumReplaceText: (
+        bytes: ArrayBuffer, term: string, replacement: string, matchCase: boolean,
+      ) => Promise<{ bytes: ArrayBuffer; count: number }>
       pdfiumEditText: (
         bytes: ArrayBuffer,
         pageIndex: number,

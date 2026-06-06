@@ -407,6 +407,17 @@ export default function App() {
         onWordCount={() => setWordCountOpen(true)}
         onBarcode={() => setBarcodeOpen(true)}
         onScan={() => setScanOpen(true)}
+        onSanitize={async () => {
+          const s = usePdfStore.getState()
+          try {
+            const b = await s.getBakedBytes()
+            const ab = b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer
+            const out = await window.electronAPI.mutoolClean(ab, { sanitize: true, garbage: 4, compress: true })
+            await s.applyEdit(new Uint8Array(out))
+          } catch (e: any) {
+            alert(`Sanitize failed: ${e?.message ?? 'mutool unavailable'}\n\nInstall native tools via Tools → Native Tools → Setup.`)
+          }
+        }}
         onTranslate={() => setTranslateOpen(true)}
         onSpellCheck={() => setSpellCheckOpen(true)}
         onSwapPages={() => setSwapPagesOpen(true)}

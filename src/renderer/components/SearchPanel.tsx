@@ -34,9 +34,29 @@ export default function SearchPanel() {
     ? (searchQuery ? 'No results' : '')
     : `${activeMatchIndex + 1} / ${searchMatches.length}`
 
-  // Replace in native PDF text via text-edit overlays (cover + replacement text on top)
+  // Replace in the document's real text via PDFium (true content edit), falling
+  // back to text-edit overlays if the PDFium engine isn't available.
   const replaceOnPage = async () => {
     if (!searchQuery || !replaceText) return
+    const store = usePdfStore.getState()
+    try {
+      const avail = (await window.electronAPI.pdfiumStatus().catch(() => ({ available: false }))).available
+      if (avail) {
+        setReplaceMsg('Replacing…')
+        const b = await store.getBakedBytes()
+        const ab = b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer
+        const res = await window.electronAPI.pdfiumReplaceText(ab, searchQuery, replaceText, false)
+        if (res.count > 0 && res.bytes.byteLength > 0) {
+          await store.applyEdit(new Uint8Array(res.bytes))
+          setReplaceMsg(`Replaced ${res.count} occurrence${res.count !== 1 ? 's' : ''} in the document.`)
+          runSearch(searchQuery)
+        } else {
+          setReplaceMsg('No matches in the document text.')
+        }
+        return
+      }
+    } catch { /* fall back to overlay below */ }
+
     const pdfDoc = usePdfStore.getState().pdfDoc
     if (!pdfDoc) return
     // Find all matches
@@ -166,8 +186,8 @@ export default function SearchPanel() {
           <button className="search-nav-btn" onClick={() => replaceInAnnotations(true)}
             disabled={!searchQuery || !replaceText} title="Replace all annotation text">All</button>
           <button className="search-nav-btn" onClick={replaceOnPage}
-            disabled={!searchQuery || !replaceText || searchMatches.length === 0}
-            title="Replace in native PDF text using overlay (places white cover + new text on top)">PDF</button>
+            disabled={!searchQuery || !replaceText}
+            title="Replace in the document's real text (PDFium engine — keeps the original font)">Text</button>
           {replaceMsg && (
             <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
               {replaceMsg}
@@ -178,7 +198,7 @@ export default function SearchPanel() {
 
       {showReplace && (
         <div style={{ fontSize: 11, color: 'var(--text-muted)', paddingLeft: 22 }}>
-          Ann: replace in text annotations. PDF: overlay-based replacement (white cover + text on PDF content).
+          Ann: replace in annotation text. Text: replace the document's real text (font preserved).
         </div>
       )}
     </div>
