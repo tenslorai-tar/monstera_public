@@ -134,15 +134,17 @@ export default function ExportDialog({ onClose }: Props) {
   // ── Export XLSX ───────────────────────────────────────────────────────────
 
   const exportXlsx = async () => {
-    if (!pdfBytes) return
+    if (!pdfBytes || !pdfDoc) return
     setBusy(true)
-    setStatus('Extracting text to Excel…')
+    setStatus('Detecting tables…')
     try {
-      const result = await (window.electronAPI as any).exportToXlsx(pdfBytes.buffer as ArrayBuffer)
+      // Heuristic table reconstruction from text positions (rows × columns).
+      const { extractTablesToXlsx } = await import('../utils/extractTables')
+      const result = await extractTablesToXlsx(pdfDoc, numPages)
       const savePath = await window.electronAPI.saveFileDialog(`${baseName}.xlsx`)
       if (savePath) {
-        await window.electronAPI.writeFile(savePath, result)
-        setStatus('✓ Excel workbook saved.')
+        await window.electronAPI.writeFile(savePath, result.buffer.slice(result.byteOffset, result.byteOffset + result.byteLength) as ArrayBuffer)
+        setStatus('✓ Excel workbook saved (one sheet per page, columns auto-detected).')
       } else {
         setStatus('Cancelled.')
       }
@@ -301,8 +303,8 @@ export default function ExportDialog({ onClose }: Props) {
         {tab === 'xlsx' && (
           <div>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
-              Extracts text from each page and exports to an Excel workbook (.xlsx). Each page becomes a separate sheet.
-              Best for structured or tabular content. Layout and images are not preserved.
+              Reconstructs tables by detecting rows and columns from text positions, one sheet per page.
+              Works best on grid-like/tabular content; free-flowing prose won't map to neat columns.
             </p>
             <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>
               {numPages} page{numPages !== 1 ? 's' : ''} → {numPages} sheet{numPages !== 1 ? 's' : ''} in workbook.
