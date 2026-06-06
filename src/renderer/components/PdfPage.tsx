@@ -134,7 +134,7 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
     <div
       ref={wrapperRef}
       className="pdf-page-wrapper"
-      style={{ width: pageWidth, height: pageHeight }}
+      style={{ width: pageWidth, height: pageHeight, transition: 'width 0.15s ease, height 0.15s ease' }}
       data-page={pageNum}
     >
       {inView ? (

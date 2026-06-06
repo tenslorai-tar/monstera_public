@@ -66,6 +66,7 @@ export interface StampAnn extends AnnBase {
 export interface RedactAnn extends AnnBase {
   type: 'redact'
   x1: number; y1: number; x2: number; y2: number
+  blurred?: boolean
 }
 
 export interface TypewriterAnn extends AnnBase {

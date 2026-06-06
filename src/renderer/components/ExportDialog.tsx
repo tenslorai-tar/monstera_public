@@ -4,7 +4,7 @@ import { usePdfStore } from '../store/usePdfStore'
 interface Props { onClose: () => void }
 
 type ExportTab = 'images' | 'text' | 'docx' | 'xlsx' | 'annotations'
-type ImageFormat = 'png' | 'jpeg'
+type ImageFormat = 'png' | 'jpeg' | 'webp'
 
 export default function ExportDialog({ onClose }: Props) {
   const pdfDoc = usePdfStore(s => s.pdfDoc)
@@ -58,7 +58,7 @@ export default function ExportDialog({ onClose }: Props) {
       ctx.fillRect(0, 0, canvas.width, canvas.height)
     }
     await page.render({ canvasContext: ctx, viewport: vp }).promise
-    return canvas.toDataURL(imgFmt === 'jpeg' ? 'image/jpeg' : 'image/png', q / 100)
+    return canvas.toDataURL(imgFmt === 'jpeg' ? 'image/jpeg' : imgFmt === 'webp' ? 'image/webp' : 'image/png', q / 100)
   }
 
   // ── Export pages to images ────────────────────────────────────────────────
@@ -70,7 +70,7 @@ export default function ExportDialog({ onClose }: Props) {
     if (!dir) return
     setBusy(true)
     cancelRef.current = false
-    const ext = format === 'jpeg' ? 'jpg' : 'png'
+    const ext = format === 'jpeg' ? 'jpg' : format === 'webp' ? 'webp' : 'png'
     const files: Array<{ name: string; bytes: ArrayBuffer }> = []
     for (let i = 0; i < pages.length; i++) {
       if (cancelRef.current) break
@@ -207,9 +207,10 @@ export default function ExportDialog({ onClose }: Props) {
               <select className="annot-select" value={format} onChange={e => setFormat(e.target.value as ImageFormat)}>
                 <option value="png">PNG (lossless)</option>
                 <option value="jpeg">JPEG (smaller)</option>
+                <option value="webp">WebP (modern, smallest)</option>
               </select>
             </div>
-            {format === 'jpeg' && (
+            {(format === 'jpeg' || format === 'webp') && (
               <div className="modal-field">
                 <label className="modal-label">Quality {quality}%</label>
                 <input type="range" min={50} max={100} step={1} value={quality}

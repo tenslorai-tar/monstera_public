@@ -40,6 +40,8 @@ export default function AnnotationToolbar({ onRequestRedactConfirm, onOpenSignat
   const stampName = usePdfStore(s => s.stampName)
   const annotationsPanelOpen = usePdfStore(s => s.annotationsPanelOpen)
   const annotations = usePdfStore(s => s.annotations)
+  const redactBlurred = usePdfStore(s => s.redactBlurred)
+  const setRedactBlurred = usePdfStore(s => s.setRedactBlurred)
   const formMode = usePdfStore(s => s.formMode)
   const formCreationTool = usePdfStore(s => s.formCreationTool)
   const formsPanelOpen = usePdfStore(s => s.formsPanelOpen)
@@ -231,6 +233,14 @@ export default function AnnotationToolbar({ onRequestRedactConfirm, onOpenSignat
             REDACT
           </span>
         </ToolBtn>
+        <button
+          className={`annot-tool-btn${redactBlurred ? ' annot-tool-active' : ''}`}
+          title={redactBlurred ? 'Blur mode: areas will be blurred (click to switch to solid black)' : 'Solid mode: areas will be blacked out (click to switch to blur)'}
+          onClick={() => setRedactBlurred(!redactBlurred)}
+          style={{ fontSize: 13, padding: '2px 6px' }}
+        >
+          {redactBlurred ? '〜' : '▪'}
+        </button>
       </div>
 
       {pendingRedactCount > 0 && (

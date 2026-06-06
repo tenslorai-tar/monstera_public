@@ -65,6 +65,21 @@ interface Props {
   // Native binary ops
   onNativeBins: () => void
   onPdfConvert: () => void
+  // Batch 8 new features
+  onMarkdownToPdf: () => void
+  onCsvToPdf: () => void
+  onEditExternal: () => void
+  onTaggedPdf: () => void
+  onImportToLayer: () => void
+  onEmail: () => void
+  onFindDuplicates: () => void
+  onWebcam: () => void
+  onPageTransitions: () => void
+  onTocGenerator: () => void
+  onOcrRegion: () => void
+  onDeskew: () => void
+  onMultiPageStamp: () => void
+  onSplitView: () => void
 }
 
 const ZOOM_PRESETS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]
@@ -92,6 +107,9 @@ export default function RibbonToolbar(props: Props) {
     onFindRedact, onOptimize, onOpenUrl, onReplacePage, onMeasureCalibration,
     onAiAssistant, onOfficeImport, onCloudStorage, onDocuSign,
     onNativeBins, onPdfConvert,
+    onMarkdownToPdf, onCsvToPdf, onEditExternal, onTaggedPdf, onImportToLayer,
+    onEmail, onFindDuplicates, onWebcam, onPageTransitions, onTocGenerator, onOcrRegion, onDeskew,
+    onMultiPageStamp, onSplitView,
   } = props
 
   const resetFormFields = usePdfStore(s => s.resetFormFields)
@@ -113,8 +131,9 @@ export default function RibbonToolbar(props: Props) {
   const redoStack         = usePdfStore(s => s.redoStack)
   const encryptionSettings = usePdfStore(s => s.encryptionSettings)
   const selectedPages     = usePdfStore(s => s.selectedPages)
-  const activeTool        = usePdfStore(s => s.activeTool)
-  const toolColor         = usePdfStore(s => s.toolColor)
+  const activeTool           = usePdfStore(s => s.activeTool)
+  const selectedAnnotationId = usePdfStore(s => s.selectedAnnotationId)
+  const toolColor            = usePdfStore(s => s.toolColor)
   const toolOpacity       = usePdfStore(s => s.toolOpacity)
   const toolLineWidth     = usePdfStore(s => s.toolLineWidth)
   const toolFontSize      = usePdfStore(s => s.toolFontSize)
@@ -346,6 +365,7 @@ export default function RibbonToolbar(props: Props) {
               <SBtn icon="💬" label="Annotations" active={annotationsPanelOpen} onClick={toggleAnnotationsPanel} title="Annotations panel (F6)" />
               <SBtn icon="📋" label="Fields" active={formsPanelOpen} onClick={toggleFormsPanel} title="Form fields panel (F7)" />
             </div>
+            <LBtn icon="⧉" label="Split View" onClick={onSplitView} disabled={!hasPdf} title="Show two pages side by side" />
           </Group>
 
           <Group label="Combine">
@@ -429,6 +449,9 @@ export default function RibbonToolbar(props: Props) {
           </div>
         )}
         <LBtn icon="✍" label="Signature" onClick={onOpenSignaturePad} title="Draw / upload a visible signature image" />
+        {selectedAnnotationId && (
+          <LBtn icon="⊕" label="Multi-Page" onClick={onMultiPageStamp} title="Copy selected annotation to multiple pages at once" />
+        )}
         <input ref={stampFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleCustomStamp} />
       </Group>
 
@@ -805,7 +828,7 @@ export default function RibbonToolbar(props: Props) {
       <Group label="Cloud">
         <div className="rbn-stack">
           <SBtn icon="☁" label="Cloud" onClick={onCloudStorage}
-            title="Open or save PDFs from Google Drive or Dropbox" />
+            title="Open or save PDFs from Google Drive, Dropbox, OneDrive, Box, or SharePoint" />
           <SBtn icon="✍" label="DocuSign" onClick={onDocuSign}
             title="Send PDF for e-signature via DocuSign" />
         </div>
@@ -815,6 +838,45 @@ export default function RibbonToolbar(props: Props) {
         <div className="rbn-stack">
           <SBtn icon="📥" label="Office" onClick={onOfficeImport}
             title="Convert Word, Excel, PowerPoint, ODF → PDF (LibreOffice when available)" />
+          <SBtn icon="📝" label="Markdown" onClick={onMarkdownToPdf}
+            title="Convert Markdown text to a PDF document" />
+          <SBtn icon="📊" label="CSV" onClick={onCsvToPdf}
+            title="Convert CSV data to a formatted PDF table" />
+        </div>
+      </Group>
+
+      <Group label="Edit & OCR">
+        <div className="rbn-stack">
+          <SBtn icon="✏" label="Ext Edit" onClick={onEditExternal}
+            title="Export a page as PNG and open in an external image editor" />
+          <SBtn icon="🔍" label="OCR Region" onClick={onOcrRegion}
+            title="Run OCR on a selected region of the current page" />
+          <SBtn icon="📐" label="Deskew" onClick={onDeskew}
+            title="Detect and correct skew in scanned pages" />
+          <SBtn icon="📷" label="Webcam" onClick={onWebcam}
+            title="Capture an image from webcam and insert into the PDF" />
+        </div>
+      </Group>
+
+      <Group label="Document">
+        <div className="rbn-stack">
+          <SBtn icon="🏷" label="Tagged PDF" onClick={onTaggedPdf}
+            title="View document structure (reading order) and set accessibility metadata" />
+          <SBtn icon="📑" label="Layers" onClick={onImportToLayer}
+            title="Import pages from another PDF as an optional content layer" />
+          <SBtn icon="🎬" label="Transitions" onClick={onPageTransitions}
+            title="Set slide-show page transition effects" />
+          <SBtn icon="📑" label="TOC" onClick={onTocGenerator}
+            title="Generate a Table of Contents page from bookmarks" />
+        </div>
+      </Group>
+
+      <Group label="Manage">
+        <div className="rbn-stack">
+          <SBtn icon="🔍" label="Duplicates" onClick={onFindDuplicates}
+            title="Find and remove duplicate pages" />
+          <SBtn icon="📧" label="Email" onClick={onEmail}
+            title="Email this document via your default email client" />
         </div>
       </Group>
 

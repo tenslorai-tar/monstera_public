@@ -18,8 +18,9 @@ const TSA_PRESETS = [
 ]
 
 export default function DigitalSignDialog({ onClose }: Props) {
-  const pdfBytes = usePdfStore(s => s.pdfBytes)
-  const fileName = usePdfStore(s => s.fileName)
+  const pdfBytes  = usePdfStore(s => s.pdfBytes)
+  const fileName  = usePdfStore(s => s.fileName)
+  const applyEdit = usePdfStore(s => s.applyEdit)
 
   const [tab,          setTab]          = useState<Tab>('sign')
   const [pfxPath,      setPfxPath]      = useState('')
@@ -34,6 +35,7 @@ export default function DigitalSignDialog({ onClose }: Props) {
   const [signing,      setSigning]      = useState(false)
   const [signError,    setSignError]    = useState('')
   const [signDone,     setSignDone]     = useState(false)
+  const [applyToDoc,   setApplyToDoc]   = useState(false)
 
   // Certify tab
   const [certPfxPath,     setCertPfxPath]     = useState('')
@@ -68,7 +70,11 @@ export default function DigitalSignDialog({ onClose }: Props) {
       }
       const defaultOut = fileName.replace(/\.pdf$/i, '_signed.pdf')
       const savePath = await window.electronAPI.saveFileDialog(defaultOut)
-      if (savePath) { await window.electronAPI.writeFile(savePath, bytes); setSignDone(true) }
+      if (savePath) {
+        await window.electronAPI.writeFile(savePath, bytes)
+        if (applyToDoc) await applyEdit(new Uint8Array(bytes))
+        setSignDone(true)
+      }
     } catch (e: unknown) {
       setSignError(e instanceof Error ? e.message : 'Signing failed')
     } finally {
@@ -191,6 +197,10 @@ export default function DigitalSignDialog({ onClose }: Props) {
               )}
             </div>
 
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+              <input type="checkbox" checked={applyToDoc} onChange={e => setApplyToDoc(e.target.checked)} />
+              Also update current document with signed version
+            </label>
             {signError && <div className="modal-error">{signError}</div>}
             {signDone  && <div style={{ fontSize: 13, color: '#4caf50', padding: '6px 0' }}>✅ PDF signed and saved successfully.</div>}
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>

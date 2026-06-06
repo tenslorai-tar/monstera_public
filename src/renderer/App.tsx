@@ -41,6 +41,22 @@ import CloudStorageDialog from './components/CloudStorageDialog'
 import DocuSignDialog from './components/DocuSignDialog'
 import NativeBinsDialog from './components/NativeBinsDialog'
 import PdfConvertDialog from './components/PdfConvertDialog'
+import MarkdownPdfDialog from './components/MarkdownPdfDialog'
+import CsvPdfDialog from './components/CsvPdfDialog'
+import EditExternalDialog from './components/EditExternalDialog'
+import TaggedPdfDialog from './components/TaggedPdfDialog'
+import ImportToLayerDialog from './components/ImportToLayerDialog'
+import EmailDialog from './components/EmailDialog'
+import FindDuplicatesDialog from './components/FindDuplicatesDialog'
+import MultiPageStampDialog from './components/MultiPageStampDialog'
+import WebcamDialog from './components/WebcamDialog'
+import PageTransitionsDialog from './components/PageTransitionsDialog'
+import TocGeneratorDialog from './components/TocGeneratorDialog'
+import OcrRegionDialog from './components/OcrRegionDialog'
+import DeskewDialog from './components/DeskewDialog'
+import SplitViewPanel from './components/SplitViewPanel'
+import TabsBar from './components/TabsBar'
+import { useTabsStore } from './store/useTabsStore'
 import * as docEnhance from './utils/documentEnhance'
 import { usePdfStore } from './store/usePdfStore'
 import { useSettingsStore } from './store/useSettingsStore'
@@ -63,6 +79,8 @@ export default function App() {
   const setActiveTool        = usePdfStore(s => s.setActiveTool)
   const isDirty              = usePdfStore(s => s.isDirty)
   const fileName             = usePdfStore(s => s.fileName)
+  const currentFilePath      = usePdfStore(s => s.filePath)
+  const bookmarks            = usePdfStore(s => s.bookmarks)
   const setZoomMode          = usePdfStore(s => s.setZoomMode)
   const setScale             = usePdfStore(s => s.setScale)
   const save                 = usePdfStore(s => s.save)
@@ -109,6 +127,20 @@ export default function App() {
   const [docuSignOpen,         setDocuSignOpen]         = useState(false)
   const [nativeBinsOpen,       setNativeBinsOpen]       = useState(false)
   const [pdfConvertOpen,       setPdfConvertOpen]       = useState(false)
+  const [markdownPdfOpen,      setMarkdownPdfOpen]      = useState(false)
+  const [csvPdfOpen,           setCsvPdfOpen]           = useState(false)
+  const [editExternalOpen,     setEditExternalOpen]     = useState(false)
+  const [taggedPdfOpen,        setTaggedPdfOpen]        = useState(false)
+  const [importToLayerOpen,    setImportToLayerOpen]    = useState(false)
+  const [emailOpen,            setEmailOpen]            = useState(false)
+  const [findDuplicatesOpen,   setFindDuplicatesOpen]   = useState(false)
+  const [multiPageStampOpen,   setMultiPageStampOpen]   = useState(false)
+  const [webcamOpen,           setWebcamOpen]           = useState(false)
+  const [pageTransitionsOpen,  setPageTransitionsOpen]  = useState(false)
+  const [tocGeneratorOpen,     setTocGeneratorOpen]     = useState(false)
+  const [ocrRegionOpen,        setOcrRegionOpen]        = useState(false)
+  const [deskewOpen,           setDeskewOpen]           = useState(false)
+  const [splitViewOpen,        setSplitViewOpen]        = useState(false)
 
   const [passwordPrompt,    setPasswordPrompt]     = useState<PasswordPromptState>(null)
   const [passwordError,     setPasswordError]      = useState('')
@@ -127,6 +159,20 @@ export default function App() {
     try {
       const bytes = await window.electronAPI.readFileBytes(resolvedPath)
       const name = resolvedPath.split(/[\\/]/).pop() ?? resolvedPath
+
+      // Snapshot current PDF into its tab (if any tab is open)
+      const tabsState = useTabsStore.getState()
+      if (tabsState.activeTabId && currentFilePath) {
+        try {
+          const currentBytes = await getBakedBytes()
+          tabsState.updateTab(tabsState.activeTabId, {
+            pdfBytes: currentBytes, annotations, formFields: usePdfStore.getState().formFields,
+            bookmarks, isDirty, currentPage: usePdfStore.getState().currentPage,
+            scale: usePdfStore.getState().scale,
+          })
+        } catch { /* ignore snapshot errors */ }
+      }
+
       await loadPdf(bytes, resolvedPath, name, password)
       addRecentFile(resolvedPath, name)
       const dz = settings.defaultZoom
@@ -135,6 +181,20 @@ export default function App() {
       setPasswordPrompt(null)
       setPasswordError('')
       setPasswordInput('')
+
+      // Register new tab (deduplicate by path)
+      const existingTab = tabsState.tabs.find(t => t.filePath === resolvedPath)
+      if (!existingTab) {
+        tabsState.addTab({
+          id: Math.random().toString(36).slice(2),
+          fileName: name, filePath: resolvedPath,
+          pdfBytes: new Uint8Array(bytes instanceof ArrayBuffer ? bytes : (bytes as any)),
+          annotations: [], formFields: [], bookmarks: [],
+          isDirty: false, currentPage: 1, scale: 1.5,
+        })
+      } else {
+        tabsState.setActiveTab(existingTab.id)
+      }
     } catch (e: unknown) {
       const err = e as { code?: string; message?: string }
       if (err?.code === 'NeedsPassword') {
@@ -237,6 +297,18 @@ export default function App() {
         case 'rotate180':  if (sel.length > 0) ops.rotatePages(sel, 180); break
         case 'reverseOrder': ops.reversePages(); break
         case 'toggleFormMode': s.setFormMode(!s.formMode); break
+        case 'markdownToPdf':   setMarkdownPdfOpen(true); break
+        case 'csvToPdf':        setCsvPdfOpen(true); break
+        case 'editExternal':    setEditExternalOpen(true); break
+        case 'taggedPdf':       setTaggedPdfOpen(true); break
+        case 'importToLayer':   setImportToLayerOpen(true); break
+        case 'email':           setEmailOpen(true); break
+        case 'findDuplicates':  setFindDuplicatesOpen(true); break
+        case 'webcam':          setWebcamOpen(true); break
+        case 'pageTransitions': setPageTransitionsOpen(true); break
+        case 'tocGenerator':    setTocGeneratorOpen(true); break
+        case 'ocrRegion':       setOcrRegionOpen(true); break
+        case 'deskew':          setDeskewOpen(true); break
         case 'flattenForm':    s.flattenForm(); break
         case 'applyRedactions': setRedactConfirmOpen(true); break
         case 'headerFooter':  setHeaderFooterOpen(true); break
@@ -346,7 +418,23 @@ export default function App() {
         onDocuSign={() => setDocuSignOpen(true)}
         onNativeBins={() => setNativeBinsOpen(true)}
         onPdfConvert={() => setPdfConvertOpen(true)}
+        onMarkdownToPdf={() => setMarkdownPdfOpen(true)}
+        onCsvToPdf={() => setCsvPdfOpen(true)}
+        onEditExternal={() => setEditExternalOpen(true)}
+        onTaggedPdf={() => setTaggedPdfOpen(true)}
+        onImportToLayer={() => setImportToLayerOpen(true)}
+        onEmail={() => setEmailOpen(true)}
+        onFindDuplicates={() => setFindDuplicatesOpen(true)}
+        onWebcam={() => setWebcamOpen(true)}
+        onPageTransitions={() => setPageTransitionsOpen(true)}
+        onTocGenerator={() => setTocGeneratorOpen(true)}
+        onOcrRegion={() => setOcrRegionOpen(true)}
+        onDeskew={() => setDeskewOpen(true)}
+        onMultiPageStamp={() => setMultiPageStampOpen(true)}
+        onSplitView={() => setSplitViewOpen(true)}
       />
+
+      <TabsBar />
 
       {hasPdf ? (
         <div className="main-row">
@@ -499,6 +587,24 @@ export default function App() {
           onClose={() => setReplacePageOpen(false)}
         />
       )}
+      {markdownPdfOpen    && <MarkdownPdfDialog   onClose={() => setMarkdownPdfOpen(false)} />}
+      {csvPdfOpen         && <CsvPdfDialog        onClose={() => setCsvPdfOpen(false)} />}
+      {editExternalOpen   && <EditExternalDialog  onClose={() => setEditExternalOpen(false)} />}
+      {taggedPdfOpen      && <TaggedPdfDialog     onClose={() => setTaggedPdfOpen(false)} />}
+      {importToLayerOpen  && <ImportToLayerDialog onClose={() => setImportToLayerOpen(false)} />}
+      {emailOpen          && <EmailDialog         onClose={() => setEmailOpen(false)} />}
+      {findDuplicatesOpen && <FindDuplicatesDialog onClose={() => setFindDuplicatesOpen(false)} />}
+      {webcamOpen         && <WebcamDialog        onClose={() => setWebcamOpen(false)} />}
+      {pageTransitionsOpen && <PageTransitionsDialog onClose={() => setPageTransitionsOpen(false)} />}
+      {tocGeneratorOpen   && <TocGeneratorDialog  onClose={() => setTocGeneratorOpen(false)} />}
+      {ocrRegionOpen      && <OcrRegionDialog     onClose={() => setOcrRegionOpen(false)} />}
+      {deskewOpen         && <DeskewDialog        onClose={() => setDeskewOpen(false)} />}
+      {splitViewOpen      && <SplitViewPanel     onClose={() => setSplitViewOpen(false)} />}
+      {multiPageStampOpen && (() => {
+        const sel = annotations.find(a => a.id === (usePdfStore.getState().selectedAnnotationId ?? ''))
+        return sel ? <MultiPageStampDialog onClose={() => setMultiPageStampOpen(false)} sourceAnnotation={sel} /> : null
+      })()}
+
       {digitalSignOpen && <DigitalSignDialog onClose={() => setDigitalSignOpen(false)} />}
 
       {signaturePadOpen && (

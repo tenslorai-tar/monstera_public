@@ -118,6 +118,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   const stampName = usePdfStore(s => s.stampName)
   const customStampDataUrl = usePdfStore(s => s.customStampDataUrl)
   const openStickyNoteId = usePdfStore(s => s.openStickyNoteId)
+  const redactBlurred = usePdfStore(s => s.redactBlurred)
 
   const addAnnotation = usePdfStore(s => s.addAnnotation)
   const updateAnnotation = usePdfStore(s => s.updateAnnotation)
@@ -378,7 +379,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       if (Math.abs(ex - draw.sx) < 4 && Math.abs(ey - draw.sy) < 4) { setDraw({ k: 'idle' }); return }
       if (activeTool === 'redact') {
         addAnnotation({ id: newId(), pageNum, type: 'redact', color: '#000000', opacity: 1,
-          x1, y1, x2, y2, createdAt: Date.now() } as RedactAnn)
+          x1, y1, x2, y2, blurred: redactBlurred, createdAt: Date.now() } as RedactAnn)
         setDraw({ k: 'idle' }); return
       }
       if (activeTool === 'link') {
@@ -689,6 +690,26 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       const [svgX1, svgY1] = toSvg(Math.min(a.x1, a.x2), Math.max(a.y1, a.y2))
       const [svgX2, svgY2] = toSvg(Math.max(a.x1, a.x2), Math.min(a.y1, a.y2))
       const w = svgX2 - svgX1, h = svgY2 - svgY1
+      const filterId = `blur-${a.id}`
+      if (a.blurred) {
+        return (
+          <g key={a.id} onClick={e => handleAnnotClick(a, e)} style={annStyle(a)}>
+            <defs>
+              <filter id={filterId} x="-5%" y="-5%" width="110%" height="110%">
+                <feGaussianBlur stdDeviation="6" />
+              </filter>
+            </defs>
+            <rect x={svgX1} y={svgY1} width={w} height={h}
+              fill="rgba(100,100,120,0.55)" filter={`url(#${filterId})`}
+              stroke={sel ? '#4a9eff' : '#8888cc'} strokeWidth={sel ? 2 : 1.5}
+              strokeDasharray={sel ? '6,3' : '4,3'} pointerEvents="all" />
+            {h > 16 && <text x={svgX1 + w / 2} y={svgY1 + h / 2}
+              textAnchor="middle" dominantBaseline="middle"
+              fill="#aaaadd" fontSize={Math.min(11, h * 0.5)}
+              fontWeight="bold" fontFamily="sans-serif" pointerEvents="none">BLUR</text>}
+          </g>
+        )
+      }
       return (
         <g key={a.id} onClick={e => handleAnnotClick(a, e)} style={annStyle(a)}>
           <defs>

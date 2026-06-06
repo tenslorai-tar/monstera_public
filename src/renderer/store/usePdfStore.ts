@@ -123,6 +123,7 @@ interface PdfStore {
   customStampDataUrl: string | null
   annotationsPanelOpen: boolean
   openStickyNoteId: string | null
+  redactBlurred: boolean
 
   // ── Forms ────────────────────────────────────────────────────────────────────
   formFields: FormField[]
@@ -192,6 +193,7 @@ interface PdfStore {
   setCustomStampDataUrl: (url: string | null) => void
   toggleAnnotationsPanel: () => void
   setOpenStickyNote: (id: string | null) => void
+  setRedactBlurred: (v: boolean) => void
 
   // ── Bookmark actions ─────────────────────────────────────────────────────────
   addBookmark: (pageNum: number, title: string) => void
@@ -261,6 +263,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   customStampDataUrl: null,
   annotationsPanelOpen: false,
   openStickyNoteId: null,
+  redactBlurred: false,
 
   // ── Form defaults ────────────────────────────────────────────────────────
   formFields: [],
@@ -561,21 +564,78 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   setCustomStampDataUrl: (url) => set({ customStampDataUrl: url }),
   toggleAnnotationsPanel: () => set(s => ({ annotationsPanelOpen: !s.annotationsPanelOpen })),
   setOpenStickyNote: (id) => set({ openStickyNoteId: id }),
+  setRedactBlurred: (v) => set({ redactBlurred: v }),
 
   // ── Security actions ──────────────────────────────────────────────────────
   setEncryptionSettings: (s) => set({ encryptionSettings: s, isDirty: true }),
   applyRedactions: async () => {
-    const { annotations, getBakedBytes, applyEdit } = get()
-    const redactAnns = annotations.filter(a => a.type === 'redact')
+    const { annotations, getBakedBytes, applyEdit, addAnnotation, deleteAnnotation } = get()
+    const redactAnns = annotations.filter(a => a.type === 'redact') as import('../types/annotations').RedactAnn[]
     if (redactAnns.length === 0) return
-    const baked = await getBakedBytes()
-    const areas = redactAnns.map(a => ({
-      pageNum: a.pageNum,
-      x1: (a as any).x1, y1: (a as any).y1,
-      x2: (a as any).x2, y2: (a as any).y2,
-    }))
-    const result = await window.electronAPI.mupdfApplyRedactions(baked.buffer as ArrayBuffer, areas)
-    await applyEdit(new Uint8Array(result))
+
+    const solidAnns   = redactAnns.filter(a => !a.blurred)
+    const blurredAnns = redactAnns.filter(a => a.blurred)
+
+    let baked = await getBakedBytes()
+
+    // Apply blurred redactions: render page via PDF.js, crop region, blur, overlay as placed-image
+    if (blurredAnns.length > 0) {
+      const pdfDoc = await pdfjsLib.getDocument({ data: baked.slice() }).promise
+      const pageCache: Map<number, { canvas: HTMLCanvasElement; pageH: number; scale: number }> = new Map()
+      const BLUR_SCALE = 2.5
+
+      for (const a of blurredAnns) {
+        if (!pageCache.has(a.pageNum)) {
+          const pdfPage = await pdfDoc.getPage(a.pageNum)
+          const viewport = pdfPage.getViewport({ scale: BLUR_SCALE })
+          const canvas = document.createElement('canvas')
+          canvas.width = Math.round(viewport.width)
+          canvas.height = Math.round(viewport.height)
+          const ctx = canvas.getContext('2d')!
+          await pdfPage.render({ canvasContext: ctx, viewport }).promise
+          pageCache.set(a.pageNum, { canvas, pageH: viewport.height / BLUR_SCALE, scale: BLUR_SCALE })
+        }
+        const { canvas, pageH, scale } = pageCache.get(a.pageNum)!
+
+        const x1 = Math.min(a.x1, a.x2); const x2 = Math.max(a.x1, a.x2)
+        const y1 = Math.min(a.y1, a.y2); const y2 = Math.max(a.y1, a.y2)
+        const sx = Math.round(x1 * scale)
+        const sy = Math.round((pageH - y2) * scale)
+        const cw = Math.round((x2 - x1) * scale)
+        const ch = Math.round((y2 - y1) * scale)
+        if (cw < 2 || ch < 2) { deleteAnnotation(a.id); continue }
+
+        const cropCanvas = document.createElement('canvas')
+        cropCanvas.width = cw; cropCanvas.height = ch
+        const ctx = cropCanvas.getContext('2d')!
+        ctx.drawImage(canvas, sx, sy, cw, ch, 0, 0, cw, ch)
+
+        const blurCanvas = document.createElement('canvas')
+        blurCanvas.width = cw; blurCanvas.height = ch
+        const bctx = blurCanvas.getContext('2d')!
+        bctx.filter = 'blur(10px)'
+        bctx.drawImage(cropCanvas, 0, 0)
+
+        addAnnotation({
+          id: `blurred-${a.id}`, pageNum: a.pageNum, type: 'placed-image',
+          x: x1, y: y1, width: x2 - x1, height: y2 - y1,
+          dataUrl: blurCanvas.toDataURL('image/png'),
+          color: '#000000', opacity: 1, createdAt: Date.now(),
+        } as import('../types/annotations').PlacedImageAnn)
+        deleteAnnotation(a.id)
+      }
+    }
+
+    // Apply solid redactions permanently via MuPDF (true content removal)
+    if (solidAnns.length > 0) {
+      baked = await getBakedBytes()
+      const areas = solidAnns.map(a => ({
+        pageNum: a.pageNum, x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2,
+      }))
+      const result = await window.electronAPI.mupdfApplyRedactions(baked.buffer as ArrayBuffer, areas)
+      await applyEdit(new Uint8Array(result))
+      for (const a of solidAnns) deleteAnnotation(a.id)
+    }
   },
 
   // ── Form actions ──────────────────────────────────────────────────────────

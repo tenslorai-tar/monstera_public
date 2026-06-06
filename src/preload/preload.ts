@@ -196,4 +196,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   importDocxSmart: (filePath: string): Promise<ArrayBuffer> =>
     ipcRenderer.invoke('file:importDocxSmart', filePath),
+
+  // ── Markdown / CSV → PDF ────────────────────────────────────────────────────
+
+  convertMarkdownToPdf: (markdownText: string): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('convert:markdownToPdf', markdownText),
+
+  convertCsvToPdf: (csvText: string): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('convert:csvToPdf', csvText),
+
+  // ── Email document ─────────────────────────────────────────────────────────
+
+  openEmail: (recipient: string, subject: string, body: string): Promise<void> =>
+    ipcRenderer.invoke('shell:openEmail', recipient, subject, body),
+
+  // ── External editing round-trip ────────────────────────────────────────────
+
+  exportPageForEdit: (bytes: ArrayBuffer, pageNum: number): Promise<{ pngPath: string; width: number; height: number }> =>
+    ipcRenderer.invoke('file:exportPageForEdit', bytes, pageNum),
+
+  reimportEditedPage: (pngPath: string): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('file:reimportEditedPage', pngPath),
 })

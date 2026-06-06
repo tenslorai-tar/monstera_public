@@ -180,9 +180,28 @@ function buildAppMenu(win: BrowserWindow): Menu {
         },
         { type: 'separator' },
         { label: 'Import Office File…', click: send('officeImport') },
+        {
+          label: 'Convert to PDF',
+          submenu: [
+            { label: 'From Markdown…', click: send('markdownToPdf') },
+            { label: 'From CSV…',      click: send('csvToPdf') },
+          ],
+        },
         { type: 'separator' },
-        { label: 'Run OCR…',   click: send('ocr') },
-        { label: 'Export…',    click: send('export') },
+        { label: 'Run OCR…',           click: send('ocr') },
+        { label: 'OCR Selected Region…', click: send('ocrRegion') },
+        { label: 'Deskew Scanned Pages…', click: send('deskew') },
+        { label: 'Export…',            click: send('export') },
+        { type: 'separator' },
+        { label: 'Edit Page in External App…', click: send('editExternal') },
+        { label: 'Email Document…',    click: send('email') },
+        { type: 'separator' },
+        { label: 'Find Duplicate Pages…', click: send('findDuplicates') },
+        { label: 'Webcam Capture…',    click: send('webcam') },
+        { label: 'Page Transitions…',  click: send('pageTransitions') },
+        { label: 'Generate TOC Page…', click: send('tocGenerator') },
+        { label: 'Tagged PDF / Reading Order…', click: send('taggedPdf') },
+        { label: 'Import Pages to Layer…', click: send('importToLayer') },
         { type: 'separator' },
         {
           label: 'PDF Standards & Conversion',
@@ -1306,6 +1325,121 @@ ipcMain.handle('dialog:openOfficeFile', async () => {
     ],
   })
   return r.canceled ? null : r.filePaths[0]
+})
+
+// ── Markdown → PDF ─────────────────────────────────────────────────────────────
+
+ipcMain.handle('convert:markdownToPdf', async (_event, markdownText: string): Promise<ArrayBuffer> => {
+  // Simple markdown-to-HTML converter (no external deps needed)
+  function mdToHtml(md: string): string {
+    return md
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/^###### (.+)$/gm, '<h6>$1</h6>')
+      .replace(/^##### (.+)$/gm, '<h5>$1</h5>')
+      .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
+      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+      .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/`(.+?)`/g, '<code>$1</code>')
+      .replace(/^\- (.+)$/gm, '<li>$1</li>')
+      .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+      .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2">$1</a>')
+      .replace(/\n\n/g, '</p><p>')
+      .replace(/^(?!<[hlicpadu])/gm, '')
+  }
+  const body = mdToHtml(markdownText)
+  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
+    <style>
+      body { font-family: Georgia, serif; font-size: 13px; margin: 40px 60px; line-height: 1.7; color: #111; }
+      h1 { font-size: 2em; border-bottom: 2px solid #333; padding-bottom: 4px; margin-bottom: 16px; }
+      h2 { font-size: 1.5em; border-bottom: 1px solid #999; padding-bottom: 2px; margin-top: 24px; }
+      h3 { font-size: 1.2em; margin-top: 18px; }
+      h4,h5,h6 { margin-top: 12px; }
+      code { background: #f4f4f4; padding: 1px 4px; border-radius: 3px; font-family: monospace; font-size: 0.9em; }
+      li { margin: 3px 0; }
+      p { margin: 8px 0; }
+      a { color: #0066cc; }
+    </style>
+  </head><body><p>${body}</p></body></html>`
+  const offscreen = new BrowserWindow({ show: false, width: 794, height: 1123, webPreferences: { nodeIntegration: false, contextIsolation: true } })
+  await offscreen.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(fullHtml)}`)
+  await new Promise<void>(r => setTimeout(r, 500))
+  const pdfBuf = await offscreen.webContents.printToPDF({ pageSize: 'A4', printBackground: true, margins: { top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 } })
+  offscreen.close()
+  return abuf(pdfBuf)
+})
+
+// ── CSV → PDF ─────────────────────────────────────────────────────────────────
+
+ipcMain.handle('convert:csvToPdf', async (_event, csvText: string): Promise<ArrayBuffer> => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const XLSX = require('xlsx')
+  const wb = XLSX.read(csvText, { type: 'string' })
+  const ws = wb.Sheets[wb.SheetNames[0]]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 })
+
+  const rows = data.map((row, ri) => {
+    const cells = row.map((cell: unknown) =>
+      `<td style="${ri === 0 ? 'background:#e8eaf6;font-weight:bold;' : ri % 2 === 0 ? 'background:#f5f5f5;' : ''}">${cell !== null && cell !== undefined ? String(cell).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''}</td>`
+    ).join('')
+    return `<tr>${cells}</tr>`
+  }).join('\n')
+
+  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 10px; margin: 20px; }
+      table { border-collapse: collapse; width: 100%; }
+      td { border: 1px solid #ccc; padding: 3px 6px; }
+      tr:first-child td { font-weight: bold; background: #e8eaf6; }
+    </style>
+  </head><body><table>${rows}</table></body></html>`
+  const offscreen = new BrowserWindow({ show: false, width: 1123, height: 794, webPreferences: { nodeIntegration: false, contextIsolation: true } })
+  await offscreen.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(fullHtml)}`)
+  await new Promise<void>(r => setTimeout(r, 400))
+  const pdfBuf = await offscreen.webContents.printToPDF({ pageSize: 'A4', landscape: true, printBackground: true, margins: { top: 0.3, bottom: 0.3, left: 0.3, right: 0.3 } })
+  offscreen.close()
+  return abuf(pdfBuf)
+})
+
+// ── Email document ─────────────────────────────────────────────────────────────
+
+ipcMain.handle('shell:openEmail', async (_event, recipient: string, subject: string, body: string) => {
+  const mailto = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+  await shell.openExternal(mailto)
+})
+
+// ── Export page for external editing ─────────────────────────────────────────
+
+interface ExportPageResult { pngPath: string; width: number; height: number }
+
+ipcMain.handle('file:exportPageForEdit', async (
+  _event,
+  bytes: ArrayBuffer,
+  pageNum: number
+): Promise<ExportPageResult> => {
+  const mupdf = await getMupdf()
+  const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
+  const page = doc.loadPage(pageNum - 1)
+  const bounds = page.getBounds()
+  const scale  = 2.0   // 2× for high-quality export
+  const matrix = [scale, 0, 0, scale, 0, 0]
+  const pixmap = page.toPixmap(matrix, mupdf.ColorSpace.DeviceRGB, false, true)
+  const pngData: Buffer = pixmap.asPNG()
+  const tmpPath = path.join(require('os').tmpdir(), `monstera-edit-page-${pageNum}-${Date.now()}.png`)
+  fs.writeFileSync(tmpPath, pngData)
+  await shell.openPath(tmpPath)
+  return { pngPath: tmpPath, width: Math.round(bounds[2] - bounds[0]), height: Math.round(bounds[3] - bounds[1]) }
+})
+
+ipcMain.handle('file:reimportEditedPage', async (
+  _event,
+  pngPath: string
+): Promise<ArrayBuffer> => {
+  const buf = fs.readFileSync(pngPath)
+  return abuf(buf)
 })
 
 // Smart DOCX import: LibreOffice first, mammoth fallback

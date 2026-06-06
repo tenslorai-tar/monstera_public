@@ -6,6 +6,37 @@ interface Props { onClose: () => void }
 // All permissions allowed → 0xFFFFFFFC = -4
 const ALL_PERMS = -4
 
+function pwdStrength(pwd: string): { score: 0|1|2|3|4; label: string; color: string } {
+  if (!pwd) return { score: 0, label: '', color: '' }
+  let s = 0
+  if (pwd.length >= 8)  s++
+  if (pwd.length >= 12) s++
+  if (/[A-Z]/.test(pwd) && /[a-z]/.test(pwd)) s++
+  if (/\d/.test(pwd))   s++
+  if (/[^A-Za-z0-9]/.test(pwd)) s++
+  const score = Math.min(4, s) as 0|1|2|3|4
+  const labels = ['', 'Weak', 'Fair', 'Good', 'Strong']
+  const colors = ['', '#f44336', '#ff9800', '#ffeb3b', '#4caf50']
+  return { score, label: labels[score], color: colors[score] }
+}
+
+function StrengthBar({ pwd }: { pwd: string }) {
+  const { score, label, color } = pwdStrength(pwd)
+  if (!pwd) return null
+  return (
+    <div style={{ marginTop: 4 }}>
+      <div style={{ display: 'flex', gap: 3 }}>
+        {[1,2,3,4].map(i => (
+          <div key={i} style={{ flex: 1, height: 4, borderRadius: 2,
+            background: i <= score ? color : 'var(--border)',
+            transition: 'background 0.2s' }} />
+        ))}
+      </div>
+      <span style={{ fontSize: 11, color, marginTop: 2, display: 'block' }}>{label}</span>
+    </div>
+  )
+}
+
 function buildPermissions(print: boolean, copy: boolean, edit: boolean, annotate: boolean): number {
   let p = ALL_PERMS
   if (!print)    p = (p & ~4)  | 0   // bit 2
@@ -89,11 +120,13 @@ export default function PasswordDialog({ onClose }: Props) {
               <label className="modal-label">User password <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(required to open — leave blank for none)</span></label>
               <input className="modal-input" type="password" value={userPwd}
                 onChange={e => setUserPwd(e.target.value)} placeholder="Leave blank for view-only lock" />
+              <StrengthBar pwd={userPwd} />
             </div>
             <div className="modal-field">
               <label className="modal-label">Owner password <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(required to change permissions)</span></label>
               <input className="modal-input" type="password" value={ownerPwd}
                 onChange={e => setOwnerPwd(e.target.value)} placeholder="Required" />
+              <StrengthBar pwd={ownerPwd} />
             </div>
 
             <div className="modal-field">

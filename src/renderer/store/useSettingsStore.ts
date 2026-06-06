@@ -21,6 +21,10 @@ export interface AppSettings {
   rtlText: boolean
   gdToken: string         // Google Drive OAuth token
   dropboxToken: string    // Dropbox access token
+  onedriveToken?: string  // OneDrive / Graph API token
+  boxToken?: string       // Box.com access token
+  sharepointToken?: string
+  sharepointSite?: string
   docusignKey: string     // DocuSign integration key
   docusignAccountId: string
   docusignBasePath: string
@@ -55,6 +59,10 @@ function defaults(): AppSettings {
     rtlText: false,
     gdToken: '',
     dropboxToken: '',
+    onedriveToken: '',
+    boxToken: '',
+    sharepointToken: '',
+    sharepointSite: '',
     docusignKey: '',
     docusignAccountId: '',
     docusignBasePath: 'https://demo.docusign.net/restapi',

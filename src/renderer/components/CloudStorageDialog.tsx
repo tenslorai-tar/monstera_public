@@ -4,7 +4,7 @@ import { usePdfStore } from '../store/usePdfStore'
 import { useRecentFiles } from '../hooks/useRecentFiles'
 
 interface CloudFile { id: string; name: string; size?: number; modifiedTime?: string }
-type Provider = 'googledrive' | 'dropbox'
+type Provider = 'googledrive' | 'dropbox' | 'onedrive' | 'box' | 'sharepoint'
 type Tab = 'browse' | 'settings'
 
 interface Props { onClose: () => void }
@@ -23,8 +23,58 @@ export default function CloudStorageDialog({ onClose }: Props) {
   const [busy,      setBusy]      = useState(false)
   const [gdToken,   setGdToken]   = useState(settings.gdToken)
   const [dbToken,   setDbToken]   = useState(settings.dropboxToken)
+  const [odToken,   setOdToken]   = useState(settings.onedriveToken ?? '')
+  const [bxToken,   setBxToken]   = useState(settings.boxToken ?? '')
+  const [spToken,   setSpToken]   = useState(settings.sharepointToken ?? '')
+  const [spSite,    setSpSite]    = useState(settings.sharepointSite ?? '')
 
-  const token = provider === 'googledrive' ? settings.gdToken : settings.dropboxToken
+  const token = provider === 'googledrive' ? settings.gdToken
+    : provider === 'dropbox' ? settings.dropboxToken
+    : provider === 'onedrive' ? settings.onedriveToken ?? ''
+    : provider === 'box' ? settings.boxToken ?? ''
+    : settings.sharepointToken ?? ''
+
+  const listOneDrive = async (tok: string): Promise<CloudFile[]> => {
+    const resp = await fetch(
+      "https://graph.microsoft.com/v1.0/me/drive/search(q='.pdf')?$select=id,name,size,lastModifiedDateTime&$top=50",
+      { headers: { Authorization: `Bearer ${tok}` } }
+    )
+    if (!resp.ok) throw new Error(`OneDrive error: ${resp.status} ${resp.statusText}`)
+    const data = await resp.json()
+    return (data.value ?? []).map((f: any) => ({ id: f.id, name: f.name, size: f.size, modifiedTime: f.lastModifiedDateTime }))
+  }
+
+  const downloadOneDrive = async (file: CloudFile, tok: string): Promise<ArrayBuffer> => {
+    const resp = await fetch(`https://graph.microsoft.com/v1.0/me/drive/items/${file.id}/content`, { headers: { Authorization: `Bearer ${tok}` } })
+    if (!resp.ok) throw new Error(`OneDrive download error: ${resp.status}`)
+    return resp.arrayBuffer()
+  }
+
+  const listBox = async (tok: string): Promise<CloudFile[]> => {
+    const resp = await fetch('https://api.box.com/2.0/folders/0/items?limit=100&fields=id,name,size,modified_at', { headers: { Authorization: `Bearer ${tok}` } })
+    if (!resp.ok) throw new Error(`Box error: ${resp.status} ${resp.statusText}`)
+    const data = await resp.json()
+    return (data.entries ?? [])
+      .filter((e: any) => e.type === 'file' && e.name.toLowerCase().endsWith('.pdf'))
+      .map((e: any) => ({ id: e.id, name: e.name, size: e.size, modifiedTime: e.modified_at }))
+  }
+
+  const downloadBox = async (file: CloudFile, tok: string): Promise<ArrayBuffer> => {
+    const resp = await fetch(`https://api.box.com/2.0/files/${file.id}/content`, { headers: { Authorization: `Bearer ${tok}` } })
+    if (!resp.ok) throw new Error(`Box download error: ${resp.status}`)
+    return resp.arrayBuffer()
+  }
+
+  const listSharePoint = async (tok: string, site: string): Promise<CloudFile[]> => {
+    const siteUrl = site.trim() || 'root'
+    const resp = await fetch(
+      `https://graph.microsoft.com/v1.0/sites/${encodeURIComponent(siteUrl)}/drive/root/search(q='.pdf')?$select=id,name,size,lastModifiedDateTime&$top=50`,
+      { headers: { Authorization: `Bearer ${tok}` } }
+    )
+    if (!resp.ok) throw new Error(`SharePoint error: ${resp.status} ${resp.statusText}`)
+    const data = await resp.json()
+    return (data.value ?? []).map((f: any) => ({ id: f.id, name: f.name, size: f.size, modifiedTime: f.lastModifiedDateTime }))
+  }
 
   const listGoogleDrive = async (tok: string): Promise<CloudFile[]> => {
     const resp = await fetch(
@@ -53,9 +103,12 @@ export default function CloudStorageDialog({ onClose }: Props) {
     if (!token) { setStatus('Please configure your access token in the Settings tab.'); return }
     setBusy(true); setStatus('Fetching file list…'); setFiles([])
     try {
-      const result = provider === 'googledrive'
-        ? await listGoogleDrive(token)
-        : await listDropbox(token)
+      let result: CloudFile[]
+      if (provider === 'googledrive') result = await listGoogleDrive(token)
+      else if (provider === 'dropbox') result = await listDropbox(token)
+      else if (provider === 'onedrive') result = await listOneDrive(token)
+      else if (provider === 'box') result = await listBox(token)
+      else result = await listSharePoint(token, spSite)
       setFiles(result)
       setStatus(result.length === 0 ? 'No PDF files found.' : '')
     } catch (e: unknown) {
@@ -71,21 +124,20 @@ export default function CloudStorageDialog({ onClose }: Props) {
     try {
       let buf: ArrayBuffer
       if (provider === 'googledrive') {
-        const resp = await fetch(
-          `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        )
+        const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, { headers: { Authorization: `Bearer ${token}` } })
         if (!resp.ok) throw new Error(`Download error: ${resp.status}`)
         buf = await resp.arrayBuffer()
-      } else {
-        const resp = await fetch('https://content.dropboxapi.com/2/files/download', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Dropbox-API-Arg': JSON.stringify({ path: file.id }),
-          },
-        })
+      } else if (provider === 'dropbox') {
+        const resp = await fetch('https://content.dropboxapi.com/2/files/download', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Dropbox-API-Arg': JSON.stringify({ path: file.id }) } })
         if (!resp.ok) throw new Error(`Dropbox download error: ${resp.status}`)
+        buf = await resp.arrayBuffer()
+      } else if (provider === 'onedrive') {
+        buf = await downloadOneDrive(file, token)
+      } else if (provider === 'box') {
+        buf = await downloadBox(file, token)
+      } else {
+        const resp = await fetch(`https://graph.microsoft.com/v1.0/me/drive/items/${file.id}/content`, { headers: { Authorization: `Bearer ${token}` } })
+        if (!resp.ok) throw new Error(`SharePoint download error: ${resp.status}`)
         buf = await resp.arrayBuffer()
       }
       await loadPdf(buf, file.name, file.name)
@@ -136,7 +188,7 @@ export default function CloudStorageDialog({ onClose }: Props) {
   }
 
   const saveSettings = () => {
-    updateSettings({ gdToken: gdToken.trim(), dropboxToken: dbToken.trim() })
+    updateSettings({ gdToken: gdToken.trim(), dropboxToken: dbToken.trim(), onedriveToken: odToken.trim(), boxToken: bxToken.trim(), sharepointToken: spToken.trim(), sharepointSite: spSite.trim() })
     setStatus('✓ Tokens saved.')
   }
 
@@ -154,16 +206,22 @@ export default function CloudStorageDialog({ onClose }: Props) {
 
         {/* Provider + tab */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-          {(['googledrive', 'dropbox'] as Provider[]).map(p => (
-            <button key={p}
-              onClick={() => { setProvider(p); setFiles([]); setStatus('') }}
+          {([
+            { id: 'googledrive', label: '🔵 Google Drive' },
+            { id: 'dropbox',     label: '📦 Dropbox' },
+            { id: 'onedrive',    label: '☁ OneDrive' },
+            { id: 'box',         label: '📂 Box' },
+            { id: 'sharepoint',  label: '🏢 SharePoint' },
+          ] as { id: Provider; label: string }[]).map(p => (
+            <button key={p.id}
+              onClick={() => { setProvider(p.id); setFiles([]); setStatus('') }}
               style={{
-                padding: '6px 14px', border: '1px solid', fontSize: 13, borderRadius: 5, cursor: 'pointer',
-                borderColor: provider === p ? 'var(--accent)' : 'var(--border)',
-                background: provider === p ? 'rgba(74,158,255,0.12)' : 'var(--bg-secondary)',
-                color: provider === p ? 'var(--accent)' : 'var(--text-primary)', fontWeight: provider === p ? 600 : 400,
+                padding: '6px 14px', border: '1px solid', fontSize: 12, borderRadius: 5, cursor: 'pointer',
+                borderColor: provider === p.id ? 'var(--accent)' : 'var(--border)',
+                background: provider === p.id ? 'rgba(74,158,255,0.12)' : 'var(--bg-secondary)',
+                color: provider === p.id ? 'var(--accent)' : 'var(--text-primary)', fontWeight: provider === p.id ? 600 : 400,
               }}>
-              {p === 'googledrive' ? '🔵 Google Drive' : '📦 Dropbox'}
+              {p.label}
             </button>
           ))}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
@@ -194,6 +252,25 @@ export default function CloudStorageDialog({ onClose }: Props) {
               <input type="password" className="modal-input" value={dbToken}
                 onChange={e => setDbToken(e.target.value)} placeholder="sl.…" />
               <span className="modal-hint">Create an app at dropbox.com/developers and generate a token</span>
+            </div>
+            <div className="modal-field">
+              <label className="modal-label">OneDrive / SharePoint Access Token</label>
+              <input type="password" className="modal-input" value={odToken} onChange={e => setOdToken(e.target.value)} placeholder="EwB..." />
+              <span className="modal-hint">Microsoft Graph OAuth token. Scope: Files.Read</span>
+            </div>
+            <div className="modal-field">
+              <label className="modal-label">Box Access Token</label>
+              <input type="password" className="modal-input" value={bxToken} onChange={e => setBxToken(e.target.value)} placeholder="box_token…" />
+              <span className="modal-hint">Generate from developer.box.com</span>
+            </div>
+            <div className="modal-field">
+              <label className="modal-label">SharePoint Access Token (if different from OneDrive)</label>
+              <input type="password" className="modal-input" value={spToken} onChange={e => setSpToken(e.target.value)} placeholder="EwB..." />
+            </div>
+            <div className="modal-field">
+              <label className="modal-label">SharePoint Site ID</label>
+              <input className="modal-input" value={spSite} onChange={e => setSpSite(e.target.value)} placeholder="tenant.sharepoint.com,guid,guid" />
+              <span className="modal-hint">Leave blank to use personal OneDrive</span>
             </div>
             {status && <div style={{ fontSize: 12, color: status.startsWith('✓') ? '#4caf50' : '#ff4444' }}>{status}</div>}
           </div>
