@@ -25,6 +25,7 @@ import CropDialog from './components/CropDialog'
 import CompareDialog from './components/CompareDialog'
 import AccessibilityDialog from './components/AccessibilityDialog'
 import WordCountDialog from './components/WordCountDialog'
+import BarcodeDialog from './components/BarcodeDialog'
 import TranslateDialog from './components/TranslateDialog'
 import SpellCheckDialog from './components/SpellCheckDialog'
 import ResizePagesDialog from './components/ResizePagesDialog'
@@ -111,6 +112,7 @@ export default function App() {
   const [compareOpen,       setCompareOpen]         = useState(false)
   const [accessOpen,        setAccessOpen]          = useState(false)
   const [wordCountOpen,     setWordCountOpen]       = useState(false)
+  const [barcodeOpen,       setBarcodeOpen]         = useState(false)
   const [translateOpen,     setTranslateOpen]       = useState(false)
   const [spellCheckOpen,    setSpellCheckOpen]      = useState(false)
   const [swapPagesOpen,        setSwapPagesOpen]        = useState(false)
@@ -401,6 +403,7 @@ export default function App() {
         onCompare={() => setCompareOpen(true)}
         onAccessibility={() => setAccessOpen(true)}
         onWordCount={() => setWordCountOpen(true)}
+        onBarcode={() => setBarcodeOpen(true)}
         onTranslate={() => setTranslateOpen(true)}
         onSpellCheck={() => setSpellCheckOpen(true)}
         onSwapPages={() => setSwapPagesOpen(true)}
@@ -528,6 +531,7 @@ export default function App() {
       {compareOpen    && <CompareDialog      onClose={() => setCompareOpen(false)} />}
       {accessOpen     && <AccessibilityDialog onClose={() => setAccessOpen(false)} />}
       {wordCountOpen  && <WordCountDialog    onClose={() => setWordCountOpen(false)} />}
+      {barcodeOpen    && <BarcodeDialog      onClose={() => setBarcodeOpen(false)} />}
       {translateOpen  && <TranslateDialog   onClose={() => setTranslateOpen(false)} />}
       {spellCheckOpen && <SpellCheckDialog  onClose={() => setSpellCheckOpen(false)} />}
 

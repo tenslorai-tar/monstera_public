@@ -6,95 +6,92 @@ type TextAnnotation = Annotation & { text: string }
 
 function hasText(a: Annotation): a is TextAnnotation {
   return typeof (a as unknown as Record<string, unknown>).text === 'string'
+    && !!(a as unknown as Record<string, unknown>).text
 }
 
+interface Issue { annId: string; pageNum: number; word: string; suggestions: string[] }
+
 export default function SpellCheckDialog({ onClose }: { onClose: () => void }) {
-  const annotations  = usePdfStore(s => s.annotations)
+  const annotations = usePdfStore(s => s.annotations)
   const updateAnnotation = usePdfStore(s => s.updateAnnotation)
   const scrollToPage = usePdfStore(s => s.scrollToPage)
 
   const textAnns = annotations.filter(hasText) as TextAnnotation[]
-  const [editing, setEditing] = useState<string | null>(null)
-  const [editText, setEditText] = useState('')
+  const [issues, setIssues] = useState<Issue[] | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [status, setStatus] = useState('')
 
-  const startEdit = (a: TextAnnotation) => {
-    setEditing(a.id)
-    setEditText(a.text)
-    scrollToPage(a.pageNum)
+  const run = async () => {
+    setBusy(true); setStatus('Checking…')
+    try {
+      const found: Issue[] = []
+      for (const a of textAnns) {
+        const res = await window.electronAPI.spellCheck(a.text)
+        for (const r of res) found.push({ annId: a.id, pageNum: a.pageNum, word: r.word, suggestions: r.suggestions })
+      }
+      setIssues(found)
+      setStatus(found.length === 0 ? '✓ No misspellings found.' : `${found.length} possible misspelling${found.length !== 1 ? 's' : ''}.`)
+    } catch (e: any) {
+      setStatus(`Error: ${e?.message ?? 'spell check failed'}`)
+    }
+    setBusy(false)
   }
 
-  const commit = () => {
-    if (editing) {
-      updateAnnotation(editing, { text: editText } as Partial<Annotation>)
-      setEditing(null)
-    }
+  // Replace a whole-word occurrence in the annotation's text
+  const applyFix = (issue: Issue, replacement: string) => {
+    const ann = annotations.find(a => a.id === issue.annId) as TextAnnotation | undefined
+    if (!ann) return
+    const re = new RegExp(`\\b${issue.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
+    const next = ann.text.replace(re, replacement)
+    updateAnnotation(issue.annId, { text: next } as Partial<Annotation>)
+    setIssues(prev => prev ? prev.filter(i => !(i.annId === issue.annId && i.word === issue.word)) : prev)
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-box" style={{ width: 560, maxHeight: '75vh', display: 'flex', flexDirection: 'column' }}
-        onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <span>Spell Check Annotations</span>
-          <button className="modal-close" onClick={onClose}>✕</button>
+    <div className="modal-overlay" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="modal-box" style={{ width: 560, maxHeight: '78vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="modal-title">🔤 Spell Check</div>
+
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+          Checks all text annotations (text boxes, sticky notes, typewriter, callouts) with a
+          Hunspell dictionary and offers one-click corrections. {textAnns.length} text annotation{textAnns.length !== 1 ? 's' : ''} found.
         </div>
 
-        <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', fontSize: 12, opacity: 0.7 }}>
-          Shows all text annotations (text boxes, sticky notes, typewriter, callouts). Use your browser's built-in spell checking (red underlines) to find and fix misspellings. {textAnns.length} text annotations found.
-        </div>
-
-        <div style={{ flex: 1, overflowY: 'auto', padding: '6px 0' }}>
-          {textAnns.length === 0 && (
-            <div style={{ padding: '16px', opacity: 0.5, fontSize: 13 }}>
-              No text annotations found. Add text boxes, sticky notes, or typewriter annotations to check spelling.
+        <div style={{ flex: 1, overflowY: 'auto', margin: '0 -4px', padding: '0 4px' }}>
+          {issues === null && (
+            <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+              Click <strong>Check Spelling</strong> to scan.
             </div>
           )}
-          {textAnns.map(ann => (
-            <div key={ann.id} style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <span style={{ fontSize: 11, opacity: 0.5, textTransform: 'capitalize' }}>
-                  {ann.type} — page {ann.pageNum}
-                </span>
-                <button className="annot-tool-btn" style={{ fontSize: 10, padding: '1px 6px' }}
-                  onClick={() => scrollToPage(ann.pageNum)}>Go to</button>
+          {issues && issues.length === 0 && (
+            <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--accent)', fontSize: 14 }}>
+              ✓ No misspellings found.
+            </div>
+          )}
+          {issues && issues.map((issue, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 6px',
+              borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontWeight: 700, color: 'var(--danger)', minWidth: 110, wordBreak: 'break-all' }}>{issue.word}</span>
+              <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>p{issue.pageNum}</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, flex: 1 }}>
+                {issue.suggestions.length === 0 && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>no suggestions</span>}
+                {issue.suggestions.map(s => (
+                  <button key={s} className="modal-btn-secondary" style={{ fontSize: 11, padding: '2px 8px' }}
+                    onClick={() => applyFix(issue, s)}>{s}</button>
+                ))}
               </div>
-              {editing === ann.id ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <textarea
-                    spellCheck
-                    lang="en"
-                    value={editText}
-                    onChange={e => setEditText(e.target.value)}
-                    autoFocus
-                    style={{ width: '100%', minHeight: 60, background: 'var(--bg-primary)',
-                      color: 'inherit', border: '1px solid var(--accent)', borderRadius: 4,
-                      padding: 6, fontSize: 13, fontFamily: 'inherit', resize: 'vertical',
-                      boxSizing: 'border-box' }}
-                  />
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button className="modal-btn" style={{ fontSize: 11, padding: '3px 10px' }}
-                      onClick={commit}>Save</button>
-                    <button className="modal-btn-secondary" style={{ fontSize: 11, padding: '3px 10px' }}
-                      onClick={() => setEditing(null)}>Cancel</button>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                  <div style={{ flex: 1, fontSize: 13, lineHeight: 1.4,
-                    background: 'var(--bg-primary)', padding: '4px 8px', borderRadius: 4,
-                    wordBreak: 'break-word', minHeight: 28 }}>
-                    {ann.text || <span style={{ opacity: 0.3, fontStyle: 'italic' }}>(empty)</span>}
-                  </div>
-                  <button className="annot-tool-btn" style={{ flexShrink: 0 }}
-                    onClick={() => startEdit(ann)}>Edit</button>
-                </div>
-              )}
+              <button className="modal-btn-secondary" style={{ fontSize: 10, padding: '2px 6px' }}
+                onClick={() => scrollToPage(issue.pageNum)}>Go</button>
             </div>
           ))}
         </div>
 
-        <div className="modal-footer">
+        <div className="modal-actions" style={{ alignItems: 'center' }}>
+          <span style={{ marginRight: 'auto', fontSize: 12, color: 'var(--text-muted)' }}>{status}</span>
           <button className="modal-btn-secondary" onClick={onClose}>Close</button>
+          <button className="modal-btn-primary" onClick={run} disabled={busy || textAnns.length === 0}>
+            {busy ? 'Checking…' : 'Check Spelling'}
+          </button>
         </div>
       </div>
     </div>

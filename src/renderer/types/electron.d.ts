@@ -159,6 +159,8 @@ declare global {
       libreofficeExportPptx: (bytes: ArrayBuffer) => Promise<ArrayBuffer>
       libreofficeExportXlsx: (bytes: ArrayBuffer) => Promise<ArrayBuffer>
 
+      spellCheck: (text: string) => Promise<Array<{ word: string; suggestions: string[] }>>
+
       // New batch
       convertMarkdownToPdf: (markdownText: string) => Promise<ArrayBuffer>
       convertCsvToPdf: (csvText: string) => Promise<ArrayBuffer>

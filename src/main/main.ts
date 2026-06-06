@@ -3,6 +3,7 @@ import path from 'path'
 import fs from 'fs'
 import * as nativeBins from './nativeBins'
 import * as pdfium from './pdfiumEngine'
+import * as spell from './spell'
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
@@ -1423,6 +1424,8 @@ ipcMain.handle('libreoffice:importBytes', async (_e, bytes: ArrayBuffer, ext: st
 ipcMain.handle('libreoffice:exportDocx', async (_e, b: ArrayBuffer) => abuf(await nativeBins.libreOfficeToDocx(b)))
 ipcMain.handle('libreoffice:exportPptx', async (_e, b: ArrayBuffer) => abuf(await nativeBins.libreOfficeToPptx(b)))
 ipcMain.handle('libreoffice:exportXlsx', async (_e, b: ArrayBuffer) => abuf(await nativeBins.libreOfficeToXlsx(b)))
+
+ipcMain.handle('dict:spellCheck', async (_e, text: string) => spell.spellCheck(text))
 
 // Office file open dialog
 ipcMain.handle('dialog:openOfficeFile', async () => {

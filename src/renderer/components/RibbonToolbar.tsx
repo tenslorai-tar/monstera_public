@@ -80,6 +80,7 @@ interface Props {
   onDeskew: () => void
   onMultiPageStamp: () => void
   onSplitView: () => void
+  onBarcode: () => void
 }
 
 const STAMP_NAMES: StampName[] = ['Approved', 'Draft', 'Confidential', 'Rejected', 'Custom']
@@ -106,7 +107,7 @@ export default function RibbonToolbar(props: Props) {
     onAiAssistant, onOfficeImport,
     onMarkdownToPdf, onCsvToPdf, onEditExternal, onOcrRegion, onDeskew,
     onWebcam,
-    onMultiPageStamp, onSplitView,
+    onMultiPageStamp, onSplitView, onBarcode,
   } = props
 
   const resetFormFields = usePdfStore(s => s.resetFormFields)
@@ -453,6 +454,8 @@ export default function RibbonToolbar(props: Props) {
       <Group label="Objects">
         <LBtn icon="⬚" label="Edit Objects" active={activeTool === 'object-edit'} onClick={() => toggle('object-edit')}
           title="Select any text, image or shape on the page — move, resize, recolour or delete it" />
+        <LBtn icon="▦" label="Barcode/QR" onClick={onBarcode}
+          title="Generate a QR code or barcode and place it on the page" />
       </Group>
 
       <Group label="Content">
