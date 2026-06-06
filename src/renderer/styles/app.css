@@ -820,6 +820,10 @@
 .pdf-pan-mode, .pdf-pan-mode * { cursor: grab !important; user-select: none !important; }
 .pdf-pan-mode:active, .pdf-pan-mode:active * { cursor: grabbing !important; }
 
+/* Text-select tool: I-beam over the page so the mode is visibly active */
+.pdf-text-mode { cursor: text; }
+.pdf-text-mode .text-layer { cursor: text; }
+
 .pdf-pages-stack {
   display: flex;
   flex-direction: column;

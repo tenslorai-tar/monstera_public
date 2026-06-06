@@ -257,7 +257,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   // ── Annotation defaults ──────────────────────────────────────────────────
   annotations: [],
   activeTool: null,
-  panMode: true,
+  panMode: false, // default to text-select mode so text is selectable out of the box
   selectedAnnotationId: null,
   toolColor: '#ffcc00',
   toolOpacity: 0.7,

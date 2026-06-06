@@ -120,6 +120,8 @@ export default function PdfViewer() {
   // Hand tool: grab-drag to pan the document. Active only when no annotation
   // tool is selected and pan mode is on (Text tool turns pan off for selection).
   const handActive = panMode && activeTool === null
+  // Text-select mode (left palette "Text"): no tool + pan off → I-beam, selectable text.
+  const textSelectActive = !panMode && activeTool === null
   const panRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null)
 
   const onPanDown = useCallback((e: React.MouseEvent) => {
@@ -150,7 +152,7 @@ export default function PdfViewer() {
     <div className="viewer-area" ref={viewerRef}>
       <Sidebar />
       <div
-        className={`pdf-scroll-container${handActive ? ' pdf-pan-mode' : ''}`}
+        className={`pdf-scroll-container${handActive ? ' pdf-pan-mode' : ''}${textSelectActive ? ' pdf-text-mode' : ''}`}
         ref={scrollRef}
         onScroll={handleScroll}
         onMouseDown={onPanDown}
