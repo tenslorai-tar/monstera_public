@@ -35,6 +35,10 @@ import OptimizeDialog from './components/OptimizeDialog'
 import MeasureCalibrationDialog from './components/MeasureCalibrationDialog'
 import ReplacePageDialog from './components/ReplacePageDialog'
 import LoupeOverlay from './components/LoupeOverlay'
+import AiAssistantDialog from './components/AiAssistantDialog'
+import OfficeImportDialog from './components/OfficeImportDialog'
+import CloudStorageDialog from './components/CloudStorageDialog'
+import DocuSignDialog from './components/DocuSignDialog'
 import * as docEnhance from './utils/documentEnhance'
 import { usePdfStore } from './store/usePdfStore'
 import { useSettingsStore } from './store/useSettingsStore'
@@ -97,6 +101,10 @@ export default function App() {
   const [optimizeOpen,         setOptimizeOpen]         = useState(false)
   const [measureCalOpen,       setMeasureCalOpen]       = useState(false)
   const [replacePageOpen,      setReplacePageOpen]      = useState(false)
+  const [aiAssistantOpen,      setAiAssistantOpen]      = useState(false)
+  const [officeImportOpen,     setOfficeImportOpen]     = useState(false)
+  const [cloudStorageOpen,     setCloudStorageOpen]     = useState(false)
+  const [docuSignOpen,         setDocuSignOpen]         = useState(false)
 
   const [passwordPrompt,    setPasswordPrompt]     = useState<PasswordPromptState>(null)
   const [passwordError,     setPasswordError]      = useState('')
@@ -197,6 +205,10 @@ export default function App() {
         case 'toggleNamedDestsPanel':  s.toggleNamedDestsPanel(); break
         case 'compare':        setCompareOpen(true); break
         case 'accessibility':  setAccessOpen(true); break
+        case 'aiAssistant':    setAiAssistantOpen(true); break
+        case 'officeImport':   setOfficeImportOpen(true); break
+        case 'cloudStorage':   setCloudStorageOpen(true); break
+        case 'docuSign':       setDocuSignOpen(true); break
         case 'wordCount':      setWordCountOpen(true); break
         case 'translate':      setTranslateOpen(true); break
         case 'spellCheck':     setSpellCheckOpen(true); break
@@ -322,6 +334,10 @@ export default function App() {
         onOpenUrl={() => setOpenUrlOpen(true)}
         onReplacePage={() => setReplacePageOpen(true)}
         onMeasureCalibration={() => setMeasureCalOpen(true)}
+        onAiAssistant={() => setAiAssistantOpen(true)}
+        onOfficeImport={() => setOfficeImportOpen(true)}
+        onCloudStorage={() => setCloudStorageOpen(true)}
+        onDocuSign={() => setDocuSignOpen(true)}
       />
 
       {hasPdf ? (
@@ -445,9 +461,13 @@ export default function App() {
         </div>
       )}
 
-      {findRedactOpen  && <FindRedactDialog onClose={() => setFindRedactOpen(false)} />}
-      {optimizeOpen    && <OptimizeDialog   onClose={() => setOptimizeOpen(false)} />}
-      {measureCalOpen  && <MeasureCalibrationDialog onClose={() => setMeasureCalOpen(false)} />}
+      {findRedactOpen    && <FindRedactDialog    onClose={() => setFindRedactOpen(false)} />}
+      {optimizeOpen      && <OptimizeDialog      onClose={() => setOptimizeOpen(false)} />}
+      {measureCalOpen    && <MeasureCalibrationDialog onClose={() => setMeasureCalOpen(false)} />}
+      {aiAssistantOpen   && <AiAssistantDialog   onClose={() => setAiAssistantOpen(false)} />}
+      {officeImportOpen  && <OfficeImportDialog  onClose={() => setOfficeImportOpen(false)} />}
+      {cloudStorageOpen  && <CloudStorageDialog  onClose={() => setCloudStorageOpen(false)} />}
+      {docuSignOpen      && <DocuSignDialog      onClose={() => setDocuSignOpen(false)} />}
       {openUrlOpen && (
         <OpenUrlDialog
           onClose={() => setOpenUrlOpen(false)}

@@ -57,10 +57,24 @@ interface Props {
   onOpenUrl: () => void
   onReplacePage: () => void
   onMeasureCalibration: () => void
+  // Tier 3 new props
+  onAiAssistant: () => void
+  onOfficeImport: () => void
+  onCloudStorage: () => void
+  onDocuSign: () => void
 }
 
 const ZOOM_PRESETS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]
 const STAMP_NAMES: StampName[] = ['Approved', 'Draft', 'Confidential', 'Rejected', 'Custom']
+const DYNAMIC_STAMP_NAMES = ['Today', 'Received', 'Revised', 'Void', 'For Review']
+
+function resolveDynamicStamp(name: StampName): StampName {
+  const d = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+  if (name === 'Today') return `TODAY ${d}` as StampName
+  if (name === 'Received') return `RECEIVED ${d}` as StampName
+  if (name === 'Revised') return `REVISED ${d}` as StampName
+  return name
+}
 
 export default function RibbonToolbar(props: Props) {
   const {
@@ -73,6 +87,7 @@ export default function RibbonToolbar(props: Props) {
     onCompare, onAccessibility, onWordCount, onTranslate, onSpellCheck,
     onSwapPages, onResizePages, onDeleteEmptyPages, onNormalizePages,
     onFindRedact, onOptimize, onOpenUrl, onReplacePage, onMeasureCalibration,
+    onAiAssistant, onOfficeImport, onCloudStorage, onDocuSign,
   } = props
 
   const resetFormFields = usePdfStore(s => s.resetFormFields)
@@ -391,8 +406,18 @@ export default function RibbonToolbar(props: Props) {
         <LBtn icon="⬡" label="Stamp" active={activeTool === 'stamp'} onClick={() => toggle('stamp')} title="Place a stamp" />
         {activeTool === 'stamp' && (
           <div className="rbn-stack" style={{ gap: 3 }}>
-            <select className="rbn-select-sm" value={stampName} onChange={e => setStampName(e.target.value as StampName)}>
-              {STAMP_NAMES.map(n => <option key={n} value={n}>{n}</option>)}
+            <select className="rbn-select-sm" value={stampName}
+              onChange={e => {
+                const v = e.target.value as StampName
+                const resolved = resolveDynamicStamp(v)
+                setStampName(resolved)
+              }}>
+              <optgroup label="Standard">
+                {STAMP_NAMES.map(n => <option key={n} value={n}>{n}</option>)}
+              </optgroup>
+              <optgroup label="Dynamic (date inserted)">
+                {DYNAMIC_STAMP_NAMES.map(n => <option key={n} value={n}>{n}</option>)}
+              </optgroup>
             </select>
             {stampName === 'Custom' && (
               <SBtn icon="🖼" label="Browse" onClick={() => stampFileRef.current?.click()} title="Load custom stamp image" />
@@ -552,6 +577,7 @@ export default function RibbonToolbar(props: Props) {
 
       <Group label="Combine">
         <LBtn icon="⊕" label="Merge" onClick={onMerge} title="Merge other PDF files into this document" />
+        <SBtn icon="📥" label="Import Office" onClick={onOfficeImport} title="Convert and import Word or Excel file as PDF" />
       </Group>
 
       <Group label="Order">
@@ -681,7 +707,8 @@ export default function RibbonToolbar(props: Props) {
       </Group>
 
       <Group label="Language">
-        <LBtn icon="🌐" label="Translate" onClick={onTranslate} title="Extract text and open in translation tool" />
+        <LBtn icon="🌐" label="Translate" onClick={onTranslate} title="Translate document text using MyMemory API" />
+        <LBtn icon="🤖" label="AI" onClick={onAiAssistant} title="AI Assistant — document Q&A and summarization" />
       </Group>
 
       <Group label="Export">
@@ -762,6 +789,29 @@ export default function RibbonToolbar(props: Props) {
       <Group label="Calibration">
         <LBtn icon="📐" label="Measure" onClick={onMeasureCalibration}
           title={`Set measurement unit (current: ${settings.measureUnit})`} />
+      </Group>
+
+      <Group label="AI & Translate">
+        <div className="rbn-stack">
+          <SBtn icon="🤖" label="AI Assistant" onClick={onAiAssistant}
+            title="AI-powered document Q&A, summarization, and analysis (requires Anthropic API key)" />
+        </div>
+      </Group>
+
+      <Group label="Cloud">
+        <div className="rbn-stack">
+          <SBtn icon="☁" label="Cloud" onClick={onCloudStorage}
+            title="Open or save PDFs from Google Drive or Dropbox" />
+          <SBtn icon="✍" label="DocuSign" onClick={onDocuSign}
+            title="Send PDF for e-signature via DocuSign" />
+        </div>
+      </Group>
+
+      <Group label="Import">
+        <div className="rbn-stack">
+          <SBtn icon="📥" label="Office" onClick={onOfficeImport}
+            title="Convert Word (.docx) or Excel (.xlsx) files to PDF" />
+        </div>
       </Group>
 
       <Group label="Preferences">

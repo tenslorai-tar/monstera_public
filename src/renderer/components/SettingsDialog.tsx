@@ -203,6 +203,26 @@ export default function SettingsDialog({ onClose }: Props) {
           <span className="modal-hint">Multiply raw PDF point values by this factor before displaying measurements.</span>
         </div>
 
+        {/* Anthropic API key */}
+        <div className="modal-field">
+          <label className="modal-label">Anthropic API key (for AI Assistant)</label>
+          <input type="password" className="modal-input" style={{ fontSize: 12 }}
+            value={(local as any).anthropicApiKey ?? ''}
+            onChange={e => setLocal(l => ({ ...l, anthropicApiKey: e.target.value } as any))}
+            placeholder="sk-ant-…  (stored locally, only sent to Anthropic)" />
+          <span className="modal-hint">Get yours at console.anthropic.com</span>
+        </div>
+
+        {/* RTL text direction */}
+        <div className="modal-field">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!(local as any).rtlText}
+              onChange={e => setLocal(l => ({ ...l, rtlText: e.target.checked } as any))} />
+            <span style={{ fontSize: 13 }}>Right-to-left (RTL) text for typewriter and text-box tools</span>
+          </label>
+          <span className="modal-hint">Enable for Arabic, Hebrew, Persian, Urdu, etc.</span>
+        </div>
+
         <div className="modal-actions" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
           <button className="modal-btn-secondary" onClick={reset} style={{ marginRight: 'auto' }}>
             Reset to defaults

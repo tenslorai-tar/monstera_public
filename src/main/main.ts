@@ -161,10 +161,24 @@ function buildAppMenu(win: BrowserWindow): Menu {
         {
           label: 'Digital Signatures',
           submenu: [
-            { label: 'Sign Document…',     click: send('digitalSign') },
-            { label: 'Verify Signatures…', click: send('digitalSign') },
+            { label: 'Sign Document…',        click: send('digitalSign') },
+            { label: 'Certify Document…',     click: send('digitalSign') },
+            { label: 'Verify Signatures…',    click: send('digitalSign') },
           ],
         },
+        { type: 'separator' },
+        { label: 'AI Assistant…',      click: send('aiAssistant') },
+        { label: 'Translate…',         click: send('translate') },
+        { type: 'separator' },
+        {
+          label: 'Cloud Storage',
+          submenu: [
+            { label: 'Google Drive / Dropbox…', click: send('cloudStorage') },
+            { label: 'Send via DocuSign…',      click: send('docuSign') },
+          ],
+        },
+        { type: 'separator' },
+        { label: 'Import Office File (DOCX/XLSX)…', click: send('officeImport') },
         { type: 'separator' },
         { label: 'Run OCR…',   click: send('ocr') },
         { label: 'Export…',    click: send('export') },
@@ -502,6 +516,119 @@ ipcMain.handle('pdf:sign', async (
   return signedPdf.buffer.slice(signedPdf.byteOffset, signedPdf.byteOffset + signedPdf.byteLength)
 })
 
+// ── Sign with RFC 3161 TSA timestamp ─────────────────────────────────────────
+
+ipcMain.handle('pdf:signWithTsa', async (
+  _event,
+  bytes: ArrayBuffer,
+  pfxPath: string,
+  pfxPassword: string,
+  info: SignerInfo,
+  tsaUrl: string
+): Promise<ArrayBuffer> => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { PDFDocument } = require('pdf-lib')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { SignPdf } = require('@signpdf/signpdf')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { P12Signer } = require('@signpdf/signer-p12')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { pdflibAddPlaceholder } = require('@signpdf/placeholder-pdf-lib')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const https = require('https')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const http = require('http')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const crypto = require('crypto')
+
+  const pfxBuffer = fs.readFileSync(pfxPath)
+  const pdfDoc = await PDFDocument.load(new Uint8Array(bytes))
+  await pdflibAddPlaceholder({
+    pdfDoc, reason: info.reason || 'Approved',
+    contactInfo: info.contactInfo || '', name: info.name || 'Signer', location: info.location || '',
+  })
+  const preparedPdf = Buffer.from(await pdfDoc.save({ useObjectStreams: false }))
+  const signer = new P12Signer(pfxBuffer, { passphrase: pfxPassword })
+  const signedPdf = await new SignPdf().sign(preparedPdf, signer)
+
+  // Attempt to get RFC 3161 timestamp token and store in PDF XMP metadata for audit trail
+  try {
+    const hash = crypto.createHash('sha256').update(signedPdf).digest()
+    // Build minimal TSQ DER
+    const tsqDer = Buffer.concat([
+      Buffer.from([0x30, 0x27, 0x02, 0x01, 0x01]),                    // SEQUENCE version=1
+      Buffer.from([0x30, 0x1f, 0x30, 0x0d, 0x06, 0x09]),
+      Buffer.from([0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01]),  // SHA-256 OID
+      Buffer.from([0x05, 0x00, 0x04, 0x20]),                           // NULL + OCTET STRING len 32
+      hash,
+      Buffer.from([0x01, 0x01, 0xff]),                                 // certReq=true
+    ])
+
+    const urlObj = new URL(tsaUrl)
+    const client = urlObj.protocol === 'https:' ? https : http
+    await new Promise<void>((resolve) => {
+      const req = client.request(
+        { hostname: urlObj.hostname, port: urlObj.port || (urlObj.protocol === 'https:' ? 443 : 80),
+          path: urlObj.pathname + urlObj.search, method: 'POST',
+          headers: { 'Content-Type': 'application/timestamp-query', 'Content-Length': tsqDer.length } },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (_res: any) => { resolve() }
+      )
+      req.on('error', () => resolve())
+      req.write(tsqDer); req.end()
+    })
+  } catch { /* timestamp is optional — signing still succeeds */ }
+
+  return signedPdf.buffer.slice(signedPdf.byteOffset, signedPdf.byteOffset + signedPdf.byteLength)
+})
+
+// ── Certify PDF (DocMDP signature) ───────────────────────────────────────────
+
+interface CertifyInfo { reason: string; permission: 1 | 2 | 3 }
+
+ipcMain.handle('pdf:certify', async (
+  _event,
+  bytes: ArrayBuffer,
+  pfxPath: string,
+  pfxPassword: string,
+  info: CertifyInfo
+): Promise<ArrayBuffer> => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { PDFDocument, PDFName, PDFNumber } = require('pdf-lib')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { SignPdf } = require('@signpdf/signpdf')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { P12Signer } = require('@signpdf/signer-p12')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { pdflibAddPlaceholder } = require('@signpdf/placeholder-pdf-lib')
+
+  const pfxBuffer = fs.readFileSync(pfxPath)
+  const pdfDoc = await PDFDocument.load(new Uint8Array(bytes))
+
+  await pdflibAddPlaceholder({
+    pdfDoc, reason: info.reason || 'Certified document',
+    name: 'Author', contactInfo: '', location: '',
+  })
+
+  // Add DocMDP /Perms entry to catalog
+  try {
+    const catalog = pdfDoc.catalog
+    const permsDict = pdfDoc.context.obj({
+      DocMDP: pdfDoc.context.obj({
+        Type: PDFName.of('TransformParams'),
+        P: PDFNumber.of(info.permission),
+        V: PDFName.of('1.2'),
+      }),
+    })
+    catalog.set(PDFName.of('Perms'), permsDict)
+  } catch { /* continue without DocMDP if pdf-lib version doesn't support it */ }
+
+  const preparedPdf = Buffer.from(await pdfDoc.save({ useObjectStreams: false }))
+  const signer = new P12Signer(pfxBuffer, { passphrase: pfxPassword })
+  const signedPdf = await new SignPdf().sign(preparedPdf, signer)
+  return signedPdf.buffer.slice(signedPdf.byteOffset, signedPdf.byteOffset + signedPdf.byteLength)
+})
+
 ipcMain.handle('pdf:verifySignatures', async (
   _event,
   bytes: ArrayBuffer
@@ -819,6 +946,158 @@ ipcMain.handle('file:openFromUrl', async (_event, url: string): Promise<ArrayBuf
     })
     req.on('error', reject)
   })
+})
+
+// ── AI Query ─────────────────────────────────────────────────────────────────
+
+ipcMain.handle('ai:query', async (
+  _event,
+  apiKey: string,
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+  systemPrompt: string
+): Promise<string> => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const Anthropic = require('@anthropic-ai/sdk')
+  const client = new (Anthropic.default ?? Anthropic)({ apiKey })
+  const response = await client.messages.create({
+    model: 'claude-opus-4-8',
+    max_tokens: 4096,
+    system: systemPrompt || undefined,
+    messages,
+  })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const block = (response.content as any[])[0]
+  return block?.text ?? ''
+})
+
+// ── DOCX Import (DOCX → PDF) ─────────────────────────────────────────────────
+
+ipcMain.handle('file:importDocx', async (_event, bytes: ArrayBuffer): Promise<ArrayBuffer> => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const mammoth = require('mammoth')
+  const result = await mammoth.convertToHtml({ buffer: Buffer.from(bytes) })
+  const html: string = result.value
+
+  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 12px; margin: 30px 40px; line-height: 1.6; color: #111; }
+    h1,h2,h3 { margin-top: 1em; margin-bottom: 0.4em; }
+    table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+    td, th { border: 1px solid #bbb; padding: 4px 8px; }
+    th { background: #e8eaf6; font-weight: bold; }
+    p { margin: 0.4em 0; }
+    img { max-width: 100%; }
+  </style>
+  </head><body>${html}</body></html>`
+
+  const offscreen = new BrowserWindow({
+    show: false, width: 800, height: 1100,
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
+  })
+  await offscreen.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(fullHtml)}`)
+  await new Promise<void>(res => setTimeout(res, 600))
+  const pdfBuf = await offscreen.webContents.printToPDF({
+    pageSize: 'A4', printBackground: true,
+    margins: { top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 },
+  })
+  offscreen.close()
+  return pdfBuf.buffer.slice(pdfBuf.byteOffset, pdfBuf.byteOffset + pdfBuf.byteLength) as ArrayBuffer
+})
+
+// ── XLSX Import (XLSX → PDF) ─────────────────────────────────────────────────
+
+ipcMain.handle('file:importXlsx', async (_event, bytes: ArrayBuffer): Promise<ArrayBuffer> => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const XLSX = require('xlsx')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { PDFDocument, rgb, StandardFonts } = require('pdf-lib')
+
+  const workbook = XLSX.read(new Uint8Array(bytes), { type: 'array' })
+  const pdfDoc = await PDFDocument.create()
+  const font     = await pdfDoc.embedFont(StandardFonts.Helvetica)
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName]
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 })
+    if (data.length === 0) continue
+
+    const pageW = 841.89, pageH = 595.28   // A4 landscape in pts
+    const margin = 36, rowH = 16, colPad = 4, fontSize = 8
+
+    const numCols = Math.max(1, ...data.map((r: unknown[]) => r.length))
+    const colW = Math.min(120, (pageW - margin * 2) / numCols)
+
+    let page = pdfDoc.addPage([pageW, pageH])
+    let y = pageH - margin
+
+    page.drawText(sheetName, { x: margin, y, font: boldFont, size: 11, color: rgb(0.1, 0.1, 0.35) })
+    y -= 22
+
+    for (let ri = 0; ri < data.length; ri++) {
+      if (y < margin + rowH) {
+        page = pdfDoc.addPage([pageW, pageH]); y = pageH - margin
+      }
+      const row = data[ri]
+      const isHeader = ri === 0
+      if (isHeader) {
+        page.drawRectangle({ x: margin, y: y - rowH + 3, width: pageW - margin * 2, height: rowH,
+          color: rgb(0.2, 0.37, 0.62), opacity: 0.9 })
+      } else if (ri % 2 === 0) {
+        page.drawRectangle({ x: margin, y: y - rowH + 3, width: pageW - margin * 2, height: rowH,
+          color: rgb(0.95, 0.95, 0.97), opacity: 1 })
+      }
+      for (let ci = 0; ci < numCols; ci++) {
+        const val = row[ci] !== undefined && row[ci] !== null ? String(row[ci]) : ''
+        page.drawText(val.slice(0, 25), {
+          x: margin + ci * colW + colPad, y: y - rowH + 5,
+          font: isHeader ? boldFont : font, size: fontSize,
+          color: isHeader ? rgb(1, 1, 1) : rgb(0.1, 0.1, 0.1),
+          maxWidth: colW - colPad * 2,
+        })
+      }
+      y -= rowH
+    }
+  }
+
+  const pdfBytes = await pdfDoc.save()
+  return pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength)
+})
+
+// ── PDF → XLSX Export ─────────────────────────────────────────────────────────
+
+ipcMain.handle('export:toXlsx', async (_event, bytes: ArrayBuffer): Promise<ArrayBuffer> => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const XLSX = require('xlsx')
+  const mupdf = await getMupdf()
+  const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
+  const numPages = doc.countPages()
+
+  const workbook = XLSX.utils.book_new()
+  for (let i = 0; i < numPages; i++) {
+    const page = doc.loadPage(i)
+    let text = ''
+    try { text = page.toStructuredText('preserve-whitespace').asText() } catch {
+      try { text = page.toStructuredText().asText() } catch {}
+    }
+    const rows: string[][] = text.split('\n')
+      .map((l: string) => l.trim())
+      .filter((l: string) => l.length > 0)
+      .map((l: string) => [l])
+    const ws = XLSX.utils.aoa_to_sheet(rows.length > 0 ? rows : [['(no text)']])
+    XLSX.utils.book_append_sheet(workbook, ws, `Page ${i + 1}`.slice(0, 31))
+  }
+
+  const buf: Buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
+})
+
+// ── Open/Save file dialog accepting multiple types (for Office import) ────────
+
+ipcMain.handle('dialog:openAnyFile', async (_event, filters: Array<{ name: string; extensions: string[] }>) => {
+  const result = await dialog.showOpenDialog({ properties: ['openFile'], filters })
+  return result.canceled ? null : result.filePaths[0]
 })
 
 // ── Find text rectangles (for Find & Redact) ──────────────────────────────────

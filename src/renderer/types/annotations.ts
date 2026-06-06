@@ -12,6 +12,8 @@ export type AnnotationTool =
   | 'snapshot'
 
 export type StampName = 'Approved' | 'Draft' | 'Confidential' | 'Rejected' | 'Custom'
+  | 'Today' | 'Received' | 'Revised' | 'Void' | 'For Review'
+  | (string & {})
 
 export interface AnnBase {
   id: string

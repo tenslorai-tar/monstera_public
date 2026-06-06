@@ -3,7 +3,7 @@ import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
 
-type ExportTab = 'images' | 'text' | 'docx' | 'annotations'
+type ExportTab = 'images' | 'text' | 'docx' | 'xlsx' | 'annotations'
 type ImageFormat = 'png' | 'jpeg'
 
 export default function ExportDialog({ onClose }: Props) {
@@ -125,6 +125,27 @@ export default function ExportDialog({ onClose }: Props) {
     setBusy(false)
   }
 
+  // ── Export XLSX ───────────────────────────────────────────────────────────
+
+  const exportXlsx = async () => {
+    if (!pdfBytes) return
+    setBusy(true)
+    setStatus('Extracting text to Excel…')
+    try {
+      const result = await (window.electronAPI as any).exportToXlsx(pdfBytes.buffer as ArrayBuffer)
+      const savePath = await window.electronAPI.saveFileDialog(`${baseName}.xlsx`)
+      if (savePath) {
+        await window.electronAPI.writeFile(savePath, result)
+        setStatus('✓ Excel workbook saved.')
+      } else {
+        setStatus('Cancelled.')
+      }
+    } catch (e: any) {
+      setStatus(`Error: ${e?.message ?? 'XLSX export failed'}`)
+    }
+    setBusy(false)
+  }
+
   // ── Export DOCX ───────────────────────────────────────────────────────────
   // Quality note: uses pdf-extracted text + basic paragraph detection.
   // Layout, columns, tables, images, and exact fonts are NOT preserved.
@@ -158,7 +179,7 @@ export default function ExportDialog({ onClose }: Props) {
 
         {/* tabs */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
-          {(['images', 'text', 'docx', 'annotations'] as ExportTab[]).map(t => (
+          {(['images', 'text', 'docx', 'xlsx', 'annotations'] as ExportTab[]).map(t => (
             <button key={t}
               onClick={() => setTab(t)}
               style={{
@@ -167,7 +188,7 @@ export default function ExportDialog({ onClose }: Props) {
                 color: tab === t ? '#fff' : 'var(--text-muted)',
                 borderRadius: '4px 4px 0 0', fontSize: 13, fontWeight: tab === t ? 600 : 400,
               }}>
-              {t === 'images' ? '🖼 Images' : t === 'text' ? '📄 Text (.txt)' : t === 'docx' ? '📝 Word (.docx)' : '💬 Annotations'}
+              {t === 'images' ? '🖼 Images' : t === 'text' ? '📄 Text (.txt)' : t === 'docx' ? '📝 Word (.docx)' : t === 'xlsx' ? '📊 Excel (.xlsx)' : '💬 Annotations'}
             </button>
           ))}
         </div>
@@ -240,6 +261,19 @@ export default function ExportDialog({ onClose }: Props) {
                 use Adobe Acrobat or a dedicated service.
               </p>
             </div>
+          </div>
+        )}
+
+        {/* ── XLSX tab ─────────────────────────────────────── */}
+        {tab === 'xlsx' && (
+          <div>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+              Extracts text from each page and exports to an Excel workbook (.xlsx). Each page becomes a separate sheet.
+              Best for structured or tabular content. Layout and images are not preserved.
+            </p>
+            <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              {numPages} page{numPages !== 1 ? 's' : ''} → {numPages} sheet{numPages !== 1 ? 's' : ''} in workbook.
+            </p>
           </div>
         )}
 
@@ -333,6 +367,11 @@ export default function ExportDialog({ onClose }: Props) {
           {tab === 'docx' && (
             <button className="modal-btn-primary" onClick={exportDocx} disabled={busy}>
               {busy ? 'Building DOCX…' : '↓ Export to Word'}
+            </button>
+          )}
+          {tab === 'xlsx' && (
+            <button className="modal-btn-primary" onClick={exportXlsx} disabled={busy}>
+              {busy ? 'Exporting…' : '↓ Export to Excel'}
             </button>
           )}
           {tab === 'annotations' && null}

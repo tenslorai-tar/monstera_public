@@ -16,6 +16,14 @@ export interface AppSettings {
   loupeEnabled: boolean
   measureUnit: string
   measureScale: number
+  // Tier 3
+  anthropicApiKey: string
+  rtlText: boolean
+  gdToken: string         // Google Drive OAuth token
+  dropboxToken: string    // Dropbox access token
+  docusignKey: string     // DocuSign integration key
+  docusignAccountId: string
+  docusignBasePath: string
 }
 
 const STORAGE_KEY = 'monstera-settings'
@@ -42,6 +50,14 @@ function defaults(): AppSettings {
     loupeEnabled: false,
     measureUnit: 'pt',
     measureScale: 1.0,
+    // Tier 3
+    anthropicApiKey: '',
+    rtlText: false,
+    gdToken: '',
+    dropboxToken: '',
+    docusignKey: '',
+    docusignAccountId: '',
+    docusignBasePath: 'https://demo.docusign.net/restapi',
   }
 }
 

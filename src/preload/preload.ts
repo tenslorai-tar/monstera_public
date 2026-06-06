@@ -58,6 +58,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     name: string; reason: string; location: string; contactInfo: string;
   }): Promise<ArrayBuffer> => ipcRenderer.invoke('pdf:sign', bytes, pfxPath, pfxPassword, info),
 
+  pdfSignWithTsa: (bytes: ArrayBuffer, pfxPath: string, pfxPassword: string, info: {
+    name: string; reason: string; location: string; contactInfo: string;
+  }, tsaUrl: string): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('pdf:signWithTsa', bytes, pfxPath, pfxPassword, info, tsaUrl),
+
+  pdfCertify: (bytes: ArrayBuffer, pfxPath: string, pfxPassword: string, info: {
+    reason: string; permission: 1 | 2 | 3;
+  }): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('pdf:certify', bytes, pfxPath, pfxPassword, info),
+
   pdfVerifySignatures: (bytes: ArrayBuffer): Promise<Array<{
     signerName: string; signerOrg: string; reason: string; location: string;
     contactInfo: string; certValidFrom: string; certValidTo: string; certCurrentlyValid: boolean;
@@ -89,6 +99,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   mupdfFindTextRects: (bytes: ArrayBuffer, term: string): Promise<Array<{ pageNum: number; x1: number; y1: number; x2: number; y2: number }>> =>
     ipcRenderer.invoke('mupdf:findTextRects', bytes, term),
+
+  // AI Assistant
+  aiQuery: (
+    apiKey: string,
+    messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+    systemPrompt: string
+  ): Promise<string> => ipcRenderer.invoke('ai:query', apiKey, messages, systemPrompt),
+
+  // Office import
+  importDocx: (bytes: ArrayBuffer): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('file:importDocx', bytes),
+
+  importXlsx: (bytes: ArrayBuffer): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('file:importXlsx', bytes),
+
+  // PDF → XLSX export
+  exportToXlsx: (bytes: ArrayBuffer): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('export:toXlsx', bytes),
+
+  // Multi-type file dialog
+  openAnyFile: (filters: Array<{ name: string; extensions: string[] }>): Promise<string | null> =>
+    ipcRenderer.invoke('dialog:openAnyFile', filters),
 
   setWindowTitle: (title: string): Promise<void> =>
     ipcRenderer.invoke('window:setTitle', title),
