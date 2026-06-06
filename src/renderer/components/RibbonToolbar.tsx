@@ -81,6 +81,7 @@ interface Props {
   onMultiPageStamp: () => void
   onSplitView: () => void
   onBarcode: () => void
+  onScan: () => void
 }
 
 const STAMP_NAMES: StampName[] = ['Approved', 'Draft', 'Confidential', 'Rejected', 'Custom']
@@ -107,7 +108,7 @@ export default function RibbonToolbar(props: Props) {
     onAiAssistant, onOfficeImport,
     onMarkdownToPdf, onCsvToPdf, onEditExternal, onOcrRegion, onDeskew,
     onWebcam,
-    onMultiPageStamp, onSplitView, onBarcode,
+    onMultiPageStamp, onSplitView, onBarcode, onScan,
   } = props
 
   const resetFormFields = usePdfStore(s => s.resetFormFields)
@@ -742,6 +743,8 @@ export default function RibbonToolbar(props: Props) {
 
       <Group label="Edit & OCR">
         <div className="rbn-grid2">
+          <SBtn icon="🪄" label="Scan/Enhance" onClick={onScan}
+            title="Turn a photo of a page into a clean scan — auto-crop, perspective correct, enhance (OpenCV)" />
           <SBtn icon="✏" label="Ext Edit" onClick={onEditExternal}
             title="Export a page as PNG and open in an external image editor" />
           <SBtn icon="🔍" label="OCR Region" onClick={onOcrRegion}
