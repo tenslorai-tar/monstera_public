@@ -339,3 +339,139 @@ npm run build
 | **Resize image** | Select image → drag the blue corner handle to resize |
 | **Delete image** | Eraser tool + click image, or select image + Delete key |
 | **Save images** | Place image → Ctrl+S → reopen → image is baked into PDF and renders via PDF.js |
+
+### Phase 12 — Advanced Features (Batch 10) ✅
+
+#### Multi-tab document management
+- [x] Open multiple PDFs simultaneously — each in its own tab
+- [x] Tab bar shows open documents; click to switch; × to close
+- [x] Unsaved-changes indicator per tab
+- [x] Switching tabs snapshots/restores full PDF state (bytes, annotations, forms, bookmarks, scale)
+
+**How to test:**
+| Feature | Steps |
+|---|---|
+| **Open multiple** | Open one PDF → File → Open another → tab bar appears with both |
+| **Switch tabs** | Click a tab → document switches instantly |
+| **Close tab** | Click × on tab → prompts to save if dirty |
+
+#### Split View
+- [x] Show any two pages side by side in a full-screen panel
+- [x] Independent page selectors per panel; "Both ◀/▶" navigates both together
+- [x] Renders via PDF.js at current zoom
+
+**How to test:** Home tab → ⧉ Split View (or Tools tab → View group) → two-panel view opens
+
+#### Blurred Redaction
+- [x] Toggle between solid-black redaction and blurred redaction using the ▪/〜 button next to REDACT
+- [x] Blurred mode: renders page region at 2.5× scale, applies CSS blur (10px), overlays result as placed-image annotation
+- [x] Solid mode: permanent content removal via MuPDF (existing behavior, truly secure)
+- [x] Both modes can be mixed in the same document; apply executes both in one pass
+
+**How to test:**
+| Feature | Steps |
+|---|---|
+| **Blur mode** | Select REDACT tool → click 〜 toggle → drag redaction box → shows "BLUR" preview |
+| **Apply blur** | Click ⚠ Apply Redactions → blurred overlay appears |
+| **Solid mode** | Click ▪ toggle → drag box → apply → content permanently removed |
+
+#### Smooth / Continuous Zoom
+- [x] Page resize transitions — CSS `transition: width/height 0.15s ease` on page wrappers
+- [x] Zoom changes visually animate instead of jumping
+
+#### Markdown → PDF
+- [x] Convert Markdown text to PDF — regex-based converter → HTML → offscreen BrowserWindow → `printToPDF`
+- [x] Mode: new PDF or append to open document
+- [x] Load .md file from disk via Open button
+
+**How to test:** Tools tab → Import group → Markdown → type or paste markdown → Convert → PDF produced
+
+#### CSV → PDF
+- [x] Convert CSV/spreadsheet data to a formatted PDF table — XLSX.js parses CSV → HTML table → `printToPDF` (landscape)
+- [x] Shows row × column count preview
+- [x] Mode: new PDF or append
+
+**How to test:** Tools tab → Import → CSV → paste CSV data → Convert → formatted table PDF
+
+#### Email Document
+- [x] Opens system email client with current PDF attached path in mailto body
+- [x] "Save PDF & Open Email" button saves then opens mailto
+
+**How to test:** Tools tab → Email → fill recipient/subject → Open Email Client
+
+#### Edit in External App
+- [x] Exports current page as PNG (MuPDF at scale 2×) to temp folder, opens with system image editor
+- [x] Reimport button reads the saved PNG back as a placed-image overlay
+
+**How to test:** Tools tab → Edit & OCR → Ext Edit → page opens in default image editor → edit → Reimport
+
+#### Tagged PDF / Reading Order
+- [x] Detects H1–H5 headings from MuPDF bookmarks extraction
+- [x] Sets document title, language, and Subject/Keywords for accessibility via mupdfSetMetadata
+- [x] Displays hierarchical structure with color-coded heading levels
+
+**How to test:** Tools tab → Document → Tagged PDF → view structure → set language → Apply
+
+#### Import Pages to Layer (OCG)
+- [x] Imports first page of another PDF as an Optional Content Group (layer)
+- [x] Layer name, target page, and opacity controls
+- [x] OCG registered in PDF catalog's OCProperties
+
+**How to test:** Tools tab → Document → Layers → Browse source PDF → set layer name → Import
+
+#### OCR Selected Region
+- [x] Draw a rectangle on any page; runs Tesseract on just that crop
+- [x] Extracted text shown in dialog; copy to clipboard or insert as typewriter annotation
+
+**How to test:** Tools tab → Edit & OCR → OCR Region → drag over scanned text → OCR runs → text extracted
+
+#### Deskew / Enhance Scanned Pages
+- [x] Projection-based skew detection: renders page at 0.5× scale, binarizes, tests angles −10° to +10° (0.5° steps), picks angle with maximum horizontal projection variance
+- [x] Applies correction via `pdfPage.setRotation()` for whole-degree angles
+- [x] Contrast enhancement via pixel-level stretch (factor 1.4) applied as placed-image overlay
+
+**How to test:** Tools tab → Edit & OCR → Deskew → run analysis → review detected angle → Apply
+
+#### Webcam Image Capture
+- [x] Access device camera, capture a frame, insert onto any page as placed-image annotation
+
+**How to test:** Tools tab → Manage → Webcam → allow camera → Capture → image placed on current page
+
+#### Page Transition Effects
+- [x] Set slide-show page transition effects (Fade, Wipe, Push, Fly, Uncover, Cover, Dissolve)
+- [x] Per-page or all-pages mode; duration and direction controls
+- [x] Written as PDF /Trans entries via pdf-lib
+
+**How to test:** Tools tab → Document → Transitions → pick effect → Apply
+
+#### Generate TOC from Bookmarks
+- [x] Auto-generates a table of contents page from existing bookmarks
+- [x] Inserts as a new first page with formatted text entries and page numbers
+
+**How to test:** Open PDF with bookmarks → Tools → Document → TOC → Generate → new page inserted
+
+#### Multi-Page Stamp
+- [x] Copy any selected annotation to multiple pages at once
+- [x] Page range input (e.g. "1-5, 7, 10-12")
+
+**How to test:** Select an annotation → Comment tab → ⊕ Multi-Page → enter page range → Apply
+
+#### Cloud Storage (OneDrive, Box, SharePoint)
+- [x] Browse and open PDFs from OneDrive (Microsoft Graph API), Box (api.box.com), SharePoint
+- [x] Token-based authentication; tokens stored in app settings
+- [x] Extends existing Google Drive / Dropbox cloud storage panel
+
+**How to test:** Tools → Manage → Cloud → configure token for OneDrive/Box/SharePoint → browse files
+
+#### Find Duplicate Pages
+- [x] Compares all pages by content hash; lists duplicate sets
+- [x] Select duplicates to delete
+
+**How to test:** Tools → Manage → Find Duplicates → analysis runs → duplicates listed
+
+#### Type Signature
+- [x] Type name in a styled font and use as a signature stamp
+- [x] Font choices (cursive/script styles), color picker
+- [x] Rendered to canvas dataURL and placed as image annotation
+
+**How to test:** Annotation toolbar → ✍ → Type tab → type name → pick font → Use Signature
