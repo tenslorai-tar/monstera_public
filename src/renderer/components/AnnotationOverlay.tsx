@@ -137,6 +137,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   const setOpenStickyNote = usePdfStore(s => s.setOpenStickyNote)
 
   const svgRef = useRef<SVGSVGElement>(null)
+  const cancelEditRef = useRef(false)
   const [draw, setDraw] = useState<DrawPhase>({ k: 'idle' })
   const [imgDrag, setImgDrag] = useState<ImageDrag>({ k: 'idle' })
 
@@ -317,6 +318,13 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return
     e.stopPropagation()
+
+    // An editor is open: clicking the page should let its blur commit the edit,
+    // not start a brand-new selection that throws the edit away.
+    if (draw.k === 'text-edit-edit' || draw.k === 'textbox-edit'
+        || draw.k === 'callout-edit' || draw.k === 'typewriter-edit') {
+      return
+    }
 
     if (isTextEditTool) {
       const [sx, sy] = getSvgXY(e)
@@ -1206,17 +1214,31 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
     const fs = (draw.fontSize ?? toolFontSize)
     const col = draw.color ?? toolColor
     return (
-      <foreignObject x={x} y={y} width={w} height={h} style={{ pointerEvents: 'all' }}>
-        <textarea style={{ width: '100%', height: '100%', background: 'white', color: col,
-          border: '2px solid #ff8800', outline: 'none', resize: 'none', fontFamily: 'serif',
-          fontSize: fs * scale, lineHeight: 1.2, padding: '0 2px', boxSizing: 'border-box' }}
-          autoFocus value={draw.text}
-          onFocus={e => e.currentTarget.select()}
-          onChange={e => setDraw(d => ({ ...(d as any), text: e.target.value } as DrawPhase))}
-          onBlur={e => commitTextEdit(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Escape') setDraw({ k: 'idle' }) }}
-          placeholder="Edit text…" />
-      </foreignObject>
+      <g>
+        <foreignObject x={x} y={y} width={w} height={Math.max(h, fs * scale + 8)} style={{ pointerEvents: 'all' }}>
+          <textarea style={{ width: '100%', height: '100%', background: 'white', color: col,
+            border: '2px solid #ff8800', outline: 'none', resize: 'none', fontFamily: 'serif',
+            fontSize: fs * scale, lineHeight: 1.2, padding: '0 2px', boxSizing: 'border-box' }}
+            autoFocus value={draw.text}
+            onFocus={e => e.currentTarget.select()}
+            onChange={e => setDraw(d => ({ ...(d as any), text: e.target.value } as DrawPhase))}
+            onBlur={e => {
+              if (cancelEditRef.current) { cancelEditRef.current = false; setDraw({ k: 'idle' }); return }
+              commitTextEdit(e.target.value)
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Escape') { e.preventDefault(); cancelEditRef.current = true; e.currentTarget.blur() }
+              else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur() }
+            }}
+            placeholder="Edit text…" />
+        </foreignObject>
+        <foreignObject x={x} y={y + Math.max(h, fs * scale + 8) + 2} width={Math.max(w, 220)} height={18} style={{ pointerEvents: 'none' }}>
+          <div style={{ fontSize: 11, fontFamily: 'sans-serif', color: '#ff8800', fontWeight: 600,
+            background: 'rgba(0,0,0,0.04)', whiteSpace: 'nowrap' }}>
+            Enter = apply · Shift+Enter = new line · Esc = cancel
+          </div>
+        </foreignObject>
+      </g>
     )
   }
 
