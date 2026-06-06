@@ -13,6 +13,11 @@ declare global {
       getMimeType: (filePath: string) => Promise<string>
 
       pdfiumStatus: () => Promise<{ available: boolean }>
+      pdfiumTextInRegion: (
+        bytes: ArrayBuffer,
+        pageIndex: number,
+        rect: { x1: number; y1: number; x2: number; y2: number },
+      ) => Promise<{ text: string; fontSize: number; found: boolean }>
       pdfiumEditText: (
         bytes: ArrayBuffer,
         pageIndex: number,

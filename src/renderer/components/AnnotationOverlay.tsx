@@ -483,11 +483,32 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       setDraw({ k: 'textbox-edit', x: Math.min(draw.sx, ex), y: Math.min(draw.sy, ey),
         w: Math.abs(ex - draw.sx), h: Math.abs(ey - draw.sy), text: '' })
     } else if (draw.k === 'text-edit-size') {
-      if (Math.abs(ex - draw.sx) < 10 || Math.abs(ey - draw.sy) < 10) { setDraw({ k: 'idle' }); return }
-      const orig = readRegionText(draw.sx, draw.sy, ex, ey)
-      setDraw({ k: 'text-edit-edit', x: Math.min(draw.sx, ex), y: Math.min(draw.sy, ey),
-        w: Math.abs(ex - draw.sx), h: Math.abs(ey - draw.sy),
-        text: orig.text, fontSize: orig.fontSize, color: orig.color })
+      const sx = draw.sx, sy = draw.sy
+      if (Math.abs(ex - sx) < 10 || Math.abs(ey - sy) < 10) { setDraw({ k: 'idle' }); return }
+      const bx = Math.min(sx, ex), by = Math.min(sy, ey)
+      const bw = Math.abs(ex - sx), bh = Math.abs(ey - sy)
+      // Immediate prefill from the PDF.js text layer (instant box)
+      const dom = readRegionText(sx, sy, ex, ey)
+      setDraw({ k: 'text-edit-edit', x: bx, y: by, w: bw, h: bh,
+        text: dom.text, fontSize: dom.fontSize, color: dom.color })
+      // Upgrade the prefill to exactly the text PDFium will replace, so what the
+      // user edits == what gets written back (no partial-line data loss).
+      const [px1, py2] = toPdf(bx, by)
+      const [px2, py1] = toPdf(bx + bw, by + bh)
+      ;(async () => {
+        try {
+          if (!(await pdfiumReady())) return
+          const store = usePdfStore.getState()
+          const bytes = await store.getBakedBytes()
+          const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+          const res = await window.electronAPI.pdfiumTextInRegion(ab, pageNum - 1, { x1: px1, y1: py1, x2: px2, y2: py2 })
+          if (res.found) {
+            setDraw(d => (d.k === 'text-edit-edit' && d.text === dom.text)
+              ? { ...d, text: res.text, fontSize: res.fontSize || d.fontSize }
+              : d)
+          }
+        } catch { /* keep DOM prefill */ }
+      })()
     }
   }
 

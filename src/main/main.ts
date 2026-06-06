@@ -355,6 +355,13 @@ ipcMain.handle('file:getMimeType', async (_event, filePath: string) => {
 // ── PDFium engine — true in-place text editing ───────────────────────────────
 ipcMain.handle('pdfium:status', async () => ({ available: pdfium.isAvailable() }))
 
+ipcMain.handle('pdfium:textInRegion', async (
+  _event,
+  bytes: ArrayBuffer,
+  pageIndex: number,
+  rect: { x1: number; y1: number; x2: number; y2: number },
+) => pdfium.getTextInRegion(Buffer.from(bytes), pageIndex, rect))
+
 ipcMain.handle('pdfium:editText', async (
   _event,
   bytes: ArrayBuffer,
