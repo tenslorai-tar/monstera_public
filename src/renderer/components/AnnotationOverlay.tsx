@@ -1053,11 +1053,13 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   const renderTextBoxEdit = () => {
     if (draw.k !== 'textbox-edit') return null
     const { x, y, w, h } = draw
+    const rtl = settings.rtlText
     return (
       <foreignObject x={x} y={y} width={w} height={h} style={{ pointerEvents: 'all' }}>
         <textarea style={{ width: '100%', height: '100%', background: 'rgba(255,255,220,0.9)', color: toolColor,
           border: '2px solid #4a9eff', outline: 'none', resize: 'none', fontFamily: 'sans-serif',
-          fontSize: toolFontSize * scale, padding: 4, boxSizing: 'border-box' }}
+          fontSize: toolFontSize * scale, padding: 4, boxSizing: 'border-box',
+          direction: rtl ? 'rtl' : 'ltr', textAlign: rtl ? 'right' : 'left' }}
           autoFocus value={draw.text}
           onChange={e => setDraw(d => ({ ...(d as any), text: e.target.value } as DrawPhase))}
           onBlur={e => commitTextBox(e.target.value)}
@@ -1070,12 +1072,14 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   const renderTypewriterEdit = () => {
     if (draw.k !== 'typewriter-edit') return null
     const { x, y, text } = draw
+    const rtl = settings.rtlText
     return (
       <foreignObject x={x} y={y} width={Math.max(120, W - x - 8)} height={toolFontSize * scale * 4}
         style={{ pointerEvents: 'all' }}>
         <input type="text" style={{ width: '100%', background: 'transparent', color: toolColor,
           border: 'none', borderBottom: `2px solid ${toolColor}`, outline: 'none',
-          fontFamily: 'sans-serif', fontSize: toolFontSize * scale, padding: 2 }}
+          fontFamily: 'sans-serif', fontSize: toolFontSize * scale, padding: 2,
+          direction: rtl ? 'rtl' : 'ltr', textAlign: rtl ? 'right' : 'left' }}
           autoFocus value={text}
           onChange={e => setDraw(d => ({ ...(d as any), text: e.target.value } as DrawPhase))}
           onBlur={e => commitTypewriter(e.target.value)}
