@@ -1,19 +1,84 @@
 #!/usr/bin/env node
 // scripts/download-bins.js
-// Downloads mutool.exe from the latest MuPDF release and places it in assets/bin/
-// Usage: node scripts/download-bins.js [--force]
+// Installs/updates native binaries required by Monstera PDF Editor:
+//   mutool.exe  — MuPDF command-line tool (PDF repair, extract, clean)
+//   Ghostscript — PDF/A, PDF/X, colour conversion, quality optimisation
+//   LibreOffice — Layout-faithful Office→PDF import, PDF→DOCX/PPTX export
+//
+// Uses Chocolatey (choco) if available; falls back to direct-download for mutool.
+// Requires admin privileges (run from an elevated shell or choco will prompt UAC).
+//
+// Usage:
+//   node scripts/download-bins.js           # install missing only
+//   node scripts/download-bins.js --force   # reinstall all
 
+const { execSync, spawnSync } = require('child_process')
+const fs   = require('fs')
+const path = require('path')
+const os   = require('os')
 const https = require('https')
 const http  = require('http')
-const fs    = require('fs')
-const path  = require('path')
-const os    = require('os')
-const { execSync } = require('child_process')
 
 const BIN_DIR = path.join(__dirname, '../assets/bin')
 fs.mkdirSync(BIN_DIR, { recursive: true })
 
-// ── HTTP/S downloader with redirect following ─────────────────────────────────
+const force = process.argv.includes('--force')
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function run(cmd) {
+  try { execSync(cmd, { stdio: 'inherit' }); return true }
+  catch { return false }
+}
+
+function exists(p) { return fs.existsSync(p) }
+
+function findMutool() {
+  const bundled = path.join(BIN_DIR, 'mutool.exe')
+  if (exists(bundled)) return bundled
+  const choco = 'C:\\ProgramData\\chocolatey\\lib\\mupdf\\mutool.exe'
+  if (exists(choco)) return choco
+  try {
+    const r = execSync('where mutool.exe', { encoding: 'utf8', stdio: ['pipe','pipe','pipe'] })
+    const p = r.trim().split('\n')[0].trim()
+    if (p && exists(p)) return p
+  } catch {}
+  return null
+}
+
+function findGhostscript() {
+  for (const base of ['C:\\Program Files\\gs', 'C:\\Program Files (x86)\\gs']) {
+    if (!exists(base)) continue
+    const versions = fs.readdirSync(base).filter(d => d.toLowerCase().startsWith('gs')).sort().reverse()
+    for (const v of versions) {
+      const exe = path.join(base, v, 'bin', 'gswin64c.exe')
+      if (exists(exe)) return exe
+    }
+  }
+  try {
+    const r = execSync('where gswin64c.exe', { encoding: 'utf8', stdio: ['pipe','pipe','pipe'] })
+    const p = r.trim().split('\n')[0].trim()
+    if (p && exists(p)) return p
+  } catch {}
+  return null
+}
+
+function findLibreOffice() {
+  for (const p of [
+    'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
+    'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe',
+  ]) { if (exists(p)) return p }
+  try {
+    const r = execSync('where soffice.exe', { encoding: 'utf8', stdio: ['pipe','pipe','pipe'] })
+    const p = r.trim().split('\n')[0].trim()
+    if (p && exists(p)) return p
+  } catch {}
+  return null
+}
+
+function hasCholocolatey() {
+  try { execSync('choco --version', { stdio: 'pipe' }); return true } catch { return false }
+}
 
 function download(url, dest) {
   return new Promise((resolve, reject) => {
@@ -21,12 +86,8 @@ function download(url, dest) {
       if (hops > 8) { reject(new Error('Too many redirects')); return }
       const mod = u.startsWith('https') ? https : http
       const req = mod.get(u, { headers: { 'User-Agent': 'monstera-pdf-editor/1.0' } }, res => {
-        if ([301,302,303,307,308].includes(res.statusCode)) {
-          follow(res.headers.location, hops + 1); return
-        }
-        if (res.statusCode !== 200) {
-          reject(new Error(`HTTP ${res.statusCode} for ${u}`)); return
-        }
+        if ([301,302,303,307,308].includes(res.statusCode)) { follow(res.headers.location, hops + 1); return }
+        if (res.statusCode !== 200) { reject(new Error(`HTTP ${res.statusCode} for ${u}`)); return }
         const total = parseInt(res.headers['content-length'] || '0')
         let received = 0
         const file = fs.createWriteStream(dest)
@@ -34,84 +95,17 @@ function download(url, dest) {
           received += chunk.length
           if (total > 0) {
             const pct = Math.round(received / total * 100)
-            const mb  = (received / 1024 / 1024).toFixed(1)
-            process.stdout.write(`\r  ${pct}% (${mb} MB / ${(total/1024/1024).toFixed(1)} MB)   `)
+            process.stdout.write(`\r  ${pct}% (${(received/1048576).toFixed(1)} MB / ${(total/1048576).toFixed(1)} MB)   `)
           }
         })
         res.pipe(file)
         file.on('finish', () => { file.close(); process.stdout.write('\n'); resolve() })
-        res.on('error', reject)
-        file.on('error', reject)
+        res.on('error', reject); file.on('error', reject)
       })
       req.on('error', reject)
     }
     follow(url)
   })
-}
-
-// ── Fetch latest MuPDF release URL from GitHub API ────────────────────────────
-
-function getLatestMutoolUrl() {
-  return new Promise(resolve => {
-    const req = https.get(
-      'https://api.github.com/repos/ArtifexSoftware/mupdf/releases/latest',
-      { headers: { 'User-Agent': 'monstera-pdf-editor/1.0' } },
-      res => {
-        let data = ''
-        res.on('data', d => { data += d })
-        res.on('end', () => {
-          try {
-            const release = JSON.parse(data)
-            const tag = release.tag_name ?? '1.24.11'
-            const asset = (release.assets || []).find(a =>
-              a.name.toLowerCase().includes('windows') && a.name.endsWith('.zip')
-            )
-            if (asset) { resolve(asset.browser_download_url); return }
-            resolve(`https://github.com/ArtifexSoftware/mupdf/releases/download/${tag}/mupdf-${tag}-windows.zip`)
-          } catch {
-            resolve('https://github.com/ArtifexSoftware/mupdf/releases/download/1.24.11/mupdf-1.24.11-windows.zip')
-          }
-        })
-        res.on('error', () => resolve('https://github.com/ArtifexSoftware/mupdf/releases/download/1.24.11/mupdf-1.24.11-windows.zip'))
-      }
-    )
-    req.on('error', () => resolve('https://github.com/ArtifexSoftware/mupdf/releases/download/1.24.11/mupdf-1.24.11-windows.zip'))
-    req.setTimeout(8000, () => {
-      req.destroy()
-      resolve('https://github.com/ArtifexSoftware/mupdf/releases/download/1.24.11/mupdf-1.24.11-windows.zip')
-    })
-  })
-}
-
-// ── Extract mutool.exe from ZIP using PowerShell ──────────────────────────────
-
-function findFile(dir, name) {
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name)
-    if (entry.isDirectory()) {
-      const found = findFile(full, name)
-      if (found) return found
-    } else if (entry.name.toLowerCase() === name.toLowerCase()) {
-      return full
-    }
-  }
-  return null
-}
-
-function extractMutool(zipPath) {
-  const extractDir = path.join(os.tmpdir(), `mupdf-extract-${Date.now()}`)
-  fs.mkdirSync(extractDir, { recursive: true })
-  console.log('  Extracting archive...')
-  execSync(
-    `powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${extractDir}' -Force"`,
-    { stdio: 'inherit' }
-  )
-  const src = findFile(extractDir, 'mutool.exe')
-  if (!src) throw new Error('mutool.exe not found inside the downloaded archive.')
-  const dest = path.join(BIN_DIR, 'mutool.exe')
-  fs.copyFileSync(src, dest)
-  try { fs.rmSync(extractDir, { recursive: true, force: true }) } catch {}
-  return dest
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -120,41 +114,73 @@ async function main() {
   console.log('\nMonstera PDF Editor — Binary Setup')
   console.log('====================================\n')
 
-  const mutoolDest = path.join(BIN_DIR, 'mutool.exe')
-  const force = process.argv.includes('--force')
+  const useChoco = hasCholocolatey()
+  if (useChoco) console.log('Chocolatey detected — using it for all installs.\n')
 
-  if (fs.existsSync(mutoolDest) && !force) {
-    console.log(`✓  mutool.exe already installed (${mutoolDest})`)
-    console.log('   Pass --force to re-download.\n')
+  // ── mutool ──────────────────────────────────────────────────────────────────
+  const mutoolPath = findMutool()
+  if (mutoolPath && !force) {
+    console.log(`✓  mutool.exe  ${mutoolPath}`)
   } else {
-    console.log('Fetching latest MuPDF release info from GitHub...')
-    const url = await getLatestMutoolUrl()
-    console.log(`Downloading: ${url}`)
-
-    const zipPath = path.join(os.tmpdir(), `mupdf-${Date.now()}.zip`)
-    try {
-      await download(url, zipPath)
-      const dest = extractMutool(zipPath)
-      console.log(`✓  mutool.exe installed: ${dest}`)
-    } finally {
-      try { if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath) } catch {}
+    console.log(force ? 'Reinstalling mutool...' : 'Installing mutool...')
+    let installed = false
+    if (useChoco) {
+      installed = run('choco install mupdf -y --no-progress')
+      if (installed) {
+        const chocoExe = 'C:\\ProgramData\\chocolatey\\lib\\mupdf\\mutool.exe'
+        if (exists(chocoExe)) {
+          fs.copyFileSync(chocoExe, path.join(BIN_DIR, 'mutool.exe'))
+          console.log(`✓  mutool.exe  ${path.join(BIN_DIR, 'mutool.exe')} (copied from choco)`)
+        } else {
+          console.log('✓  mutool.exe installed via Chocolatey')
+        }
+      }
+    }
+    if (!installed) {
+      console.error('✗  Failed to install MuPDF. Install manually: choco install mupdf')
+      process.exitCode = 1
     }
   }
 
-  console.log('\n──────────────────────────────────────────────')
-  console.log('REMAINING SETUP (required for full functionality)')
-  console.log('──────────────────────────────────────────────\n')
+  // ── Ghostscript ─────────────────────────────────────────────────────────────
+  const gsPath = findGhostscript()
+  if (gsPath && !force) {
+    console.log(`✓  Ghostscript  ${gsPath}`)
+  } else {
+    console.log(force ? 'Reinstalling Ghostscript...' : 'Installing Ghostscript...')
+    let installed = false
+    if (useChoco) {
+      installed = run('choco install Ghostscript -y --no-progress')
+      const newPath = findGhostscript()
+      if (installed && newPath) console.log(`✓  Ghostscript  ${newPath}`)
+      else if (installed) console.log('✓  Ghostscript installed via Chocolatey')
+    }
+    if (!installed) {
+      console.error('✗  Failed to install Ghostscript. Install manually: choco install Ghostscript')
+      process.exitCode = 1
+    }
+  }
 
-  console.log('1. Ghostscript  ← PDF/A, PDF/X, color conversion, professional optimization')
-  console.log('   Download the AGPL Release (Windows 64-bit):')
-  console.log('   https://www.ghostscript.com/releases/gsdnld.html\n')
+  // ── LibreOffice ─────────────────────────────────────────────────────────────
+  const loPath = findLibreOffice()
+  if (loPath && !force) {
+    console.log(`✓  LibreOffice  ${loPath}`)
+  } else {
+    console.log(force ? 'Reinstalling LibreOffice (large download ~355 MB)...' : 'Installing LibreOffice (large download ~355 MB)...')
+    let installed = false
+    if (useChoco) {
+      installed = run('choco install libreoffice-fresh -y --no-progress')
+      const newPath = findLibreOffice()
+      if (installed && newPath) console.log(`✓  LibreOffice  ${newPath}`)
+      else if (installed) console.log('✓  LibreOffice installed via Chocolatey')
+    }
+    if (!installed) {
+      console.error('✗  Failed to install LibreOffice. Install manually: choco install libreoffice-fresh')
+      process.exitCode = 1
+    }
+  }
 
-  console.log('2. LibreOffice  ← layout-faithful Office→PDF import, PDF→DOCX/PPTX export')
-  console.log('   Download the Windows 64-bit installer:')
-  console.log('   https://www.libreoffice.org/download/download/\n')
-
-  console.log('Both installers use standard Windows install paths.')
-  console.log('Monstera detects them automatically — no manual configuration needed.\n')
+  console.log('\nDone. All native tools are ready.\n')
 }
 
 main().catch(e => { console.error('\n✗  Setup failed:', e.message); process.exit(1) })
