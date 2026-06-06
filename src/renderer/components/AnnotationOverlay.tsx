@@ -608,12 +608,21 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
     try {
       if (await pdfiumReady()) {
         const store = usePdfStore.getState()
-        const bytes = await store.getBakedBytes()
-        const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
-        const out = await window.electronAPI.pdfiumEditText(
-          ab, pageNum - 1, { x1: x, y1: y_bot, x2, y2: y_top }, text,
-        )
-        if (out && out.byteLength > 0) { await store.applyEdit(new Uint8Array(out)); return }
+        // No overlay annotations/forms → edit raw bytes and apply incrementally
+        // (preserves zoom/scroll, no full reload). Otherwise bake first.
+        const hasOverlays = store.annotations.length > 0 || store.formFields.length > 0
+        const src = hasOverlays ? await store.getBakedBytes() : store.pdfBytes
+        if (src) {
+          const ab = src.buffer.slice(src.byteOffset, src.byteOffset + src.byteLength) as ArrayBuffer
+          const out = await window.electronAPI.pdfiumEditText(
+            ab, pageNum - 1, { x1: x, y1: y_bot, x2, y2: y_top }, text,
+          )
+          if (out && out.byteLength > 0) {
+            if (hasOverlays) await store.applyEdit(new Uint8Array(out))
+            else await store.applyContentEdit(new Uint8Array(out), pageNum)
+            return
+          }
+        }
       }
     } catch { /* engine unavailable or no text found — fall back to overlay */ }
 

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import * as pdfjsLib from 'pdfjs-dist'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
-import { textCache, clearTextCache, loadAllPageText } from '../utils/textCache'
+import { textCache, clearTextCache, loadAllPageText, loadPageText } from '../utils/textCache'
 import type { Annotation, AnnotationTool, StampName } from '../types/annotations'
 import { writeAnnotationsToPdf, readAnnotationsFromPdf } from '../utils/annotationPdfLib'
 import type { FormField, FormCreationTool } from '../types/forms'
@@ -160,6 +160,7 @@ interface PdfStore {
   getBakedBytes: () => Promise<Uint8Array>
 
   applyEdit: (newBytes: Uint8Array) => Promise<void>
+  applyContentEdit: (newBytes: Uint8Array, pageNum: number) => Promise<void>
   undo: () => Promise<void>
   redo: () => Promise<void>
   save: () => Promise<void>
@@ -403,6 +404,29 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
       : undoStack
     set({ undoStack: newUndo, redoStack: [], isDirty: true })
     await get().reloadWithBytes(newBytes)
+  },
+
+  // Incremental edit for content-only changes (e.g. PDFium in-place text edits)
+  // when there are no overlay annotations/forms. Unlike applyEdit→reloadWithBytes
+  // this preserves zoom, scroll, current page, selection and search, and only
+  // re-extracts the edited page's text — so the change applies without a reload.
+  applyContentEdit: async (newBytes, pageNum) => {
+    const { pdfBytes, undoStack, currentPage } = get()
+    const newUndo = pdfBytes
+      ? [...undoStack.slice(-(MAX_UNDO - 1)), pdfBytes]
+      : undoStack
+    const { pdfDoc, numPages, pageSizes } = await buildPdfDoc(newBytes)
+    set({
+      pdfDoc, pdfBytes: newBytes, numPages, pageSizes,
+      undoStack: newUndo, redoStack: [], isDirty: true,
+      currentPage: Math.min(currentPage, numPages),
+      // search highlights would point at stale offsets on the edited page
+      searchMatches: [], activeMatchIndex: -1,
+    })
+    if (pageNum >= 1 && pageNum <= numPages) {
+      textCache.delete(pageNum)
+      loadPageText(pdfDoc, pageNum).catch(() => {})
+    }
   },
 
   undo: async () => {
