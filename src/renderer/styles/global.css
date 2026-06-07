@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 *, *::before, *::after {
   box-sizing: border-box;
@@ -6,64 +6,105 @@
   padding: 0;
 }
 
-/* ── Dark theme (default) — Near-black #1a1b22 ───────────── */
+/* ══════════════════════════════════════════════════════════
+   Design tokens
+
+   Light is the showcase default (:root). Dark is an override
+   via [data-theme="dark"]. Neutral/tech surfaces + one refined
+   blue accent, layered elevation, soft shadows.
+   ══════════════════════════════════════════════════════════ */
+
 :root {
-  --bg-primary:    #1a1b22;
-  --bg-secondary:  #22232c;
-  --bg-toolbar:    #15161c;
-  --bg-ribbon:     #1d1e26;
-  --bg-ribbon-tab: #15161c;
-  --bg-hover:      rgba(74, 222, 128, 0.10);
-  --bg-active:     rgba(74, 222, 128, 0.18);
-  --border:        #2e3040;
-  --border-light:  #3c3f52;
-  --text-primary:  #ecedf4;
-  --text-secondary: #b0b5c6;
-  --text-muted:    #7b8094;
-  --text-dim:      #4a4f62;
-  --accent:        #4ade80;
-  --accent-hover:  #6beba0;
-  --accent-dim:    rgba(74, 222, 128, 0.16);
+  /* ── Surfaces (light) ── */
+  --bg-canvas:     #eceef2;   /* deepest — document area behind pages */
+  --bg-primary:    #ffffff;   /* main app background */
+  --bg-secondary:  #f6f7f9;   /* sidebars / panels */
+  --bg-toolbar:    #ffffff;
+  --bg-ribbon:     #ffffff;
+  --bg-ribbon-tab: #f6f7f9;
+  --bg-elevated:   #ffffff;   /* popovers / menus / dialogs */
+  --bg-inset:      #f1f2f5;   /* inputs / wells */
+
+  --bg-hover:      rgba(17, 24, 39, 0.045);
+  --bg-active:     rgba(37, 99, 235, 0.10);
+
+  /* ── Borders ── */
+  --border:        #e6e8ec;
+  --border-light:  #d7dae0;
+  --border-strong: #c4c9d2;
+
+  /* ── Text ── */
+  --text-primary:   #14161c;
+  --text-secondary: #4a5160;
+  --text-muted:     #828a99;
+  --text-dim:       #aab0bd;
+
+  /* ── Accent (refined blue) ── */
+  --accent:        #2563eb;
+  --accent-hover:  #1d4ed8;
+  --accent-active: #1e40af;
+  --accent-fg:     #ffffff;
+  --accent-dim:    rgba(37, 99, 235, 0.10);
+  --accent-ring:   rgba(37, 99, 235, 0.35);
+
+  /* ── Status ── */
+  --danger:        #dc2626;
+  --danger-dim:    rgba(220, 38, 38, 0.10);
+  --success:       #16a34a;
+  --warning:       #d97706;
+
+  /* ── Elevation ── */
+  --shadow-sm:  0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.05);
+  --shadow-md:  0 4px 16px rgba(16, 24, 40, 0.08), 0 2px 6px rgba(16, 24, 40, 0.05);
+  --shadow-lg:  0 16px 48px rgba(16, 24, 40, 0.14), 0 6px 16px rgba(16, 24, 40, 0.08);
+  --shadow-page: 0 1px 2px rgba(16, 24, 40, 0.10), 0 8px 28px rgba(16, 24, 40, 0.12);
+
+  /* ── Radii ── */
+  --radius-sm: 6px;
+  --radius:    8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+}
+
+[data-theme="dark"] {
+  /* ── Surfaces (dark, layered — not pure black) ── */
+  --bg-canvas:     #0b0c10;
+  --bg-primary:    #131419;
+  --bg-secondary:  #181a20;
+  --bg-toolbar:    #0f1014;
+  --bg-ribbon:     #15161c;
+  --bg-ribbon-tab: #101116;
+  --bg-elevated:   #1b1d24;
+  --bg-inset:      #0f1014;
+
+  --bg-hover:      rgba(255, 255, 255, 0.055);
+  --bg-active:     rgba(59, 130, 246, 0.18);
+
+  --border:        #24262e;
+  --border-light:  #32353f;
+  --border-strong: #3f4350;
+
+  --text-primary:   #e9ebf0;
+  --text-secondary: #a8aebd;
+  --text-muted:     #6e7585;
+  --text-dim:       #474d5a;
+
+  --accent:        #3b82f6;
+  --accent-hover:  #60a5fa;
+  --accent-active: #2563eb;
+  --accent-fg:     #ffffff;
+  --accent-dim:    rgba(59, 130, 246, 0.16);
+  --accent-ring:   rgba(59, 130, 246, 0.40);
+
   --danger:        #f87171;
   --danger-dim:    rgba(248, 113, 113, 0.16);
   --success:       #4ade80;
   --warning:       #fbbf24;
-  --shadow-sm:     0 1px 4px rgba(0, 0, 0, 0.5);
-  --shadow-md:     0 4px 16px rgba(0, 0, 0, 0.65);
-  --shadow-lg:     0 8px 40px rgba(0, 0, 0, 0.8);
-  --radius-sm:     4px;
-  --radius:        6px;
-  --radius-lg:     10px;
-}
 
-/* ── Light theme — Clean white + forest green ─────────────── */
-[data-theme="light"] {
-  --bg-primary:    #f4f8f5;
-  --bg-secondary:  #ecf3ee;
-  --bg-toolbar:    #ffffff;
-  --bg-ribbon:     #ffffff;
-  --bg-ribbon-tab: #f0f7f2;
-  --bg-hover:      rgba(22, 101, 52, 0.07);
-  --bg-active:     rgba(22, 101, 52, 0.13);
-  --border:        #ccddd4;
-  --border-light:  #b5cec4;
-  --text-primary:  #0d2119;
-  --text-secondary: #2a5a3c;
-  --text-muted:    #547868;
-  --text-dim:      #88aa98;
-  --accent:        #1a7a46;
-  --accent-hover:  #14623a;
-  --accent-dim:    rgba(26, 122, 70, 0.12);
-  --danger:        #dc2626;
-  --danger-dim:    rgba(220, 38, 38, 0.1);
-  --success:       #15803d;
-  --warning:       #d97706;
-  --shadow-sm:     0 1px 3px rgba(0, 0, 0, 0.1);
-  --shadow-md:     0 4px 12px rgba(0, 0, 0, 0.15);
-  --shadow-lg:     0 8px 32px rgba(0, 0, 0, 0.18);
-  --radius-sm:     4px;
-  --radius:        6px;
-  --radius-lg:     10px;
+  --shadow-sm:  0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-md:  0 6px 24px rgba(0, 0, 0, 0.50), 0 2px 6px rgba(0, 0, 0, 0.40);
+  --shadow-lg:  0 18px 50px rgba(0, 0, 0, 0.62), 0 6px 16px rgba(0, 0, 0, 0.50);
+  --shadow-page: 0 2px 8px rgba(0, 0, 0, 0.45), 0 12px 36px rgba(0, 0, 0, 0.55);
 }
 
 html, body, #root {
@@ -72,23 +113,37 @@ html, body, #root {
 }
 
 body {
-  font-family: 'Nunito', 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   font-size: 13px;
   background: var(--bg-primary);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01';
+  letter-spacing: -0.006em;
 }
 
 button, input, select, textarea {
   font-family: inherit;
 }
 
+/* Consistent, accessible focus ring on keyboard navigation */
+:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+
 /* ── Scrollbars ───────────────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: var(--border-light);
-  border-radius: 3px;
+  background: var(--border-strong);
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
 }
-::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+  background-clip: padding-box;
+}

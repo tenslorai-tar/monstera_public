@@ -811,7 +811,7 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: auto;
-  background: var(--bg-primary);
+  background: var(--bg-canvas);
 }
 .pdf-scroll-container::-webkit-scrollbar { width: 8px; height: 8px; }
 .pdf-scroll-container::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
@@ -837,7 +837,8 @@
 .pdf-page-wrapper {
   position: relative;
   flex-shrink: 0;
-  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-page);
+  border-radius: 2px;
 }
 
 .pdf-page-canvas {

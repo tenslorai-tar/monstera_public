@@ -43,7 +43,7 @@ function load(): AppSettings {
 
 function defaults(): AppSettings {
   return {
-    theme: 'dark',
+    theme: 'light',
     defaultZoom: 1.5,
     ocrLanguage: 'eng',
     autosaveIntervalMinutes: 0,
