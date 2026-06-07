@@ -389,7 +389,6 @@ export default function App() {
     <div className="app">
       <RibbonToolbar
         onOpen={openFile}
-        onClose={requestClose}
         onMerge={ops.mergePdfs}
         onSplit={() => setSplitOpen(true)}
         onMetadata={() => setMetadataOpen(true)}

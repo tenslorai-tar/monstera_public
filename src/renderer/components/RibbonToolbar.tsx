@@ -10,7 +10,6 @@ type RibbonTab = 'home' | 'comment' | 'edit' | 'organize' | 'forms' | 'review' |
 
 interface Props {
   onOpen: () => void
-  onClose: () => void
   onMerge: () => void
   onSplit: () => void
   onMetadata: () => void
@@ -162,7 +161,7 @@ const Group = ({ label, children }: { label: string; children: React.ReactNode }
 
 export default function RibbonToolbar(props: Props) {
   const {
-    onOpen, onClose, onMerge, onSplit, onMetadata, onSecurity, onOcr, onDigitalSign,
+    onOpen, onMerge, onSplit, onMetadata, onSecurity, onOcr, onDigitalSign,
     onSettings, onShortcuts, onPrint, onExport, onRequestRedactConfirm, onOpenSignaturePad,
     onInsertBlankBefore, onInsertBlankAfter, onInsertFromPdf, onInsertFromImage,
     onDeletePages, onExtractPages, onDuplicatePages, onRotateCW, onRotateCCW, onRotate180, onReverseOrder,
@@ -291,7 +290,6 @@ export default function RibbonToolbar(props: Props) {
             <SBtn icon="🖨" label="Print" onClick={onPrint} title="Print (Ctrl+P)" />
           </div>
         )}
-        {hasPdf && <SBtn icon="✕" label="Close" onClick={onClose} title="Close document (Ctrl+W)" />}
       </Group>
 
       {hasPdf && (
