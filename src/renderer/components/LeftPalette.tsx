@@ -1,7 +1,8 @@
 import { usePdfStore } from '../store/usePdfStore'
 
 const TOOLS = [
-  { id: 'hand',     icon: '☞',  label: 'Hand',    title: 'Hand tool — pan without annotating' },
+  { id: 'select',   icon: '↖',  label: 'Select',  title: 'Select tool — click annotations to select, move or delete them' },
+  { id: 'hand',     icon: '✋',  label: 'Hand',    title: 'Hand tool — pan without annotating' },
   { id: 'text-sel', icon: 'I',  label: 'Text',    title: 'Text select — select and copy text' },
   { id: 'zoom-in',  icon: '⊕',  label: 'Zoom+',  title: 'Zoom in — click to zoom in' },
   { id: 'zoom-out', icon: '⊖',  label: 'Zoom−',  title: 'Zoom out — click to zoom out' },
@@ -20,6 +21,7 @@ export default function LeftPalette() {
   if (numPages === 0) return null
 
   const isActive = (id: string) => {
+    if (id === 'select')   return activeTool === 'select'
     if (id === 'hand')     return activeTool === null && panMode
     if (id === 'text-sel') return activeTool === null && !panMode
     if (id === 'snapshot') return activeTool === 'snapshot'
@@ -27,6 +29,7 @@ export default function LeftPalette() {
   }
 
   const handleClick = (id: string) => {
+    if (id === 'select')   { setActiveTool('select'); return }
     if (id === 'hand')     { setActiveTool(null); setPanMode(true);  return }
     if (id === 'text-sel') { setActiveTool(null); setPanMode(false); return }
     if (id === 'zoom-in')  { setScale(Math.min(5,    Math.round((scale + 0.25) * 100) / 100)); return }
