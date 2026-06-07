@@ -348,9 +348,12 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   const handleTypewriterClick = (e: React.MouseEvent) => {
     if (!isTypewriterTool) return
     if (e.button !== 0) return
+    // If an editor is already open, let its onBlur commit it — never open a
+    // second editor or commit twice (this handler fires on click, after the
+    // previous editor's blur has already run).
+    if (draw.k === 'typewriter-edit') return
     e.stopPropagation()
     const [sx, sy] = getSvgXY(e)
-    if (draw.k === 'typewriter-edit') commitTypewriter(draw.text)
     setDraw({ k: 'typewriter-edit', x: sx, y: sy, text: '' })
   }
 
@@ -1569,7 +1572,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
         ref={svgRef}
         width={W} height={H}
         style={{ position: 'absolute', top: 0, left: 0, overflow: 'visible', pointerEvents: svgPointerEvents }}
-        onMouseDown={needsDragHandlers ? handleMouseDown : isTypewriterTool ? handleTypewriterClick : undefined}
+        onMouseDown={needsDragHandlers ? handleMouseDown : undefined}
         onMouseMove={needsDragHandlers || draw.k === 'poly' ? handleMouseMove : undefined}
         onMouseUp={needsDragHandlers ? handleMouseUp : undefined}
         onClick={

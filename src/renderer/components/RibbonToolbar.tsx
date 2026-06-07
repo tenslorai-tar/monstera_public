@@ -99,6 +99,67 @@ function resolveDynamicStamp(name: StampName): StampName {
   return name
 }
 
+// ── Ribbon button primitives ──────────────────────────────────────────────────
+// Defined at module scope (NOT inside RibbonToolbar) so their component identity
+// is stable across renders. If they were redefined inside the component, every
+// state change would remount the whole ribbon subtree — which silently breaks
+// the Style controls (color picker, opacity/width sliders, font inputs lose
+// focus and drag mid-interaction).
+
+const LBtn = ({
+  icon, label, active = false, disabled = false, title = '', onClick, danger = false,
+}: {
+  icon: React.ReactNode; label: string; active?: boolean; disabled?: boolean
+  title?: string; onClick?: () => void; danger?: boolean
+}) => (
+  <button
+    className={`rbn-btn-lg${active ? ' rbn-btn-lg-active' : ''}${danger ? ' rbn-btn-lg-danger' : ''}`}
+    title={title} onClick={onClick} disabled={disabled}
+  >
+    <span className="rbn-btn-icon">{icon}</span>
+    <span className="rbn-btn-label">{label}</span>
+  </button>
+)
+
+const SBtn = ({
+  icon, label = '', active = false, disabled = false, title = '', onClick, danger = false,
+}: {
+  icon: React.ReactNode; label?: string; active?: boolean; disabled?: boolean
+  title?: string; onClick?: () => void; danger?: boolean
+}) => (
+  <button
+    className={`rbn-btn-sm${active ? ' rbn-btn-sm-active' : ''}${danger ? ' rbn-btn-sm-danger' : ''}`}
+    title={title} onClick={onClick} disabled={disabled}
+  >
+    <span className="rbn-btn-sm-icon">{icon}</span>
+    {label && <span className="rbn-btn-sm-label">{label}</span>}
+  </button>
+)
+
+const IBtn = ({
+  icon, active = false, disabled = false, title = '', onClick, danger = false,
+}: {
+  icon: React.ReactNode; active?: boolean; disabled?: boolean
+  title?: string; onClick?: () => void; danger?: boolean
+}) => (
+  <button
+    className={`rbn-icon-btn${active ? ' rbn-btn-sm-active' : ''}${danger ? ' rbn-btn-sm-danger' : ''}`}
+    title={title} onClick={onClick} disabled={disabled}
+  >
+    <span className="rbn-btn-sm-icon">{icon}</span>
+  </button>
+)
+
+const Group = ({ label, children }: { label: string; children: React.ReactNode }) => (
+  <>
+    <div className="rbn-group">
+      <div className="rbn-group-tools">{children}</div>
+      <div className="rbn-group-label">{label}</div>
+    </div>
+    <div className="rbn-group-sep" />
+  </>
+)
+
 export default function RibbonToolbar(props: Props) {
   const {
     onOpen, onClose, onMerge, onSplit, onMetadata, onSecurity, onOcr, onDigitalSign,
@@ -216,62 +277,6 @@ export default function RibbonToolbar(props: Props) {
     reader.readAsDataURL(file)
     e.target.value = ''
   }
-
-  // ── Shared sub-components ─────────────────────────────────────────────────
-
-  const LBtn = ({
-    icon, label, active = false, disabled = false, title = '', onClick, danger = false,
-  }: {
-    icon: React.ReactNode; label: string; active?: boolean; disabled?: boolean
-    title?: string; onClick?: () => void; danger?: boolean
-  }) => (
-    <button
-      className={`rbn-btn-lg${active ? ' rbn-btn-lg-active' : ''}${danger ? ' rbn-btn-lg-danger' : ''}`}
-      title={title} onClick={onClick} disabled={disabled}
-    >
-      <span className="rbn-btn-icon">{icon}</span>
-      <span className="rbn-btn-label">{label}</span>
-    </button>
-  )
-
-  const SBtn = ({
-    icon, label = '', active = false, disabled = false, title = '', onClick, danger = false,
-  }: {
-    icon: React.ReactNode; label?: string; active?: boolean; disabled?: boolean
-    title?: string; onClick?: () => void; danger?: boolean
-  }) => (
-    <button
-      className={`rbn-btn-sm${active ? ' rbn-btn-sm-active' : ''}${danger ? ' rbn-btn-sm-danger' : ''}`}
-      title={title} onClick={onClick} disabled={disabled}
-    >
-      <span className="rbn-btn-sm-icon">{icon}</span>
-      {label && <span className="rbn-btn-sm-label">{label}</span>}
-    </button>
-  )
-
-  const IBtn = ({
-    icon, active = false, disabled = false, title = '', onClick, danger = false,
-  }: {
-    icon: React.ReactNode; active?: boolean; disabled?: boolean
-    title?: string; onClick?: () => void; danger?: boolean
-  }) => (
-    <button
-      className={`rbn-icon-btn${active ? ' rbn-btn-sm-active' : ''}${danger ? ' rbn-btn-sm-danger' : ''}`}
-      title={title} onClick={onClick} disabled={disabled}
-    >
-      <span className="rbn-btn-sm-icon">{icon}</span>
-    </button>
-  )
-
-  const Group = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <>
-      <div className="rbn-group">
-        <div className="rbn-group-tools">{children}</div>
-        <div className="rbn-group-label">{label}</div>
-      </div>
-      <div className="rbn-group-sep" />
-    </>
-  )
 
   // ── Tab: Home ─────────────────────────────────────────────────────────────
 
@@ -866,14 +871,14 @@ export default function RibbonToolbar(props: Props) {
 
       {/* ── Content row ────────────────────────────────────── */}
       <div className="ribbon-content">
-        {activeTab === 'home'     && <HomeTab />}
-        {activeTab === 'comment'  && (hasPdf ? <CommentTab  /> : <NoPdfMsg tab="Comment"  />)}
-        {activeTab === 'edit'     && (hasPdf ? <EditTab     /> : <NoPdfMsg tab="Edit"     />)}
-        {activeTab === 'organize' && (hasPdf ? <OrganizeTab /> : <NoPdfMsg tab="Organize" />)}
-        {activeTab === 'forms'    && (hasPdf ? <FormsTab    /> : <NoPdfMsg tab="Forms"    />)}
-        {activeTab === 'review'   && (hasPdf ? <ReviewTab   /> : <NoPdfMsg tab="Review"   />)}
-        {activeTab === 'protect'  && (hasPdf ? <ProtectTab  /> : <NoPdfMsg tab="Protect"  />)}
-        {activeTab === 'tools'    && (hasPdf ? <ToolsTab    /> : <NoPdfMsg tab="Tools"    />)}
+        {activeTab === 'home'     && HomeTab()}
+        {activeTab === 'comment'  && (hasPdf ? CommentTab()  : <NoPdfMsg tab="Comment"  />)}
+        {activeTab === 'edit'     && (hasPdf ? EditTab()     : <NoPdfMsg tab="Edit"     />)}
+        {activeTab === 'organize' && (hasPdf ? OrganizeTab() : <NoPdfMsg tab="Organize" />)}
+        {activeTab === 'forms'    && (hasPdf ? FormsTab()    : <NoPdfMsg tab="Forms"    />)}
+        {activeTab === 'review'   && (hasPdf ? ReviewTab()   : <NoPdfMsg tab="Review"   />)}
+        {activeTab === 'protect'  && (hasPdf ? ProtectTab()  : <NoPdfMsg tab="Protect"  />)}
+        {activeTab === 'tools'    && (hasPdf ? ToolsTab()    : <NoPdfMsg tab="Tools"    />)}
       </div>
     </div>
   )

@@ -333,6 +333,7 @@ export default function App() {
         case 'ocrRegion':       setOcrRegionOpen(true); break
         case 'deskew':          setDeskewOpen(true); break
         case 'flattenForm':    s.flattenForm(); break
+        case 'resetForm':      s.resetFormFields(); break
         case 'applyRedactions': setRedactConfirmOpen(true); break
         case 'headerFooter':  setHeaderFooterOpen(true); break
         case 'watermark':     setWatermarkOpen(true); break
