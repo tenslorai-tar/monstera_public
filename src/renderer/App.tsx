@@ -397,7 +397,6 @@ export default function App() {
         onDigitalSign={() => setDigitalSignOpen(true)}
         onSettings={() => setSettingsOpen(true)}
         onShortcuts={() => setShortcutsOpen(true)}
-        onPrint={() => window.electronAPI.printWindow().catch(() => {})}
         onExport={() => setExportOpen(true)}
         onRequestRedactConfirm={() => setRedactConfirmOpen(true)}
         onOpenSignaturePad={() => setSignaturePadOpen(true)}

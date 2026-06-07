@@ -18,7 +18,6 @@ interface Props {
   onDigitalSign: () => void
   onSettings: () => void
   onShortcuts: () => void
-  onPrint: () => void
   onExport: () => void
   onRequestRedactConfirm: () => void
   onOpenSignaturePad: () => void
@@ -162,7 +161,7 @@ const Group = ({ label, children }: { label: string; children: React.ReactNode }
 export default function RibbonToolbar(props: Props) {
   const {
     onOpen, onMerge, onSplit, onMetadata, onSecurity, onOcr, onDigitalSign,
-    onSettings, onShortcuts, onPrint, onExport, onRequestRedactConfirm, onOpenSignaturePad,
+    onSettings, onShortcuts, onExport, onRequestRedactConfirm, onOpenSignaturePad,
     onInsertBlankBefore, onInsertBlankAfter, onInsertFromPdf, onInsertFromImage,
     onDeletePages, onExtractPages, onDuplicatePages, onRotateCW, onRotateCCW, onRotate180, onReverseOrder,
     onCommentStyles, onSummarizeComments, onFlattenAnnotations,
@@ -287,7 +286,6 @@ export default function RibbonToolbar(props: Props) {
           <div className="rbn-stack">
             <SBtn icon="💾" label="Save" onClick={save} disabled={!isDirty} title="Save (Ctrl+S)" />
             <SBtn icon="📄" label="Save As…" onClick={saveAs} title="Save As (Ctrl+Shift+S)" />
-            <SBtn icon="🖨" label="Print" onClick={onPrint} title="Print (Ctrl+P)" />
           </div>
         )}
       </Group>
