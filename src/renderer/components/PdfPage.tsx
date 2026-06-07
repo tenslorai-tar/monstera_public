@@ -127,6 +127,11 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
       textDiv.innerHTML = ''
       textDiv.style.width = `${viewport.width}px`
       textDiv.style.height = `${viewport.height}px`
+      // pdf.js v4 positions every text span with percentages and sizes them with
+      // calc(var(--scale-factor)*…). Without this custom property the text layer
+      // collapses to width:0 and the spans land nowhere near the visible text —
+      // which makes the page unselectable and breaks highlight/underline/strike.
+      textDiv.style.setProperty('--scale-factor', String(scale))
       const textLayer = new TextLayer({
         textContentSource: page.streamTextContent(),
         container: textDiv,
