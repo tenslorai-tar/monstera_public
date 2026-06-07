@@ -32,6 +32,15 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 
 export interface PageSize { width: number; height: number }
 
+// A single undo/redo step. Captures the raw PDF bytes AND the overlay state
+// (annotations, form fields) so that adding/moving/deleting an annotation is
+// undoable, not just content-stream edits.
+export interface EditSnapshot {
+  bytes: Uint8Array
+  annotations: Annotation[]
+  formFields: FormField[]
+}
+
 export interface SearchMatch { pageNum: number; matchStart: number; matchLen: number }
 
 export type ZoomMode = 'custom' | 'fit-width' | 'fit-page'
@@ -89,8 +98,8 @@ interface PdfStore {
   pageSizes: PageSize[]
   isDirty: boolean
 
-  undoStack: Uint8Array[]
-  redoStack: Uint8Array[]
+  undoStack: EditSnapshot[]
+  redoStack: EditSnapshot[]
 
   selectedPages: Set<number>
 
@@ -162,6 +171,7 @@ interface PdfStore {
 
   applyEdit: (newBytes: Uint8Array) => Promise<void>
   applyContentEdit: (newBytes: Uint8Array, pageNum: number) => Promise<void>
+  pushUndo: () => void
   undo: () => Promise<void>
   redo: () => Promise<void>
   save: () => Promise<void>
@@ -393,35 +403,32 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
 
   // ── Edit ─────────────────────────────────────────────────────────────────
 
-  applyEdit: async (newBytes) => {
+  // Capture the current document + overlay state as one undo step. Called before
+  // any mutation that should be undoable (annotation add/move/delete, content edit).
+  pushUndo: () => {
     const { pdfBytes, annotations, formFields, undoStack } = get()
-    let undoBytes: Uint8Array | null = pdfBytes
-    if (pdfBytes) {
-      try {
-        if (annotations.length > 0) undoBytes = await writeAnnotationsToPdf(pdfBytes, annotations)
-        if (formFields.length > 0) undoBytes = await writeFormToBytes(undoBytes ?? pdfBytes, formFields)
-      } catch {}
-    }
-    const newUndo = undoBytes
-      ? [...undoStack.slice(-(MAX_UNDO - 1)), undoBytes]
-      : undoStack
-    set({ undoStack: newUndo, redoStack: [], isDirty: true })
+    if (!pdfBytes) return
+    const snap: EditSnapshot = { bytes: pdfBytes, annotations, formFields }
+    set({ undoStack: [...undoStack.slice(-(MAX_UNDO - 1)), snap], redoStack: [] })
+  },
+
+  applyEdit: async (newBytes) => {
+    get().pushUndo()
+    set({ isDirty: true })
     await get().reloadWithBytes(newBytes)
   },
 
-  // Incremental edit for content-only changes (e.g. PDFium in-place text edits)
-  // when there are no overlay annotations/forms. Unlike applyEdit→reloadWithBytes
-  // this preserves zoom, scroll, current page, selection and search, and only
-  // re-extracts the edited page's text — so the change applies without a reload.
+  // Incremental edit for content-only changes (e.g. PDFium in-place text edits).
+  // Unlike applyEdit→reloadWithBytes this preserves zoom, scroll, current page,
+  // selection and search, only re-extracting the edited page's text, and keeps
+  // the existing overlay annotations untouched.
   applyContentEdit: async (newBytes, pageNum) => {
-    const { pdfBytes, undoStack, currentPage } = get()
-    const newUndo = pdfBytes
-      ? [...undoStack.slice(-(MAX_UNDO - 1)), pdfBytes]
-      : undoStack
+    get().pushUndo()
+    const { currentPage } = get()
     const { pdfDoc, numPages, pageSizes } = await buildPdfDoc(newBytes)
     set({
       pdfDoc, pdfBytes: newBytes, numPages, pageSizes,
-      undoStack: newUndo, redoStack: [], isDirty: true,
+      isDirty: true,
       currentPage: Math.min(currentPage, numPages),
       // search highlights would point at stale offsets on the edited page
       searchMatches: [], activeMatchIndex: -1,
@@ -433,29 +440,42 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   },
 
   undo: async () => {
-    const { undoStack, pdfBytes, annotations, redoStack } = get()
-    if (undoStack.length === 0) return
+    const { undoStack, redoStack, pdfBytes, annotations, formFields, currentPage } = get()
+    if (undoStack.length === 0 || !pdfBytes) return
     const prev = undoStack[undoStack.length - 1]
-    let redoBytes = pdfBytes
-    if (pdfBytes && annotations.length > 0) {
-      try { redoBytes = await writeAnnotationsToPdf(pdfBytes, annotations) } catch {}
-    }
-    const newRedo = redoBytes ? [...redoStack.slice(-MAX_UNDO), redoBytes] : redoStack
-    set({ undoStack: undoStack.slice(0, -1), redoStack: newRedo, isDirty: undoStack.length > 1 })
-    await get().reloadWithBytes(prev)
+    const cur: EditSnapshot = { bytes: pdfBytes, annotations, formFields }
+    const newUndo = undoStack.slice(0, -1)
+    const { pdfDoc, numPages, pageSizes } = await buildPdfDoc(prev.bytes)
+    clearTextCache()
+    set({
+      pdfDoc, pdfBytes: prev.bytes, numPages, pageSizes,
+      annotations: prev.annotations, formFields: prev.formFields,
+      undoStack: newUndo, redoStack: [...redoStack.slice(-(MAX_UNDO - 1)), cur],
+      isDirty: newUndo.length > 0,
+      currentPage: Math.min(currentPage, numPages),
+      selectedAnnotationId: null, openStickyNoteId: null,
+      searchMatches: [], activeMatchIndex: -1,
+    })
+    loadAllPageText(pdfDoc).catch(() => {})
   },
 
   redo: async () => {
-    const { redoStack, pdfBytes, annotations, undoStack } = get()
-    if (redoStack.length === 0) return
+    const { redoStack, undoStack, pdfBytes, annotations, formFields, currentPage } = get()
+    if (redoStack.length === 0 || !pdfBytes) return
     const next = redoStack[redoStack.length - 1]
-    let undoBytes = pdfBytes
-    if (pdfBytes && annotations.length > 0) {
-      try { undoBytes = await writeAnnotationsToPdf(pdfBytes, annotations) } catch {}
-    }
-    const newUndo = undoBytes ? [...undoStack.slice(-MAX_UNDO), undoBytes] : undoStack
-    set({ undoStack: newUndo, redoStack: redoStack.slice(0, -1), isDirty: true })
-    await get().reloadWithBytes(next)
+    const cur: EditSnapshot = { bytes: pdfBytes, annotations, formFields }
+    const { pdfDoc, numPages, pageSizes } = await buildPdfDoc(next.bytes)
+    clearTextCache()
+    set({
+      pdfDoc, pdfBytes: next.bytes, numPages, pageSizes,
+      annotations: next.annotations, formFields: next.formFields,
+      undoStack: [...undoStack.slice(-(MAX_UNDO - 1)), cur], redoStack: redoStack.slice(0, -1),
+      isDirty: true,
+      currentPage: Math.min(currentPage, numPages),
+      selectedAnnotationId: null, openStickyNoteId: null,
+      searchMatches: [], activeMatchIndex: -1,
+    })
+    loadAllPageText(pdfDoc).catch(() => {})
   },
 
   save: async () => {
@@ -576,16 +596,25 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
 
   setActiveTool: (tool) => set({ activeTool: tool, selectedAnnotationId: null }),
   setPanMode: (v) => set({ panMode: v }),
-  addAnnotation: (ann) => set(s => ({ annotations: [...s.annotations, ann], isDirty: true })),
+  addAnnotation: (ann) => {
+    get().pushUndo()
+    set(s => ({ annotations: [...s.annotations, ann], isDirty: true }))
+  },
+  // Note: updateAnnotation does NOT snapshot undo — it fires per-keystroke and
+  // per-mouse-move during text entry and dragging. Callers that begin a discrete
+  // interaction (a move/resize drag) call pushUndo() once up front instead.
   updateAnnotation: (id, patch) => set(s => ({
     annotations: s.annotations.map(a => a.id === id ? { ...a, ...patch } as Annotation : a),
     isDirty: true,
   })),
-  deleteAnnotation: (id) => set(s => ({
-    annotations: s.annotations.filter(a => a.id !== id),
-    selectedAnnotationId: s.selectedAnnotationId === id ? null : s.selectedAnnotationId,
-    isDirty: true,
-  })),
+  deleteAnnotation: (id) => {
+    get().pushUndo()
+    set(s => ({
+      annotations: s.annotations.filter(a => a.id !== id),
+      selectedAnnotationId: s.selectedAnnotationId === id ? null : s.selectedAnnotationId,
+      isDirty: true,
+    }))
+  },
   setSelectedAnnotation: (id) => set({ selectedAnnotationId: id }),
   setToolColor: (c) => set({ toolColor: c }),
   setToolOpacity: (o) => set({ toolOpacity: o }),

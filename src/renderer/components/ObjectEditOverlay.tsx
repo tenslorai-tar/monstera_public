@@ -160,9 +160,9 @@ export default function ObjectEditOverlay({ pageNum, scale, pageW, pageH }: Prop
     setDrag({ k: 'idle' })
   }
 
-  const cursorFor = (() => {
-    return 'default'
-  })()
+  // Crosshair when nothing is picked (click to pick); move cursor once an object
+  // is selected so it's obvious it can be dragged.
+  const cursorFor = sel ? 'move' : 'crosshair'
 
   const canColor = sel && (sel.type === 1 || sel.type === 2)
 
@@ -179,7 +179,8 @@ export default function ObjectEditOverlay({ pageNum, scale, pageW, pageH }: Prop
       {preview && (
         <>
           <rect x={preview.x} y={preview.y} width={preview.w} height={preview.h}
-            fill="rgba(74,158,255,0.08)" stroke="#4a9eff" strokeWidth={1.5} strokeDasharray={drag.k === 'idle' ? undefined : '4,3'} />
+            fill="rgba(74,158,255,0.08)" stroke="#4a9eff" strokeWidth={1.5} strokeDasharray={drag.k === 'idle' ? undefined : '4,3'}
+            style={{ cursor: 'move' }} />
           {/* bottom-right resize handle */}
           <rect x={preview.x + preview.w - HANDLE / 2} y={preview.y + preview.h - HANDLE / 2}
             width={HANDLE} height={HANDLE} fill="#fff" stroke="#4a9eff" strokeWidth={1.5} style={{ cursor: 'nwse-resize' }} />

@@ -869,6 +869,10 @@
   text-size-adjust: none;
   forced-color-adjust: none;
   pointer-events: auto;
+  /* Explicitly opt into selection so it never depends on an ancestor that may
+     set user-select:none (e.g. while a sibling tool is active). */
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .text-layer > span {
@@ -877,7 +881,13 @@
   white-space: pre;
   cursor: text;
   transform-origin: 0% 0%;
+  user-select: text;
+  -webkit-user-select: text;
 }
+
+/* Markup tools (highlight/underline/strikethrough): show the I-beam over the
+   page so it's clear you select text to apply the markup. */
+.text-layer.markup-active, .text-layer.markup-active > span { cursor: text; }
 
 .text-layer ::selection {
   background: rgba(70, 130, 255, 0.3);

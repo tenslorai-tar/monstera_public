@@ -190,6 +190,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   printWindow: (): Promise<void> =>
     ipcRenderer.invoke('window:print'),
 
+  confirmUnsaved: (fileName: string): Promise<'save' | 'discard' | 'cancel'> =>
+    ipcRenderer.invoke('dialog:confirmUnsaved', fileName),
+
   onMenuAction: (callback: (action: string) => void): void => {
     ipcRenderer.on('menu:action', (_event, action: string) => callback(action))
   },

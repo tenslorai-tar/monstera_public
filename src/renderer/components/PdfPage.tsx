@@ -166,7 +166,7 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
             style={settings.darkPageMode ? { filter: 'invert(1) hue-rotate(180deg)' } : undefined} />
           <div
             ref={textLayerRef}
-            className="text-layer"
+            className={`text-layer${isMarkupTool ? ' markup-active' : ''}`}
             style={{ pointerEvents: textLayerPointerEvents }}
           />
           <OcrTextLayer

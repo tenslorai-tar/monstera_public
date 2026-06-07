@@ -313,6 +313,22 @@ ipcMain.handle('window:print', () => {
   mainWin.webContents.print({ silent: false, printBackground: true }, () => {})
 })
 
+// ── Unsaved-changes confirmation (native 3-button dialog) ──────────────────────
+ipcMain.handle('dialog:confirmUnsaved', async (_event, fileName: string) => {
+  if (!mainWin) return 'discard'
+  const { response } = await dialog.showMessageBox(mainWin, {
+    type: 'warning',
+    buttons: ['Save', "Don't Save", 'Cancel'],
+    defaultId: 0,
+    cancelId: 2,
+    title: 'Unsaved Changes',
+    message: `Do you want to save the changes you made to ${fileName || 'this document'}?`,
+    detail: "Your changes will be lost if you don't save them.",
+    noLink: true,
+  })
+  return response === 0 ? 'save' : response === 1 ? 'discard' : 'cancel'
+})
+
 // ── File read ────────────────────────────────────────────────────────────────
 
 ipcMain.handle('dialog:openFile', async () => {

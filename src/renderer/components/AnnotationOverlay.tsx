@@ -118,6 +118,32 @@ function measureLabel(
   return ''
 }
 
+// Translate any annotation by (dx, dy) in PDF points. Returns a patch for
+// updateAnnotation that shifts every geometry field the type uses.
+function translatePatch(ann: Annotation, dx: number, dy: number): Partial<Annotation> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const a = ann as any
+  switch (ann.type) {
+    case 'rectangle': case 'ellipse': case 'line': case 'arrow': case 'redact': case 'link':
+      return { x1: a.x1 + dx, y1: a.y1 + dy, x2: a.x2 + dx, y2: a.y2 + dy } as Partial<Annotation>
+    case 'highlight': case 'underline': case 'strikethrough':
+      return { quads: a.quads.map((q: number[]) =>
+        [q[0]+dx, q[1]+dy, q[2]+dx, q[3]+dy, q[4]+dx, q[5]+dy, q[6]+dx, q[7]+dy]) } as Partial<Annotation>
+    case 'ink':
+      return { paths: a.paths.map((p: Array<[number, number]>) =>
+        p.map(([x, y]) => [x + dx, y + dy] as [number, number])) } as Partial<Annotation>
+    case 'polygon': case 'polyline': case 'cloud':
+    case 'measure-distance': case 'measure-area': case 'measure-perimeter':
+      return { points: a.points.map(([x, y]: [number, number]) =>
+        [x + dx, y + dy] as [number, number]) } as Partial<Annotation>
+    case 'callout':
+      return { x: a.x + dx, y: a.y + dy, tipX: a.tipX + dx, tipY: a.tipY + dy } as Partial<Annotation>
+    default:
+      // x/y-anchored: stickynote, stamp, typewriter, textbox, text-edit, caret, placed-image
+      return { x: a.x + dx, y: a.y + dy } as Partial<Annotation>
+  }
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Props) {
@@ -149,6 +175,10 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   const cancelEditRef = useRef(false)
   const [draw, setDraw] = useState<DrawPhase>({ k: 'idle' })
   const [imgDrag, setImgDrag] = useState<ImageDrag>({ k: 'idle' })
+  // Drag-to-move for a selected annotation (any type except placed-image, which
+  // has its own move/resize handles). Uses window listeners so it works even in
+  // text-select mode where the overlay SVG is otherwise pointer-events:none.
+  const moveRef = useRef<{ id: string; sx: number; sy: number; orig: Annotation; moved: boolean } | null>(null)
 
   const W = pageW * scale
   const H = pageH * scale
@@ -573,6 +603,120 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       color: toolColor, opacity: toolOpacity,
       quads, selectedText: sel.toString(), createdAt: Date.now() } as HighlightAnn)
     sel.removeAllRanges()
+  }
+
+  // The markup tools (highlight/underline/strikethrough) let the user select text
+  // in the PDF.js text layer below — which means the mouseup lands on the text
+  // layer, not on this overlay. So listen at the document level and commit the
+  // selection only if it started inside THIS page's wrapper.
+  const commitMarkupRef = useRef(commitTextSelection)
+  commitMarkupRef.current = commitTextSelection
+  useEffect(() => {
+    if (!isMarkupTool) return
+    const onUp = () => {
+      const sel = window.getSelection()
+      if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return
+      const wrapper = svgRef.current?.closest('.pdf-page-wrapper')
+      if (!wrapper || !sel.anchorNode || !wrapper.contains(sel.anchorNode)) return
+      commitMarkupRef.current()
+    }
+    document.addEventListener('mouseup', onUp)
+    return () => document.removeEventListener('mouseup', onUp)
+  }, [isMarkupTool])
+
+  // ── Drag-to-move a selected annotation ───────────────────────────────────
+
+  const beginMove = (ann: Annotation, e: React.MouseEvent) => {
+    if (e.button !== 0) return
+    if (activeTool && activeTool !== 'select') return // only in select / no-tool modes
+    e.stopPropagation()
+    e.preventDefault()
+    setSelectedAnnotation(ann.id)
+    moveRef.current = { id: ann.id, sx: e.clientX, sy: e.clientY, orig: ann, moved: false }
+    const onMove = (ev: MouseEvent) => {
+      const m = moveRef.current
+      if (!m) return
+      if (!m.moved) {
+        if (Math.abs(ev.clientX - m.sx) < 3 && Math.abs(ev.clientY - m.sy) < 3) return
+        m.moved = true
+        usePdfStore.getState().pushUndo() // one undo step per move, captured at first drag
+      }
+      const dx = (ev.clientX - m.sx) / scale
+      const dy = -(ev.clientY - m.sy) / scale
+      updateAnnotation(m.id, translatePatch(m.orig, dx, dy))
+    }
+    const onUp = () => {
+      moveRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
+  // Bounding box (SVG space) of an annotation, used to render a transparent
+  // move handle over the currently-selected annotation. null = not movable here.
+  const moveHandleBox = (ann: Annotation): { x: number; y: number; w: number; h: number } | null => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const a = ann as any
+    let minX: number, minY: number, maxX: number, maxY: number
+    switch (ann.type) {
+      case 'rectangle': case 'ellipse': case 'line': case 'arrow': case 'redact': case 'link':
+        minX = Math.min(a.x1, a.x2); maxX = Math.max(a.x1, a.x2)
+        minY = Math.min(a.y1, a.y2); maxY = Math.max(a.y1, a.y2); break
+      case 'highlight': case 'underline': case 'strikethrough': {
+        const xs: number[] = [], ys: number[] = []
+        for (const q of a.quads) { xs.push(q[0], q[2], q[4], q[6]); ys.push(q[1], q[3], q[5], q[7]) }
+        if (!xs.length) return null
+        minX = Math.min(...xs); maxX = Math.max(...xs); minY = Math.min(...ys); maxY = Math.max(...ys); break
+      }
+      case 'ink': {
+        const pts = (a.paths as Array<Array<[number, number]>>).flat()
+        if (!pts.length) return null
+        minX = Math.min(...pts.map(p => p[0])); maxX = Math.max(...pts.map(p => p[0]))
+        minY = Math.min(...pts.map(p => p[1])); maxY = Math.max(...pts.map(p => p[1])); break
+      }
+      case 'polygon': case 'polyline': case 'cloud':
+      case 'measure-distance': case 'measure-area': case 'measure-perimeter': {
+        const pts = a.points as Array<[number, number]>
+        if (!pts.length) return null
+        minX = Math.min(...pts.map(p => p[0])); maxX = Math.max(...pts.map(p => p[0]))
+        minY = Math.min(...pts.map(p => p[1])); maxY = Math.max(...pts.map(p => p[1])); break
+      }
+      case 'textbox': case 'text-edit': case 'callout':
+        minX = a.x; maxX = a.x + a.width; minY = a.y; maxY = a.y + a.height; break
+      case 'stamp':
+        minX = a.x - a.width / 2; maxX = a.x + a.width / 2
+        minY = a.y - a.height / 2; maxY = a.y + a.height / 2; break
+      case 'stickynote':
+        minX = a.x; maxX = a.x + 22; minY = a.y; maxY = a.y + 22; break
+      case 'typewriter':
+        minX = a.x; maxX = a.x + Math.max(40, (a.text?.length || 4) * a.fontSize * 0.6)
+        minY = a.y; maxY = a.y + a.fontSize * 1.6; break
+      case 'caret':
+        minX = a.x; maxX = a.x + (a.width || 10); minY = a.y - (a.height || 14); maxY = a.y; break
+      default:
+        return null
+    }
+    const [sx1, sy1] = toSvg(minX, maxY) // top-left in svg
+    const [sx2, sy2] = toSvg(maxX, minY) // bottom-right in svg
+    return { x: sx1 - 2, y: sy1 - 2, w: (sx2 - sx1) + 4, h: (sy2 - sy1) + 4 }
+  }
+
+  const renderMoveHandle = () => {
+    if (activeTool && activeTool !== 'select') return null
+    if (!selectedAnnotationId) return null
+    const ann = pageAnnotations.find(a => a.id === selectedAnnotationId)
+    if (!ann || ann.type === 'placed-image') return null
+    if (moveRef.current) return null // don't re-render the grab target mid-drag
+    const box = moveHandleBox(ann)
+    if (!box || box.w < 2 || box.h < 2) return null
+    return (
+      <rect x={box.x} y={box.y} width={box.w} height={box.h}
+        fill="rgba(0,0,0,0.001)" stroke="none" pointerEvents="all"
+        style={{ cursor: 'move' }}
+        onMouseDown={e => beginMove(ann, e)} />
+    )
   }
 
   // ── Click handlers ───────────────────────────────────────────────────────
@@ -1420,7 +1564,6 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
     <div
       className="annot-overlay"
       style={{ position: 'absolute', top: 0, left: 0, width: W, height: H, pointerEvents: 'none' }}
-      onMouseUp={isMarkupTool ? handleMouseUp : undefined}
     >
       <svg
         ref={svgRef}
@@ -1438,6 +1581,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
         onDoubleClick={isPolyTool ? handlePolyDblClick : undefined}
       >
         {pageAnnotations.map(renderAnn)}
+        {renderMoveHandle()}
         {renderPreview()}
         {renderStickyPopup()}
         {renderTextBoxEdit()}

@@ -112,6 +112,7 @@ declare global {
 
       setWindowTitle: (title: string) => Promise<void>
       printWindow: () => Promise<void>
+      confirmUnsaved: (fileName: string) => Promise<'save' | 'discard' | 'cancel'>
       onMenuAction: (callback: (action: string) => void) => void
       removeMenuActionListener: () => void
 

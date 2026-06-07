@@ -72,7 +72,6 @@ type PasswordPromptState = { path: string; name: string } | null
 
 export default function App() {
   const loadPdf              = usePdfStore(s => s.loadPdf)
-  const closePdf             = usePdfStore(s => s.closePdf)
   const numPages             = usePdfStore(s => s.numPages)
   const annotations          = usePdfStore(s => s.annotations)
   const applyRedactions      = usePdfStore(s => s.applyRedactions)
@@ -93,6 +92,23 @@ export default function App() {
   const { settings, updateSettings } = useSettingsStore()
   const { recentFiles, addRecentFile, removeRecentFile } = useRecentFiles()
   const ops = usePdfOperations()
+
+  // Close the document, prompting to save first if there are unsaved changes.
+  const requestClose = useCallback(async () => {
+    const s = usePdfStore.getState()
+    if (s.numPages === 0) return
+    if (s.isDirty) {
+      const choice = await window.electronAPI.confirmUnsaved(s.fileName)
+      if (choice === 'cancel') return
+      if (choice === 'save') {
+        if (s.filePath) await s.save()
+        else await s.saveAs()
+        // Save As was cancelled (still dirty) → abort the close.
+        if (usePdfStore.getState().isDirty) return
+      }
+    }
+    usePdfStore.getState().closePdf()
+  }, [])
 
   const [splitOpen,         setSplitOpen]         = useState(false)
   const [metadataOpen,      setMetadataOpen]       = useState(false)
@@ -250,7 +266,7 @@ export default function App() {
       const sel = rawSel.length > 0 ? rawSel : (s.numPages > 0 ? [s.currentPage] : [])
       switch (action) {
         case 'open':         openFile(); break
-        case 'close':        s.closePdf(); break
+        case 'close':        requestClose(); break
         case 'save':         if (s.isDirty) s.save(); break
         case 'saveAs':       s.saveAs(); break
         case 'undo':         s.undo(); break
@@ -343,7 +359,7 @@ export default function App() {
       if (window.electronAPI.removeMenuActionListener)
         window.electronAPI.removeMenuActionListener()
     }
-  }, [openFile, ops, settings.theme, updateSettings])
+  }, [openFile, ops, settings.theme, updateSettings, requestClose])
 
   // ── Keyboard shortcuts ───────────────────────────────────────────────────────
 
@@ -372,7 +388,7 @@ export default function App() {
     <div className="app">
       <RibbonToolbar
         onOpen={openFile}
-        onClose={closePdf}
+        onClose={requestClose}
         onMerge={ops.mergePdfs}
         onSplit={() => setSplitOpen(true)}
         onMetadata={() => setMetadataOpen(true)}
