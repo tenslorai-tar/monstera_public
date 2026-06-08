@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Lock } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import type { ZoomMode } from '../store/usePdfStore'
 
@@ -82,7 +83,7 @@ export default function StatusBar() {
           </span>
         )}
         {hasPdf && encryptionSettings && (
-          <span className="status-badge status-lock" title="This document is encrypted">🔒 Encrypted</span>
+          <span className="status-badge status-lock" title="This document is encrypted" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Lock size={11} /> Encrypted</span>
         )}
         {hasPdf && isDirty && (
           <span className="status-badge status-dirty" title="You have unsaved changes">● Unsaved</span>

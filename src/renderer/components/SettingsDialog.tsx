@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Settings as SettingsIcon, X as XIcon, Moon, Sun } from 'lucide-react'
 import { useSettingsStore } from '../store/useSettingsStore'
 import type { Theme, DefaultZoom } from '../store/useSettingsStore'
 
@@ -44,8 +45,8 @@ export default function SettingsDialog({ onClose }: Props) {
     <div className="modal-overlay" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="modal-box settings-modal">
         <div className="settings-header">
-          <span className="settings-header-title">⚙ Settings</span>
-          <button className="settings-close-btn" onClick={onClose} title="Close (Esc)" aria-label="Close">✕</button>
+          <span className="settings-header-title" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><SettingsIcon size={17} /> Settings</span>
+          <button className="settings-close-btn" onClick={onClose} title="Close (Esc)" aria-label="Close" style={{ display: 'inline-flex', alignItems: 'center' }}><XIcon size={16} /></button>
         </div>
 
         <div className="settings-body">
@@ -59,12 +60,13 @@ export default function SettingsDialog({ onClose }: Props) {
                 style={{
                   flex: 1, padding: '8px 0', border: '1px solid',
                   borderColor: local.theme === t ? 'var(--accent)' : 'var(--border)',
-                  borderRadius: 5, cursor: 'pointer', fontSize: 13,
-                  background: local.theme === t ? 'rgba(74,158,255,0.12)' : 'var(--bg-secondary)',
+                  borderRadius: 'var(--radius)', cursor: 'pointer', fontSize: 13,
+                  background: local.theme === t ? 'var(--accent-dim)' : 'var(--bg-secondary)',
                   color: local.theme === t ? 'var(--accent)' : 'var(--text-primary)',
                   fontWeight: local.theme === t ? 600 : 400,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7,
                 }}>
-                {t === 'dark' ? '🌙 Dark' : '☀ Light'}
+                {t === 'dark' ? <><Moon size={15} /> Dark</> : <><Sun size={15} /> Light</>}
               </button>
             ))}
           </div>
