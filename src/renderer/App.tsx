@@ -1,5 +1,6 @@
 import { useCallback, useState, useEffect, useRef } from 'react'
 import RibbonToolbar from './components/RibbonToolbar'
+import CommandPalette from './components/CommandPalette'
 import StatusBar from './components/StatusBar'
 import LeftPalette from './components/LeftPalette'
 import PdfViewer from './components/PdfViewer'
@@ -256,11 +257,9 @@ export default function App() {
     window.electronAPI.setWindowTitle(title).catch(() => {})
   }, [fileName, isDirty])
 
-  // ── Native menu actions ──────────────────────────────────────────────────────
+  // ── Action dispatch (shared by the native menu and the ⌘K command palette) ──
 
-  useEffect(() => {
-    if (!window.electronAPI.onMenuAction) return
-    window.electronAPI.onMenuAction((action: string) => {
+  const runAction = useCallback((action: string) => {
       const s = usePdfStore.getState()
       const rawSel = [...s.selectedPages]
       const sel = rawSel.length > 0 ? rawSel : (s.numPages > 0 ? [s.currentPage] : [])
@@ -355,12 +354,18 @@ export default function App() {
           }
           break
       }
-    })
+  }, [openFile, ops, settings.theme, updateSettings, requestClose]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Native menu actions ──────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!window.electronAPI.onMenuAction) return
+    window.electronAPI.onMenuAction(runAction)
     return () => {
       if (window.electronAPI.removeMenuActionListener)
         window.electronAPI.removeMenuActionListener()
     }
-  }, [openFile, ops, settings.theme, updateSettings, requestClose])
+  }, [runAction])
 
   // ── Keyboard shortcuts ───────────────────────────────────────────────────────
 
@@ -506,6 +511,8 @@ export default function App() {
       />
 
       <TabsBar />
+
+      <CommandPalette runAction={runAction} hasPdf={hasPdf} />
 
       {hasPdf ? (
         <div className="main-row">
