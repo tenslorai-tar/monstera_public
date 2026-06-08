@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { usePdfStore } from '../store/usePdfStore'
 import { useSettingsStore } from '../store/useSettingsStore'
+import ContextMenu, { type ContextMenuEntry } from './ContextMenu'
 import { canvasToPdf, pdfToCanvas, newId } from '../utils/annotationUtils'
 import { loadPdfFont } from '../utils/pdfFonts'
 import type {
@@ -36,6 +38,29 @@ type ImageDrag =
   | { k: 'idle' }
   | { k: 'move'; id: string; startSvgX: number; startSvgY: number; origAnnX: number; origAnnY: number }
   | { k: 'resize'; id: string; corner: 'br'; startSvgX: number; startSvgY: number; origW: number; origH: number }
+
+type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
+
+// Handle layout: fractional position within the selection box + the cursor it shows.
+const RESIZE_HANDLES: { h: ResizeHandle; fx: number; fy: number; cursor: string }[] = [
+  { h: 'nw', fx: 0,   fy: 0,   cursor: 'nwse-resize' },
+  { h: 'n',  fx: 0.5, fy: 0,   cursor: 'ns-resize' },
+  { h: 'ne', fx: 1,   fy: 0,   cursor: 'nesw-resize' },
+  { h: 'e',  fx: 1,   fy: 0.5, cursor: 'ew-resize' },
+  { h: 'se', fx: 1,   fy: 1,   cursor: 'nwse-resize' },
+  { h: 's',  fx: 0.5, fy: 1,   cursor: 'ns-resize' },
+  { h: 'sw', fx: 0,   fy: 1,   cursor: 'nesw-resize' },
+  { h: 'w',  fx: 0,   fy: 0.5, cursor: 'ew-resize' },
+]
+
+// Annotation types that support box-resize via handles. (placed-image keeps its own
+// corner handle; stickynote is a fixed icon; markup is bound to the underlying text.)
+const RESIZABLE_TYPES = new Set([
+  'rectangle', 'ellipse', 'line', 'arrow', 'redact', 'link',
+  'textbox', 'text-edit', 'callout', 'stamp', 'ink',
+  'polygon', 'polyline', 'cloud',
+  'measure-distance', 'measure-area', 'measure-perimeter', 'typewriter',
+])
 
 // PDFium engine availability (true in-place text editing), cached per session.
 let _pdfiumAvail: boolean | null = null
@@ -170,6 +195,12 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   const deleteAnnotation = usePdfStore(s => s.deleteAnnotation)
   const setSelectedAnnotation = usePdfStore(s => s.setSelectedAnnotation)
   const setOpenStickyNote = usePdfStore(s => s.setOpenStickyNote)
+  const copyAnnotation = usePdfStore(s => s.copyAnnotation)
+  const pasteAnnotation = usePdfStore(s => s.pasteAnnotation)
+  const duplicateAnnotation = usePdfStore(s => s.duplicateAnnotation)
+  const bringAnnotationToFront = usePdfStore(s => s.bringAnnotationToFront)
+  const sendAnnotationToBack = usePdfStore(s => s.sendAnnotationToBack)
+  const annotationClipboard = usePdfStore(s => s.annotationClipboard)
 
   const svgRef = useRef<SVGSVGElement>(null)
   const cancelEditRef = useRef(false)
@@ -179,6 +210,14 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   // has its own move/resize handles). Uses window listeners so it works even in
   // text-select mode where the overlay SVG is otherwise pointer-events:none.
   const moveRef = useRef<{ id: string; sx: number; sy: number; orig: Annotation; moved: boolean } | null>(null)
+  // Resize a selected annotation by dragging one of its 8 handles.
+  const resizeRef = useRef<{
+    id: string; handle: ResizeHandle; origAnn: Annotation;
+    origSvg: { x: number; y: number; w: number; h: number }; startX: number; startY: number; pushed: boolean
+  } | null>(null)
+  // Right-click context menus (annotation actions, and text-selection actions).
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; annId: string | null } | null>(null)
+  const [textMenu, setTextMenu] = useState<{ x: number; y: number } | null>(null)
 
   const W = pageW * scale
   const H = pageH * scale
@@ -632,8 +671,9 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
 
   // ── Text selection markup ────────────────────────────────────────────────
 
-  const commitTextSelection = () => {
-    if (!activeTool || !isMarkupTool) return
+  const commitTextSelection = (typeOverride?: 'highlight' | 'underline' | 'strikethrough') => {
+    const type = typeOverride ?? (isMarkupTool ? (activeTool as HighlightAnn['type']) : null)
+    if (!type) return
     const sel = window.getSelection()
     if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return
     const range = sel.getRangeAt(0)
@@ -647,8 +687,11 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       const [x_lr, y_lr] = toPdf(r.right - svgBounds.left, r.bottom - svgBounds.top)
       return [x_ul, y_ul, x_ur, y_ur, x_ll, y_ll, x_lr, y_lr]
     })
-    addAnnotation({ id: newId(), pageNum, type: activeTool as HighlightAnn['type'],
-      color: toolColor, opacity: toolOpacity,
+    // Highlights read best semi-transparent; underline/strike want full opacity.
+    const op = typeOverride ? (type === 'highlight' ? 0.4 : 1) : toolOpacity
+    const col = typeOverride && type === 'highlight' && toolColor === '#ffcc00' ? '#ffeb3b' : toolColor
+    addAnnotation({ id: newId(), pageNum, type,
+      color: col, opacity: op,
       quads, selectedText: sel.toString(), createdAt: Date.now() } as HighlightAnn)
     sel.removeAllRanges()
   }
@@ -702,9 +745,8 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
     window.addEventListener('mouseup', onUp)
   }
 
-  // Bounding box (SVG space) of an annotation, used to render a transparent
-  // move handle over the currently-selected annotation. null = not movable here.
-  const moveHandleBox = (ann: Annotation): { x: number; y: number; w: number; h: number } | null => {
+  // Bounding box in PDF points of an annotation. null = no movable/resizable box.
+  const pdfBounds = (ann: Annotation): { minX: number; minY: number; maxX: number; maxY: number } | null => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const a = ann as any
     let minX: number, minY: number, maxX: number, maxY: number
@@ -731,7 +773,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
         minX = Math.min(...pts.map(p => p[0])); maxX = Math.max(...pts.map(p => p[0]))
         minY = Math.min(...pts.map(p => p[1])); maxY = Math.max(...pts.map(p => p[1])); break
       }
-      case 'textbox': case 'text-edit': case 'callout':
+      case 'textbox': case 'text-edit': case 'callout': case 'placed-image':
         minX = a.x; maxX = a.x + a.width; minY = a.y; maxY = a.y + a.height; break
       case 'stamp':
         minX = a.x - a.width / 2; maxX = a.x + a.width / 2
@@ -746,24 +788,134 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       default:
         return null
     }
-    const [sx1, sy1] = toSvg(minX, maxY) // top-left in svg
-    const [sx2, sy2] = toSvg(maxX, minY) // bottom-right in svg
+    return { minX, minY, maxX, maxY }
+  }
+
+  // SVG-space box (with a small inset) used for the move target + selection chrome.
+  const moveHandleBox = (ann: Annotation): { x: number; y: number; w: number; h: number } | null => {
+    const b = pdfBounds(ann)
+    if (!b) return null
+    const [sx1, sy1] = toSvg(b.minX, b.maxY) // top-left in svg
+    const [sx2, sy2] = toSvg(b.maxX, b.minY) // bottom-right in svg
     return { x: sx1 - 2, y: sy1 - 2, w: (sx2 - sx1) + 4, h: (sy2 - sy1) + 4 }
   }
 
-  const renderMoveHandle = () => {
+  const isResizable = (ann: Annotation) => RESIZABLE_TYPES.has(ann.type)
+
+  // Map every geometry field of an annotation from its old PDF bounding box to a new
+  // one (linear scale + translate). Powers the 8-handle resize for all shapes/text.
+  type Box = { minX: number; minY: number; maxX: number; maxY: number }
+  const remapPatch = (ann: Annotation, oldBox: Box, newBox: Box): Partial<Annotation> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const a = ann as any
+    const ow = oldBox.maxX - oldBox.minX
+    const oh = oldBox.maxY - oldBox.minY
+    const fx = ow > 0.01 ? (newBox.maxX - newBox.minX) / ow : 1
+    const fy = oh > 0.01 ? (newBox.maxY - newBox.minY) / oh : 1
+    const mapX = (x: number) => ow > 0.01 ? newBox.minX + (x - oldBox.minX) * fx : x + (newBox.minX - oldBox.minX)
+    const mapY = (y: number) => oh > 0.01 ? newBox.minY + (y - oldBox.minY) * fy : y + (newBox.minY - oldBox.minY)
+    switch (ann.type) {
+      case 'rectangle': case 'ellipse': case 'line': case 'arrow': case 'redact': case 'link':
+        return { x1: mapX(a.x1), y1: mapY(a.y1), x2: mapX(a.x2), y2: mapY(a.y2) } as Partial<Annotation>
+      case 'ink':
+        return { paths: a.paths.map((p: Array<[number, number]>) =>
+          p.map(([x, y]) => [mapX(x), mapY(y)] as [number, number])) } as Partial<Annotation>
+      case 'polygon': case 'polyline': case 'cloud':
+        return { points: a.points.map(([x, y]: [number, number]) =>
+          [mapX(x), mapY(y)] as [number, number]) } as Partial<Annotation>
+      case 'measure-distance': case 'measure-area': case 'measure-perimeter': {
+        const pts = a.points.map(([x, y]: [number, number]) => [mapX(x), mapY(y)] as [number, number])
+        return { points: pts, label: measureLabel(ann.type, pts, measureUnit, measureScale) } as Partial<Annotation>
+      }
+      case 'textbox': case 'text-edit': case 'placed-image':
+        return { x: mapX(a.x), y: mapY(a.y), width: Math.max(8, a.width * fx), height: Math.max(8, a.height * fy) } as Partial<Annotation>
+      case 'callout':
+        return { x: mapX(a.x), y: mapY(a.y), width: Math.max(8, a.width * fx), height: Math.max(8, a.height * fy),
+          tipX: mapX(a.tipX), tipY: mapY(a.tipY) } as Partial<Annotation>
+      case 'stamp':
+        return { x: mapX(a.x), y: mapY(a.y), width: Math.max(8, a.width * fx), height: Math.max(8, a.height * fy) } as Partial<Annotation>
+      case 'typewriter':
+        return { x: mapX(a.x), y: mapY(a.y), fontSize: Math.max(5, a.fontSize * (fx + fy) / 2) } as Partial<Annotation>
+      default:
+        return {}
+    }
+  }
+
+  const beginResize = (ann: Annotation, handle: ResizeHandle, e: React.MouseEvent) => {
+    if (e.button !== 0) return
+    e.stopPropagation(); e.preventDefault()
+    setSelectedAnnotation(ann.id)
+    const b = pdfBounds(ann)
+    if (!b) return
+    const [sx1, sy1] = toSvg(b.minX, b.maxY)
+    const [sx2, sy2] = toSvg(b.maxX, b.minY)
+    const [startX, startY] = getSvgXY(e)
+    resizeRef.current = { id: ann.id, handle, origAnn: ann,
+      origSvg: { x: sx1, y: sy1, w: sx2 - sx1, h: sy2 - sy1 }, startX, startY, pushed: false }
+    const onMove = (ev: MouseEvent) => {
+      const r = resizeRef.current
+      if (!r || !svgRef.current) return
+      const rect = svgRef.current.getBoundingClientRect()
+      const dx = (ev.clientX - rect.left) - r.startX
+      const dy = (ev.clientY - rect.top) - r.startY
+      if (!r.pushed) {
+        if (Math.abs(dx) < 2 && Math.abs(dy) < 2) return
+        r.pushed = true
+        usePdfStore.getState().pushUndo()
+      }
+      let left = r.origSvg.x, top = r.origSvg.y
+      let right = r.origSvg.x + r.origSvg.w, bottom = r.origSvg.y + r.origSvg.h
+      if (r.handle.includes('w')) left += dx
+      if (r.handle.includes('e')) right += dx
+      if (r.handle.includes('n')) top += dy
+      if (r.handle.includes('s')) bottom += dy
+      if (right - left < 6) { if (r.handle.includes('w')) left = right - 6; else right = left + 6 }
+      if (bottom - top < 6) { if (r.handle.includes('n')) top = bottom - 6; else bottom = top + 6 }
+      const [pMinX, pMaxY] = toPdf(left, top)
+      const [pMaxX, pMinY] = toPdf(right, bottom)
+      const oldBox = pdfBounds(r.origAnn)
+      if (!oldBox) return
+      updateAnnotation(r.id, remapPatch(r.origAnn, oldBox, { minX: pMinX, minY: pMinY, maxX: pMaxX, maxY: pMaxY }))
+    }
+    const onUp = () => {
+      resizeRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
+  // Selection chrome: move target + dashed outline + 8 resize handles.
+  const renderSelectionChrome = () => {
     if (activeTool && activeTool !== 'select') return null
     if (!selectedAnnotationId) return null
     const ann = pageAnnotations.find(a => a.id === selectedAnnotationId)
-    if (!ann || ann.type === 'placed-image') return null
-    if (moveRef.current) return null // don't re-render the grab target mid-drag
+    if (!ann || ann.type === 'placed-image') return null // placed-image has its own handles
     const box = moveHandleBox(ann)
     if (!box || box.w < 2 || box.h < 2) return null
+    const busy = !!moveRef.current || !!resizeRef.current
+    const hs = 8
     return (
-      <rect x={box.x} y={box.y} width={box.w} height={box.h}
-        fill="rgba(0,0,0,0.001)" stroke="none" pointerEvents="all"
-        style={{ cursor: 'move' }}
-        onMouseDown={e => beginMove(ann, e)} />
+      <g>
+        {!busy && (
+          <rect x={box.x} y={box.y} width={box.w} height={box.h}
+            fill="rgba(0,0,0,0.001)" stroke="none" pointerEvents="all"
+            style={{ cursor: 'move' }}
+            onMouseDown={e => beginMove(ann, e)}
+            onContextMenu={e => openAnnotMenu(ann.id, e)} />
+        )}
+        <rect x={box.x} y={box.y} width={box.w} height={box.h}
+          fill="none" stroke="#4a9eff" strokeWidth={1} strokeDasharray="4,3" pointerEvents="none" />
+        {isResizable(ann) && !busy && RESIZE_HANDLES.map(hd => (
+          <rect key={hd.h}
+            x={box.x + box.w * hd.fx - hs / 2} y={box.y + box.h * hd.fy - hs / 2}
+            width={hs} height={hs} rx={1.5}
+            fill="#fff" stroke="#4a9eff" strokeWidth={1.5} pointerEvents="all"
+            style={{ cursor: hd.cursor }}
+            onMouseDown={e => beginResize(ann, hd.h, e)} />
+        ))}
+      </g>
     )
   }
 
@@ -796,6 +948,76 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       setOpenStickyNote(null)
     }
   }
+
+  // ── Right-click context menus ────────────────────────────────────────────
+
+  const openAnnotMenu = (annId: string, e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation()
+    setSelectedAnnotation(annId)
+    setCtxMenu({ x: e.clientX, y: e.clientY, annId })
+  }
+
+  // Right-click anywhere on the page (select / no-tool modes): hit-test the topmost
+  // annotation under the cursor → object menu, else an empty-area paste menu.
+  const handleSvgContextMenu = (e: React.MouseEvent) => {
+    if (activeTool && activeTool !== 'select') return
+    const [sx, sy] = getSvgXY(e)
+    let hit: Annotation | null = null
+    for (let i = pageAnnotations.length - 1; i >= 0; i--) {
+      const box = moveHandleBox(pageAnnotations[i])
+      if (box && sx >= box.x && sx <= box.x + box.w && sy >= box.y && sy <= box.y + box.h) { hit = pageAnnotations[i]; break }
+    }
+    e.preventDefault()
+    if (hit) { setSelectedAnnotation(hit.id); setCtxMenu({ x: e.clientX, y: e.clientY, annId: hit.id }) }
+    else setCtxMenu({ x: e.clientX, y: e.clientY, annId: null })
+  }
+
+  const buildAnnotMenuItems = (annId: string | null): ContextMenuEntry[] => {
+    if (!annId) {
+      return [{ label: 'Paste here', action: () => pasteAnnotation(pageNum), disabled: !annotationClipboard }]
+    }
+    return [
+      { label: 'Cut', action: () => { copyAnnotation(annId); deleteAnnotation(annId) } },
+      { label: 'Copy', action: () => copyAnnotation(annId) },
+      { label: 'Duplicate', action: () => duplicateAnnotation(annId) },
+      { label: 'Paste', action: () => pasteAnnotation(pageNum), disabled: !annotationClipboard },
+      'separator',
+      { label: 'Bring to Front', action: () => bringAnnotationToFront(annId) },
+      { label: 'Send to Back', action: () => sendAnnotationToBack(annId) },
+      'separator',
+      { label: 'Delete', action: () => deleteAnnotation(annId) },
+    ]
+  }
+
+  const buildTextMenuItems = (): ContextMenuEntry[] => {
+    const txt = window.getSelection()?.toString() ?? ''
+    return [
+      { label: 'Copy', action: () => {
+        try { navigator.clipboard.writeText(txt) } catch { try { document.execCommand('copy') } catch { /* ignore */ } }
+      } },
+      'separator',
+      { label: 'Highlight', action: () => commitTextSelection('highlight') },
+      { label: 'Underline', action: () => commitTextSelection('underline') },
+      { label: 'Strikethrough', action: () => commitTextSelection('strikethrough') },
+    ]
+  }
+
+  // Right-click on selected text (text-select mode) → copy / markup menu. Listens at
+  // document level because the mouseup/selection lives in the PDF.js text layer below.
+  useEffect(() => {
+    const isTextSelect = activeTool === null && !panMode
+    if (!isTextSelect) return
+    const onCtx = (e: MouseEvent) => {
+      const sel = window.getSelection()
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return
+      const wrapper = svgRef.current?.closest('.pdf-page-wrapper')
+      if (!wrapper || !sel.anchorNode || !wrapper.contains(sel.anchorNode)) return
+      e.preventDefault()
+      setTextMenu({ x: e.clientX, y: e.clientY })
+    }
+    document.addEventListener('contextmenu', onCtx)
+    return () => document.removeEventListener('contextmenu', onCtx)
+  }, [activeTool, panMode])
 
   // ── Commit helpers ───────────────────────────────────────────────────────
 
@@ -1627,9 +1849,10 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
           (!activeTool || activeTool === 'select' || activeTool === 'eraser') ? handleSvgClick : undefined
         }
         onDoubleClick={isPolyTool ? handlePolyDblClick : undefined}
+        onContextMenu={handleSvgContextMenu}
       >
         {pageAnnotations.map(renderAnn)}
-        {renderMoveHandle()}
+        {renderSelectionChrome()}
         {renderPreview()}
         {renderStickyPopup()}
         {renderTextBoxEdit()}
@@ -1650,6 +1873,15 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
             fontFamily="sans-serif" pointerEvents="none" opacity={0.7}>Click second point</text>
         )}
       </svg>
+
+      {ctxMenu && createPortal(
+        <ContextMenu x={ctxMenu.x} y={ctxMenu.y}
+          items={buildAnnotMenuItems(ctxMenu.annId)} onClose={() => setCtxMenu(null)} />,
+        document.body)}
+      {textMenu && createPortal(
+        <ContextMenu x={textMenu.x} y={textMenu.y}
+          items={buildTextMenuItems()} onClose={() => setTextMenu(null)} />,
+        document.body)}
     </div>
   )
 }

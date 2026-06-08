@@ -4,10 +4,33 @@ import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { textCache, clearTextCache, loadAllPageText, loadPageText } from '../utils/textCache'
 import type { Annotation, AnnotationTool, StampName } from '../types/annotations'
 import { writeAnnotationsToPdf, readAnnotationsFromPdf } from '../utils/annotationPdfLib'
+import { newId } from '../utils/annotationUtils'
 import type { FormField, FormCreationTool } from '../types/forms'
 import { readFormFieldsFromPdf, writeFormToBytes, flattenFormToBytes } from '../utils/formPdfLib'
 import type { OcrWord } from '../utils/ocrUtils'
 import type { BookmarkItem } from '../types/bookmarks'
+
+// Shift every geometry field of an annotation by (dx, dy) PDF points, in place.
+// Used for paste/duplicate offset so the copy doesn't sit exactly on the original.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function shiftAnnotation(a: any, dx: number, dy: number): void {
+  switch (a.type) {
+    case 'rectangle': case 'ellipse': case 'line': case 'arrow': case 'redact': case 'link':
+      a.x1 += dx; a.y1 += dy; a.x2 += dx; a.y2 += dy; break
+    case 'highlight': case 'underline': case 'strikethrough':
+      a.quads = a.quads.map((q: number[]) =>
+        [q[0]+dx, q[1]+dy, q[2]+dx, q[3]+dy, q[4]+dx, q[5]+dy, q[6]+dx, q[7]+dy]); break
+    case 'ink':
+      a.paths = a.paths.map((p: Array<[number, number]>) => p.map(([x, y]) => [x+dx, y+dy])); break
+    case 'polygon': case 'polyline': case 'cloud':
+    case 'measure-distance': case 'measure-area': case 'measure-perimeter':
+      a.points = a.points.map(([x, y]: [number, number]) => [x+dx, y+dy]); break
+    case 'callout':
+      a.x += dx; a.y += dy; a.tipX += dx; a.tipY += dy; break
+    default:
+      a.x += dx; a.y += dy
+  }
+}
 
 export interface LayerItem {
   id: string
@@ -125,6 +148,7 @@ interface PdfStore {
   activeTool: AnnotationTool | null
   panMode: boolean
   selectedAnnotationId: string | null
+  annotationClipboard: Annotation | null
   toolColor: string
   toolOpacity: number
   toolLineWidth: number
@@ -199,6 +223,11 @@ interface PdfStore {
   updateAnnotation: (id: string, patch: Partial<Annotation>) => void
   deleteAnnotation: (id: string) => void
   setSelectedAnnotation: (id: string | null) => void
+  copyAnnotation: (id: string) => void
+  pasteAnnotation: (pageNum?: number) => void
+  duplicateAnnotation: (id: string) => void
+  bringAnnotationToFront: (id: string) => void
+  sendAnnotationToBack: (id: string) => void
   setToolColor: (c: string) => void
   setToolOpacity: (o: number) => void
   setToolLineWidth: (w: number) => void
@@ -271,6 +300,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   activeTool: null,
   panMode: false, // default to text-select mode so text is selectable out of the box
   selectedAnnotationId: null,
+  annotationClipboard: null,
   toolColor: '#ffcc00',
   toolOpacity: 0.7,
   toolLineWidth: 2,
@@ -616,6 +646,45 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     }))
   },
   setSelectedAnnotation: (id) => set({ selectedAnnotationId: id }),
+
+  copyAnnotation: (id) => {
+    const a = get().annotations.find(x => x.id === id)
+    if (a) set({ annotationClipboard: JSON.parse(JSON.stringify(a)) })
+  },
+  pasteAnnotation: (pageNum) => {
+    const clip = get().annotationClipboard
+    if (!clip) return
+    const clone = JSON.parse(JSON.stringify(clip)) as Annotation
+    clone.id = newId()
+    clone.createdAt = Date.now()
+    clone.pageNum = pageNum ?? clip.pageNum
+    shiftAnnotation(clone, 14, -14) // small offset so the paste is visibly distinct
+    get().pushUndo()
+    set(s => ({ annotations: [...s.annotations, clone], selectedAnnotationId: clone.id, isDirty: true }))
+  },
+  duplicateAnnotation: (id) => {
+    const a = get().annotations.find(x => x.id === id)
+    if (!a) return
+    const clone = JSON.parse(JSON.stringify(a)) as Annotation
+    clone.id = newId()
+    clone.createdAt = Date.now()
+    shiftAnnotation(clone, 14, -14)
+    get().pushUndo()
+    set(s => ({ annotations: [...s.annotations, clone], selectedAnnotationId: clone.id, isDirty: true }))
+  },
+  bringAnnotationToFront: (id) => {
+    const a = get().annotations.find(x => x.id === id)
+    if (!a) return
+    get().pushUndo()
+    set(s => ({ annotations: [...s.annotations.filter(x => x.id !== id), a], isDirty: true }))
+  },
+  sendAnnotationToBack: (id) => {
+    const a = get().annotations.find(x => x.id === id)
+    if (!a) return
+    get().pushUndo()
+    set(s => ({ annotations: [a, ...s.annotations.filter(x => x.id !== id)], isDirty: true }))
+  },
+
   setToolColor: (c) => set({ toolColor: c }),
   setToolOpacity: (o) => set({ toolOpacity: o }),
   setToolLineWidth: (w) => set({ toolLineWidth: w }),
