@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import StatusText from './StatusText'
 import { SearchX } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { newId } from '../utils/annotationUtils'
@@ -58,7 +59,7 @@ export default function FindRedactDialog({ onClose }: Props) {
         </div>
         {status && (
           <div style={{ fontSize: 12, color: status.startsWith('Error') ? 'var(--error, #f55)' : 'var(--text-muted)', marginBottom: 8 }}>
-            {status}
+            <StatusText status={status} />
           </div>
         )}
         <div className="modal-actions">

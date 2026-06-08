@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import StatusText from './StatusText'
 import { X } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
@@ -86,7 +87,7 @@ export default function CompareDialog({ onClose }: { onClose: () => void }) {
             </button>
             {otherName && <div style={{ fontSize: 12, opacity: 0.7 }}>vs <strong>{otherName}</strong></div>}
           </div>
-          {status && <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>{status}</div>}
+          {status && <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}><StatusText status={status} /></div>}
           {diffPages.length > 0 && (
             <div style={{ marginTop: 6, display: 'flex', gap: 16, fontSize: 12 }}>
               <span style={{ color: '#4caf50' }}>+ {totalAdded} added lines</span>

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import StatusText from './StatusText'
 import { Table, FolderOpen } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
@@ -101,7 +102,7 @@ export default function CsvPdfDialog({ onClose }: Props) {
 
         {status && (
           <div style={{ fontSize: 12, marginTop: 8, color: status.startsWith('✓') ? '#4caf50' : status.startsWith('Error') ? '#f44336' : 'var(--text-muted)' }}>
-            {status}
+            <StatusText status={status} />
           </div>
         )}
 

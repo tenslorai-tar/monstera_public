@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import StatusText from './StatusText'
 import { SquarePen, Download, ExternalLink } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
@@ -91,7 +92,7 @@ export default function EditExternalDialog({ onClose }: Props) {
           <div style={{ fontSize: 12, marginBottom: 10, padding: '6px 10px', borderRadius: 4,
             color: status.startsWith('✓') ? '#4caf50' : status.startsWith('Error') ? '#f44336' : 'var(--text-muted)',
             background: status.startsWith('✓') ? 'rgba(76,175,80,0.08)' : 'transparent' }}>
-            {status}
+            <StatusText status={status} />
           </div>
         )}
 

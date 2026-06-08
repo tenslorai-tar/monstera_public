@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import StatusText from './StatusText'
 import { CopyPlus } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import type { Annotation } from '../types/annotations'
@@ -59,7 +60,7 @@ export default function MultiPageStampDialog({ onClose, sourceAnnotation }: Prop
           <span className="modal-hint">Current page ({sourceAnnotation.pageNum}) is skipped.</span>
         </div>
 
-        {status && <div style={{ fontSize: 13, color: '#4caf50', marginBottom: 8 }}>{status}</div>}
+        {status && <div style={{ fontSize: 13, color: '#4caf50', marginBottom: 8 }}><StatusText status={status} /></div>}
 
         <div className="modal-actions">
           <button className="modal-btn-secondary" onClick={onClose}>Cancel</button>

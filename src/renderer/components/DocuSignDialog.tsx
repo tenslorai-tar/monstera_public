@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import StatusText from './StatusText'
 import { Signature, SendHorizontal, Settings } from 'lucide-react'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { usePdfStore } from '../store/usePdfStore'
@@ -128,7 +129,7 @@ export default function DocuSignDialog({ onClose }: Props) {
                 <option value="https://eu.docusign.net/restapi">EU Production</option>
               </select>
             </div>
-            {status && <div style={{ fontSize: 12, color: status.startsWith('✓') ? '#4caf50' : '#ff4444' }}>{status}</div>}
+            {status && <div style={{ fontSize: 12, color: status.startsWith('✓') ? '#4caf50' : '#ff4444' }}><StatusText status={status} /></div>}
           </div>
         )}
 
@@ -183,7 +184,7 @@ export default function DocuSignDialog({ onClose }: Props) {
             )}
 
             {status && (
-              <div style={{ fontSize: 12, color: status.startsWith('✓') ? '#4caf50' : '#ff4444' }}>{status}</div>
+              <div style={{ fontSize: 12, color: status.startsWith('✓') ? '#4caf50' : '#ff4444' }}><StatusText status={status} /></div>
             )}
           </div>
         )}

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import StatusText from './StatusText'
 import { Upload, Image as ImageIcon, FileText, FileType, Table, MessageSquare, Download, FileJson, Ruler, Link, Presentation, CheckCircle2, TriangleAlert } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
@@ -396,7 +397,7 @@ export default function ExportDialog({ onClose }: Props) {
             fontSize: 12, color: status.startsWith('✓') ? '#4caf50' : status.startsWith('Error') ? '#ff4444' : 'var(--text-muted)',
             marginBottom: 10, padding: '6px 0',
           }}>
-            {status}
+            <StatusText status={status} />
           </div>
         )}
 

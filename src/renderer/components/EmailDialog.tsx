@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import StatusText from './StatusText'
 import { Mail, Save } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
@@ -59,7 +60,7 @@ export default function EmailDialog({ onClose }: Props) {
 
         {status && (
           <div style={{ fontSize: 12, marginBottom: 8, color: status.startsWith('✓') ? '#4caf50' : status.startsWith('Error') ? '#f44336' : 'var(--text-muted)' }}>
-            {status}
+            <StatusText status={status} />
           </div>
         )}
 

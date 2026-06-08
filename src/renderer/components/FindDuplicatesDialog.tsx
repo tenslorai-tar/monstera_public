@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import StatusText from './StatusText'
 import { Search } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
@@ -92,13 +93,13 @@ export default function FindDuplicatesDialog({ onClose }: Props) {
         )}
 
         {scanning && (
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>{status}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}><StatusText status={status} /></div>
         )}
 
         {groups !== null && !scanning && (
           <>
             <div style={{ fontSize: 13, marginBottom: 12, color: groups.length > 0 ? 'var(--text)' : 'var(--text-muted)' }}>
-              {status}
+              <StatusText status={status} />
             </div>
             {groups.length > 0 && (
               <>

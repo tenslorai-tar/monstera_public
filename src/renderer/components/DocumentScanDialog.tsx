@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import StatusText from './StatusText'
 import { Wand2, FolderOpen } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { newId } from '../utils/annotationUtils'
@@ -123,7 +124,7 @@ export default function DocumentScanDialog({ onClose }: { onClose: () => void })
         </div>
 
         <div className="modal-actions" style={{ alignItems: 'center' }}>
-          <span style={{ marginRight: 'auto', fontSize: 12, color: 'var(--text-muted)' }}>{status}</span>
+          <span style={{ marginRight: 'auto', fontSize: 12, color: 'var(--text-muted)' }}><StatusText status={status} /></span>
           <button className="modal-btn-secondary" onClick={onClose}>Close</button>
           {numPages > 0 && <button className="modal-btn-secondary" onClick={placeOnPage} disabled={!outUrl || busy}>Place on page</button>}
           <button className="modal-btn-primary" onClick={insertAsPage} disabled={!outUrl || busy}>

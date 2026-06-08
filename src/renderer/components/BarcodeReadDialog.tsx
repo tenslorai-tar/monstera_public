@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import StatusText from './StatusText'
 import { usePdfStore } from '../store/usePdfStore'
 import { readBarcodesFromCanvas, type BarcodeResult } from '../utils/barcodeRead'
 
@@ -32,7 +33,7 @@ export default function BarcodeReadDialog({ onClose }: { onClose: () => void }) 
     <div className="modal-overlay" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="modal-box" style={{ width: 480, maxHeight: '70vh', display: 'flex', flexDirection: 'column' }}>
         <div className="modal-title">▦ Read Barcodes / QR</div>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>{status}</div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}><StatusText status={status} /></div>
 
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {results && results.map((r, i) => (

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import StatusText from './StatusText'
 import { ListTree } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { PDFDocument, PDFPage, rgb, StandardFonts } from 'pdf-lib'
@@ -105,7 +106,7 @@ export default function TocGeneratorDialog({ onClose }: Props) {
         )}
 
         {status && (
-          <div style={{ fontSize: 12, color: status.startsWith('✓') ? '#4caf50' : '#f44336', marginBottom: 8 }}>{status}</div>
+          <div style={{ fontSize: 12, color: status.startsWith('✓') ? '#4caf50' : '#f44336', marginBottom: 8 }}><StatusText status={status} /></div>
         )}
 
         <div className="modal-actions">

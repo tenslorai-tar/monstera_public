@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import StatusText from './StatusText'
 import { Cloud, HardDrive, Package, Box, Building2, FolderOpen, Settings, RefreshCw, Upload, FileText, Download } from 'lucide-react'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { usePdfStore } from '../store/usePdfStore'
@@ -275,7 +276,7 @@ export default function CloudStorageDialog({ onClose }: Props) {
               <input className="modal-input" value={spSite} onChange={e => setSpSite(e.target.value)} placeholder="tenant.sharepoint.com,guid,guid" />
               <span className="modal-hint">Leave blank to use personal OneDrive</span>
             </div>
-            {status && <div style={{ fontSize: 12, color: status.startsWith('✓') ? '#4caf50' : '#ff4444' }}>{status}</div>}
+            {status && <div style={{ fontSize: 12, color: status.startsWith('✓') ? '#4caf50' : '#ff4444' }}><StatusText status={status} /></div>}
           </div>
         )}
 
@@ -317,7 +318,7 @@ export default function CloudStorageDialog({ onClose }: Props) {
         {status && tab !== 'settings' && (
           <div style={{ fontSize: 12, marginTop: 8,
             color: status.startsWith('✓') ? '#4caf50' : status.startsWith('Error') ? '#ff4444' : 'var(--text-muted)' }}>
-            {status}
+            <StatusText status={status} />
           </div>
         )}
 

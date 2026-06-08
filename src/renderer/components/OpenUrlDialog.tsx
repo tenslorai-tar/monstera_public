@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import StatusText from './StatusText'
 import { Globe } from 'lucide-react'
 
 interface Props {
@@ -42,7 +43,7 @@ export default function OpenUrlDialog({ onClose, onOpen }: Props) {
         </div>
         {status && (
           <div style={{ fontSize: 12, color: status.startsWith('Error') ? 'var(--error, #f55)' : 'var(--text-muted)', marginBottom: 8 }}>
-            {status}
+            <StatusText status={status} />
           </div>
         )}
         <div className="modal-actions">

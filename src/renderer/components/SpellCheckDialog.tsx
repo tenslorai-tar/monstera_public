@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import StatusText from './StatusText'
 import { SpellCheck } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import type { Annotation } from '../types/annotations'
@@ -88,7 +89,7 @@ export default function SpellCheckDialog({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="modal-actions" style={{ alignItems: 'center' }}>
-          <span style={{ marginRight: 'auto', fontSize: 12, color: 'var(--text-muted)' }}>{status}</span>
+          <span style={{ marginRight: 'auto', fontSize: 12, color: 'var(--text-muted)' }}><StatusText status={status} /></span>
           <button className="modal-btn-secondary" onClick={onClose}>Close</button>
           <button className="modal-btn-primary" onClick={run} disabled={busy || textAnns.length === 0}>
             {busy ? 'Checking…' : 'Check Spelling'}

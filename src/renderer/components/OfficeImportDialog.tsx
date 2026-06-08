@@ -1,4 +1,5 @@
 import { useState, useEffect, type ReactNode } from 'react'
+import StatusText from './StatusText'
 import { Import, FileType, Table, Presentation, FileText } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
@@ -159,7 +160,7 @@ export default function OfficeImportDialog({ onClose }: Props) {
         {status && (
           <div style={{ fontSize: 12, marginBottom: 8,
             color: status.startsWith('✓') ? '#4caf50' : status.startsWith('Error') ? '#ff4444' : 'var(--text-muted)' }}>
-            {status}
+            <StatusText status={status} />
           </div>
         )}
 

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import StatusText from './StatusText'
 import { Tags, RefreshCw, Save } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
@@ -113,7 +114,7 @@ export default function TaggedPdfDialog({ onClose }: Props) {
 
         {status && (
           <div style={{ fontSize: 12, color: status.startsWith('✓') ? '#4caf50' : status.startsWith('Error') ? '#f44336' : 'var(--text-muted)', marginBottom: 8 }}>
-            {status}
+            <StatusText status={status} />
           </div>
         )}
 

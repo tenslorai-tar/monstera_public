@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import StatusText from './StatusText'
 import { RefreshCw, Package, Printer, Palette, Wrench, Save, ArrowRight } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
@@ -204,7 +205,7 @@ export default function PdfConvertDialog({ onClose }: Props) {
         )}
         {status && (
           <div style={{ fontSize: 12, marginTop: 8, color: status.startsWith('✓') ? '#4caf50' : status.startsWith('Error') ? '#f55' : 'var(--text-muted)' }}>
-            {status}
+            <StatusText status={status} />
           </div>
         )}
 

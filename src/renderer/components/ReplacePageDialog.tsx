@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import StatusText from './StatusText'
 import { RefreshCw } from 'lucide-react'
 import { PDFDocument } from 'pdf-lib'
 
@@ -76,7 +77,7 @@ export default function ReplacePageDialog({ numPages, currentPage, onReplace, on
         )}
 
         {status && (
-          <div style={{ fontSize: 12, color: 'var(--error, #f55)', marginBottom: 8 }}>{status}</div>
+          <div style={{ fontSize: 12, color: 'var(--error, #f55)', marginBottom: 8 }}><StatusText status={status} /></div>
         )}
 
         <div className="modal-actions">

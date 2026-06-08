@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import StatusText from './StatusText'
 import { Ruler } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { PDFDocument } from 'pdf-lib'
@@ -203,7 +204,7 @@ export default function DeskewDialog({ onClose }: Props) {
 
         {status && (
           <div style={{ fontSize: 12, marginTop: 8, color: status.startsWith('✓') ? '#4caf50' : status.startsWith('Error') ? '#f44336' : 'var(--text-muted)' }}>
-            {status}
+            <StatusText status={status} />
           </div>
         )}
 

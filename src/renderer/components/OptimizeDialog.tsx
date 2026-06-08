@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import StatusText from './StatusText'
 import { Minimize2, ArrowRight, Zap, Wrench } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
@@ -140,7 +141,7 @@ export default function OptimizeDialog({ onClose }: Props) {
         )}
         {status && (
           <div style={{ fontSize: 12, color: status.startsWith('Error') ? '#f55' : status.startsWith('Saved') ? '#4caf50' : 'var(--text-muted)', marginTop: 8 }}>
-            {status}
+            <StatusText status={status} />
           </div>
         )}
 

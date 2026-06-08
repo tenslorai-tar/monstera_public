@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import StatusText from './StatusText'
 import { Film } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { PDFDocument, PDFName, PDFDict, PDFNumber } from 'pdf-lib'
@@ -145,7 +146,7 @@ export default function PageTransitionsDialog({ onClose }: Props) {
 
         {status && (
           <div style={{ fontSize: 12, color: status.startsWith('✓') ? '#4caf50' : status.startsWith('Error') ? '#f44336' : 'var(--text-muted)', marginBottom: 8 }}>
-            {status}
+            <StatusText status={status} />
           </div>
         )}
 

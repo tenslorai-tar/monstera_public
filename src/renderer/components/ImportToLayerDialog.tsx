@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import StatusText from './StatusText'
 import { Layers } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { PDFDocument, PDFName, PDFDict, PDFArray } from 'pdf-lib'
@@ -132,7 +133,7 @@ export default function ImportToLayerDialog({ onClose }: Props) {
 
         {status && (
           <div style={{ fontSize: 12, marginBottom: 8, color: status.startsWith('✓') ? '#4caf50' : status.startsWith('Error') ? '#f44336' : 'var(--text-muted)' }}>
-            {status}
+            <StatusText status={status} />
           </div>
         )}
 
