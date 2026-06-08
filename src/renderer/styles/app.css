@@ -1976,3 +1976,239 @@
   border-radius: 4px;
 }
 
+/* ══════════════════════════════════════════════════════════
+   STUDIO SHELL  —  2030 reinvention
+   Slim top app bar · vertical mode rail · contextual tool bar.
+   The old .ribbon-* DOM is retired; tool groups (.rbn-*) are
+   reused verbatim inside .context-bar.
+   ══════════════════════════════════════════════════════════ */
+
+/* ── App bar ──────────────────────────────────────────────── */
+.appbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 50px;
+  padding: 0 12px 0 16px;
+  background: var(--bg-toolbar);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.appbar-brand { display: flex; align-items: center; gap: 9px; }
+.appbar-logo {
+  width: 26px; height: 26px;
+  object-fit: contain;
+  -webkit-user-drag: none;
+  filter: drop-shadow(0 2px 6px rgba(16, 24, 40, 0.18));
+}
+.appbar-wordmark {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, var(--text-primary) 20%, var(--accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Centered document pill */
+.appbar-doc {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 380px;
+  padding: 6px 16px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  -webkit-app-region: no-drag;
+}
+.appbar-dot { color: var(--accent); font-size: 9px; line-height: 1; }
+.appbar-doc-name {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.appbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  -webkit-app-region: no-drag;
+}
+
+.appbar-cmdk {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 32px;
+  padding: 0 9px 0 12px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.appbar-cmdk:hover { background: var(--bg-hover); border-color: var(--border-light); color: var(--text-secondary); }
+.appbar-cmdk kbd {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 6px;
+}
+
+.appbar-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.12s;
+}
+.appbar-icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.appbar-icon-btn:active { transform: scale(0.94); }
+.appbar-icon-btn.is-active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ── Workspace ────────────────────────────────────────────── */
+.workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Vertical mode rail (replaces the horizontal ribbon tabs) */
+.mode-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 78px;
+  flex-shrink: 0;
+  padding: 12px 9px;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.mode-rail::-webkit-scrollbar { width: 0; height: 0; }
+
+.mode-btn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 60px;
+  height: 56px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.16s cubic-bezier(0.4,0,0.2,1), color 0.16s, transform 0.12s;
+}
+.mode-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.mode-btn:active { transform: scale(0.95); }
+.mode-btn-icon { display: inline-flex; align-items: center; justify-content: center; }
+.mode-btn-label { font-size: 10px; font-weight: 600; letter-spacing: 0.01em; line-height: 1; }
+.mode-btn-active { background: var(--accent-dim); color: var(--accent); }
+.mode-btn-active::before {
+  content: '';
+  position: absolute;
+  left: -9px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 26px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+}
+
+.workspace-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Contextual tool bar — hosts the active mode's .rbn-* groups */
+.context-bar {
+  display: flex;
+  align-items: stretch;
+  height: 106px;
+  flex-shrink: 0;
+  padding: 0 8px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  overflow-y: hidden;
+  animation: ctx-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.context-bar::-webkit-scrollbar { height: 5px; }
+.context-bar::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+@keyframes ctx-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+
+/* main-row sits inside the workspace column now */
+.main-row { min-height: 0; }
+
+/* Richer canvas: a soft accent-tinted glow at the top edge */
+.pdf-scroll-container {
+  background:
+    radial-gradient(130% 70% at 50% -12%,
+      color-mix(in srgb, var(--accent) 6%, var(--bg-canvas)),
+      var(--bg-canvas) 58%);
+}
+
+/* App bar floats just above the content with a hairline of depth */
+.appbar { box-shadow: 0 1px 0 var(--border), 0 4px 16px -12px rgba(16, 24, 40, 0.25); z-index: 5; }
+
+/* Secondary quick-tools rail: icon-only so the labelled mode rail leads.
+   Tooltips still name every tool. */
+.left-palette {
+  width: 56px;
+  padding: 10px 6px;
+  gap: 3px;
+  background: var(--bg-secondary);
+}
+.left-pal-btn {
+  width: 44px;
+  height: 40px;
+  gap: 0;
+  border-radius: var(--radius);
+}
+.left-pal-btn:hover { box-shadow: var(--shadow-sm); }
+.left-pal-label { display: none; }
+.left-pal-sep { width: 26px; margin: 6px 0; }
+
+/* Floating page sits on a slightly rounder card */
+.pdf-page-wrapper { border-radius: 4px; }
+

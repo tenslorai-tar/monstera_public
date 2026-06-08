@@ -5,7 +5,8 @@ import type { AnnotationTool, StampName, PlacedImageAnn } from '../types/annotat
 import type { FormCreationTool } from '../types/forms'
 import { newId } from '../utils/annotationUtils'
 import logoUrl from '../assets/monstera-logo.png'
-import { Accessibility, ArrowDownUp, ArrowUpRight, Barcode, Bookmark, Bot, BoxSelect, Brush, Calculator, Calendar, Camera, ChevronDown, ChevronUp, Circle, CircleDot, ClipboardList, Cloud, Columns2, Combine, Copy, CopyPlus, Crop, Droplets, Eraser, EyeOff, FileCode, FileOutput, FilePlus2, FileSignature, FileText, FolderOpen, FormInput, GitCompare, Globe, Grid3x3, Hash, Hexagon, Highlighter, Image, ImagePlus, Images, Import, Info, Keyboard, Languages, Layers, Link, List, Lock, Mail, MessageSquare, MessageSquareMore, Minimize2, Moon, MousePointer2, MousePointerClick, Palette, PanelLeft, PanelRight, PanelTop, Pen, PencilRuler, Pentagon, QrCode, Redo2, RefreshCw, Replace, RotateCcw, RotateCw, Ruler, Save, SaveAll, ScanLine, ScanSearch, ScanText, Scissors, Search, SearchX, Settings, Shapes, ShieldCheck, Signature, Slash, Sparkles, SpellCheck, Spline, Square, SquareCheckBig, SquarePen, Stamp, StickyNote, Strikethrough, Table, Telescope, TextCursorInput, Trash2, TriangleAlert, Type, Underline, Undo2, Unlock, Upload, Wand2, Webcam, Sun, CircleHelp } from 'lucide-react'
+import { Accessibility, ArrowDownUp, ArrowUpRight, Barcode, Bookmark, Bot, BoxSelect, Brush, Calculator, Calendar, Camera, ChevronDown, ChevronUp, Circle, CircleDot, ClipboardList, Cloud, Columns2, Combine, Copy, CopyPlus, Crop, Droplets, Eraser, EyeOff, FileCode, FileOutput, FilePlus2, FileSignature, FileText, FolderOpen, FormInput, GitCompare, Globe, Grid3x3, Hash, Hexagon, Highlighter, Image, ImagePlus, Images, Import, Info, Keyboard, Languages, Layers, Link, List, Lock, Mail, MessageSquare, MessageSquareMore, Minimize2, Moon, MousePointer2, MousePointerClick, Palette, PanelLeft, PanelRight, PanelTop, Pen, PencilRuler, Pentagon, QrCode, Redo2, RefreshCw, Replace, RotateCcw, RotateCw, Ruler, Save, SaveAll, ScanLine, ScanSearch, ScanText, Scissors, Search, SearchX, Settings, Shapes, ShieldCheck, Signature, Slash, Sparkles, SpellCheck, Spline, Square, SquareCheckBig, SquarePen, Stamp, StickyNote, Strikethrough, Table, Telescope, TextCursorInput, Trash2, TriangleAlert, Type, Underline, Undo2, Unlock, Upload, Wand2, Webcam, Sun, CircleHelp, Home, Files, SearchCheck, Wrench } from 'lucide-react'
+import TabsBar from './TabsBar'
 
 type RibbonTab = 'home' | 'comment' | 'edit' | 'organize' | 'forms' | 'review' | 'protect' | 'tools'
 
@@ -85,6 +86,7 @@ interface Props {
   onEmailImport: () => void
   onReadBarcode: () => void
   onExtractImages: () => void
+  children?: React.ReactNode
 }
 
 const STAMP_NAMES: StampName[] = ['Approved', 'Draft', 'Confidential', 'Rejected', 'Custom']
@@ -811,81 +813,92 @@ export default function RibbonToolbar(props: Props) {
 
   // ── Main render ───────────────────────────────────────────────────────────
 
-  const TABS: { id: RibbonTab; label: string }[] = [
-    { id: 'home',     label: 'Home'     },
-    { id: 'comment',  label: 'Comment'  },
-    { id: 'edit',     label: 'Edit'     },
-    { id: 'organize', label: 'Organize' },
-    { id: 'forms',    label: 'Forms'    },
-    { id: 'review',   label: 'Review'   },
-    { id: 'protect',  label: 'Protect'  },
-    { id: 'tools',    label: 'Tools'    },
+  const TABS: { id: RibbonTab; label: string; icon: React.ReactNode }[] = [
+    { id: 'home',     label: 'Home',     icon: <Home size={20} />          },
+    { id: 'comment',  label: 'Comment',  icon: <MessageSquare size={20} /> },
+    { id: 'edit',     label: 'Edit',     icon: <SquarePen size={20} />     },
+    { id: 'organize', label: 'Organize', icon: <Files size={20} />         },
+    { id: 'forms',    label: 'Forms',    icon: <ClipboardList size={20} /> },
+    { id: 'review',   label: 'Review',   icon: <SearchCheck size={20} />   },
+    { id: 'protect',  label: 'Protect',  icon: <ShieldCheck size={20} />   },
+    { id: 'tools',    label: 'Tools',    icon: <Wrench size={20} />        },
   ]
 
+  const openCmdk = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))
+
+  const ctxContent: Record<RibbonTab, () => React.ReactNode> = {
+    home: HomeTab, comment: CommentTab, edit: EditTab, organize: OrganizeTab,
+    forms: FormsTab, review: ReviewTab, protect: ProtectTab, tools: ToolsTab,
+  }
+
   return (
-    <div className="ribbon">
-      {/* ── Tab row ────────────────────────────────────────── */}
-      <div className="ribbon-tabs">
-        <div className="ribbon-logo">
-          <img src={logoUrl} alt="Monstera" className="ribbon-logo-img" draggable={false} />
-          <span className="ribbon-logo-text">Monstera</span>
+    <>
+      {/* ── App bar (slim top utility bar) ──────────────────── */}
+      <header className="appbar">
+        <div className="appbar-brand">
+          <img src={logoUrl} alt="Monstera" className="appbar-logo" draggable={false} />
+          <span className="appbar-wordmark">Monstera</span>
         </div>
 
-        {TABS.map(t => (
-          <button
-            key={t.id}
-            className={`ribbon-tab${activeTab === t.id ? ' ribbon-tab-active' : ''}${!hasPdf && t.id !== 'home' ? ' ribbon-tab-dim' : ''}`}
-            onClick={() => setActiveTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-
-        <div className="ribbon-tabs-spacer" />
-
         {hasPdf && (
-          <div className="ribbon-filename-pill">
-            {isDirty && <span className="ribbon-dirty-dot">●</span>}
-            <span className="ribbon-filename-text" title={fileName}>{fileName}</span>
+          <div className="appbar-doc" title={fileName}>
+            {isDirty && <span className="appbar-dot">●</span>}
+            <span className="appbar-doc-name">{fileName}</span>
           </div>
         )}
 
-        <div className="ribbon-actions">
-          <button
-            className={`ribbon-action-btn${searchOpen ? ' ribbon-action-active' : ''}`}
-            onClick={() => setSearchOpen(!searchOpen)} title="Find in document (Ctrl+F)">
-            <Search size={16} />
+        <div className="appbar-actions">
+          <button className="appbar-cmdk" onClick={openCmdk} title="Search commands (Ctrl+K)">
+            <Search size={14} />
+            <span>Search</span>
+            <kbd>Ctrl K</kbd>
           </button>
-          <button className="ribbon-action-btn"
+          {hasPdf && (
+            <button
+              className={`appbar-icon-btn${searchOpen ? ' is-active' : ''}`}
+              onClick={() => setSearchOpen(!searchOpen)} title="Find in document (Ctrl+F)">
+              <Search size={17} />
+            </button>
+          )}
+          <button className="appbar-icon-btn"
             onClick={() => updateSettings({ theme: theme === 'dark' ? 'light' : 'dark' })}
             title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}>
-            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
           </button>
-          <button className="ribbon-action-btn" onClick={onSettings} title="Preferences (Ctrl+,)"><Settings size={16} /></button>
-          <button className="ribbon-action-btn" onClick={onShortcuts} title="Keyboard shortcuts (F1)"><CircleHelp size={16} /></button>
+          <button className="appbar-icon-btn" onClick={onSettings} title="Preferences (Ctrl+,)"><Settings size={17} /></button>
+          <button className="appbar-icon-btn" onClick={onShortcuts} title="Keyboard shortcuts (F1)"><CircleHelp size={17} /></button>
+        </div>
+      </header>
+
+      <TabsBar />
+
+      {/* ── Workspace: vertical mode rail + main column ─────── */}
+      <div className="workspace">
+        {hasPdf && (
+          <nav className="mode-rail">
+            {TABS.map(t => (
+              <button
+                key={t.id}
+                className={`mode-btn${activeTab === t.id ? ' mode-btn-active' : ''}`}
+                onClick={() => setActiveTab(t.id)}
+                title={t.label}
+              >
+                <span className="mode-btn-icon">{t.icon}</span>
+                <span className="mode-btn-label">{t.label}</span>
+              </button>
+            ))}
+          </nav>
+        )}
+
+        <div className="workspace-main">
+          {hasPdf && (
+            <div className="context-bar" key={activeTab}>
+              {ctxContent[activeTab]()}
+            </div>
+          )}
+          {props.children}
         </div>
       </div>
-
-      {/* ── Content row ────────────────────────────────────── */}
-      <div className="ribbon-content">
-        {activeTab === 'home'     && HomeTab()}
-        {activeTab === 'comment'  && (hasPdf ? CommentTab()  : <NoPdfMsg tab="Comment"  />)}
-        {activeTab === 'edit'     && (hasPdf ? EditTab()     : <NoPdfMsg tab="Edit"     />)}
-        {activeTab === 'organize' && (hasPdf ? OrganizeTab() : <NoPdfMsg tab="Organize" />)}
-        {activeTab === 'forms'    && (hasPdf ? FormsTab()    : <NoPdfMsg tab="Forms"    />)}
-        {activeTab === 'review'   && (hasPdf ? ReviewTab()   : <NoPdfMsg tab="Review"   />)}
-        {activeTab === 'protect'  && (hasPdf ? ProtectTab()  : <NoPdfMsg tab="Protect"  />)}
-        {activeTab === 'tools'    && (hasPdf ? ToolsTab()    : <NoPdfMsg tab="Tools"    />)}
-      </div>
-    </div>
-  )
-}
-
-function NoPdfMsg({ tab }: { tab: string }) {
-  return (
-    <div style={{ display:'flex', alignItems:'center', padding:'0 24px', color:'var(--text-muted)', fontSize:12, gap:8 }}>
-      <span style={{ fontSize:16, opacity:0.5 }}>📄</span>
-      Open a PDF to access {tab} tools
-    </div>
+    </>
   )
 }

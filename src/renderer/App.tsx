@@ -59,7 +59,6 @@ import TocGeneratorDialog from './components/TocGeneratorDialog'
 import OcrRegionDialog from './components/OcrRegionDialog'
 import DeskewDialog from './components/DeskewDialog'
 import SplitViewPanel from './components/SplitViewPanel'
-import TabsBar from './components/TabsBar'
 import { useTabsStore } from './store/useTabsStore'
 import * as docEnhance from './utils/documentEnhance'
 import { usePdfStore } from './store/usePdfStore'
@@ -508,30 +507,28 @@ export default function App() {
         onDeskew={() => setDeskewOpen(true)}
         onMultiPageStamp={() => setMultiPageStampOpen(true)}
         onSplitView={() => setSplitViewOpen(true)}
-      />
-
-      <TabsBar />
+      >
+        {hasPdf ? (
+          <div className="main-row">
+            <LeftPalette />
+            <div className="content-area">
+              <PdfViewer />
+              <SearchPanel />
+            </div>
+          </div>
+        ) : (
+          <StartScreen
+            recentFiles={recentFiles}
+            onOpen={openFile}
+            onOpenRecent={path => openFile(path)}
+            onRemoveRecent={removeRecentFile}
+            openError={openError}
+            onClearError={() => setOpenError('')}
+          />
+        )}
+      </RibbonToolbar>
 
       <CommandPalette runAction={runAction} hasPdf={hasPdf} />
-
-      {hasPdf ? (
-        <div className="main-row">
-          <LeftPalette />
-          <div className="content-area">
-            <PdfViewer />
-            <SearchPanel />
-          </div>
-        </div>
-      ) : (
-        <StartScreen
-          recentFiles={recentFiles}
-          onOpen={openFile}
-          onOpenRecent={path => openFile(path)}
-          onRemoveRecent={removeRecentFile}
-          openError={openError}
-          onClearError={() => setOpenError('')}
-        />
-      )}
 
       <StatusBar />
 
