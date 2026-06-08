@@ -270,18 +270,7 @@ function buildAppMenu(win: BrowserWindow): Menu {
       submenu: [
         { label: 'Keyboard Shortcuts', accelerator: 'F1', click: send('shortcuts') },
         { type: 'separator' },
-        {
-          label: 'About Monstera PDF Editor',
-          click: () => {
-            dialog.showMessageBox(win, {
-              type: 'info',
-              title: 'About Monstera PDF Editor',
-              message: 'Monstera PDF Editor',
-              detail: 'Version 1.0.0\n\nA professional-grade PDF editing solution.\n\nBuilt with Electron, React, PDF.js, pdf-lib, and MuPDF WASM.\n\nDesigned for professionals who demand precision.',
-              buttons: ['OK'],
-            })
-          },
-        },
+        { label: 'About Monstera PDF Editor', click: send('about') },
       ],
     },
   ])

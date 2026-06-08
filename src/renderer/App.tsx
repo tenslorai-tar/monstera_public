@@ -17,6 +17,7 @@ import DigitalSignDialog from './components/DigitalSignDialog'
 import ExportDialog from './components/ExportDialog'
 import SettingsDialog from './components/SettingsDialog'
 import ShortcutsDialog from './components/ShortcutsDialog'
+import AboutDialog from './components/AboutDialog'
 import CommentStylesPanel from './components/CommentStylesPanel'
 import SummarizeCommentsDialog from './components/SummarizeCommentsDialog'
 import HeaderFooterDialog from './components/HeaderFooterDialog'
@@ -121,6 +122,7 @@ export default function App() {
   const [exportOpen,        setExportOpen]         = useState(false)
   const [settingsOpen,      setSettingsOpen]       = useState(false)
   const [shortcutsOpen,     setShortcutsOpen]      = useState(false)
+  const [aboutOpen,         setAboutOpen]          = useState(false)
   const [commentStylesOpen, setCommentStylesOpen]  = useState(false)
   const [summarizeOpen,     setSummarizeOpen]       = useState(false)
   const [headerFooterOpen,  setHeaderFooterOpen]    = useState(false)
@@ -298,6 +300,7 @@ export default function App() {
         case 'digitalSign':  setDigitalSignOpen(true); break
         case 'settings':     setSettingsOpen(true); break
         case 'shortcuts':    setShortcutsOpen(true); break
+        case 'about':        setAboutOpen(true); break
         case 'export':       setExportOpen(true); break
         case 'split':        setSplitOpen(true); break
         case 'find':         s.setSearchOpen(true); break
@@ -593,6 +596,7 @@ export default function App() {
       {exportOpen     && <ExportDialog     onClose={() => setExportOpen(false)} />}
       {settingsOpen   && <SettingsDialog   onClose={() => setSettingsOpen(false)} />}
       {shortcutsOpen  && <ShortcutsDialog  onClose={() => setShortcutsOpen(false)} />}
+      {aboutOpen      && <AboutDialog      onClose={() => setAboutOpen(false)} />}
       {commentStylesOpen && <CommentStylesPanel onClose={() => setCommentStylesOpen(false)} />}
       {summarizeOpen     && <SummarizeCommentsDialog onClose={() => setSummarizeOpen(false)} />}
 

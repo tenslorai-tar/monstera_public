@@ -1,0 +1,73 @@
+END-USER LICENSE AGREEMENT
+Monstera PDF Editor
+Copyright (c) 2026 Tenslor Inc. All rights reserved.
+
+IMPORTANT - READ CAREFULLY: This End-User License Agreement ("Agreement") is a
+legal agreement between you (either an individual or a single entity, "you")
+and Tenslor Inc. ("Tenslor", "we", "us") for the Monstera PDF Editor software
+product, which includes computer software and may include associated media,
+printed materials, and online or electronic documentation (the "Software").
+
+By installing, copying, or otherwise using the Software, you agree to be bound
+by the terms of this Agreement. If you do not agree to the terms of this
+Agreement, do not install or use the Software.
+
+1. GRANT OF LICENSE
+   Subject to your compliance with this Agreement, Tenslor grants you a
+   personal, non-exclusive, non-transferable, revocable license to install and
+   use the Software on devices that you own or control, for your own use.
+
+2. RESTRICTIONS
+   You may not, and may not permit any third party to: (a) sell, rent, lease,
+   sublicense, distribute, or otherwise commercially exploit the Software;
+   (b) modify, adapt, translate, or create derivative works of the Software
+   except to the extent permitted by applicable law; (c) reverse engineer,
+   decompile, or disassemble the Software except to the extent expressly
+   permitted by applicable law; or (d) remove, alter, or obscure any
+   proprietary notices on the Software.
+
+3. OWNERSHIP
+   The Software is licensed, not sold. Tenslor and its licensors retain all
+   right, title, and interest in and to the Software, including all
+   intellectual property rights therein. This Agreement does not grant you any
+   rights to trademarks or service marks of Tenslor.
+
+4. THIRD-PARTY COMPONENTS
+   The Software incorporates third-party open-source components, which are
+   provided under their own license terms. Such terms govern your use of those
+   components to the extent they conflict with this Agreement.
+
+5. YOUR CONTENT
+   The Software processes documents locally on your device. You retain all
+   rights to the documents and content you open, create, or edit with the
+   Software. Tenslor does not claim ownership of your content.
+
+6. NO WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTY OF ANY
+   KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. YOU
+   ASSUME ALL RISK ARISING FROM YOUR USE OF THE SOFTWARE.
+
+7. LIMITATION OF LIABILITY
+   TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL TENSLOR
+   BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE
+   DAMAGES, OR ANY LOSS OF DATA, PROFITS, OR REVENUE, ARISING OUT OF OR RELATED
+   TO YOUR USE OF OR INABILITY TO USE THE SOFTWARE.
+
+8. TERMINATION
+   This Agreement is effective until terminated. Your rights under this
+   Agreement will terminate automatically without notice if you fail to comply
+   with any of its terms. Upon termination, you must cease all use of the
+   Software and destroy all copies in your possession.
+
+9. GOVERNING LAW
+   This Agreement shall be governed by and construed in accordance with the
+   laws of the jurisdiction in which Tenslor Inc. is established, without regard
+   to its conflict-of-laws principles.
+
+10. ENTIRE AGREEMENT
+   This Agreement constitutes the entire agreement between you and Tenslor
+   regarding the Software and supersedes all prior or contemporaneous
+   understandings.
+
+If you have questions about this Agreement, contact Tenslor Inc.
