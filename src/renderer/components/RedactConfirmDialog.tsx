@@ -1,3 +1,5 @@
+import { AlertTriangle } from 'lucide-react'
+
 interface Props {
   count: number
   onConfirm: () => void
@@ -9,7 +11,7 @@ export default function RedactConfirmDialog({ count, onConfirm, onCancel }: Prop
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 460, borderColor: '#f48771' }}>
         <div className="modal-title" style={{ color: '#f48771', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 20 }}>⚠️</span> Permanent Redaction Warning
+          <AlertTriangle size={20} /> Permanent Redaction Warning
         </div>
 
         <div style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.7, marginBottom: 16 }}>

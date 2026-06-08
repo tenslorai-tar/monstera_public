@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Globe, X, ArrowLeft, ArrowRight, Download } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 const LANGUAGES = [
@@ -116,8 +117,8 @@ export default function TranslateDialog({ onClose }: { onClose: () => void }) {
       <div className="modal-box" style={{ width: 680, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
         onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <span>🌐 Translate Document</span>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <span><Globe size={17} /> Translate Document</span>
+          <button className="modal-close" onClick={onClose}><X size={16} /></button>
         </div>
 
         {/* Step 1: Setup */}
@@ -155,10 +156,10 @@ export default function TranslateDialog({ onClose }: { onClose: () => void }) {
             <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <span style={{ fontSize: 12, opacity: 0.7 }}>Source text extracted. Target: <strong>{langName}</strong></span>
               <button className="modal-btn" onClick={handleTranslate} disabled={translating}>
-                {translating ? `Translating… ${progress}%` : `🌐 Translate to ${langName}`}
+                {translating ? `Translating… ${progress}%` : <><Globe size={14} /> Translate to {langName}</>}
               </button>
               <button className="modal-btn-secondary" onClick={() => handleCopy(sourceText)}>Copy Source</button>
-              <button className="modal-btn-secondary" onClick={() => { setStep('setup'); setSourceText('') }}>← Back</button>
+              <button className="modal-btn-secondary" onClick={() => { setStep('setup'); setSourceText('') }}><ArrowLeft size={14} /> Back</button>
             </div>
             {translating && (
               <div style={{ padding: '4px 16px', background: 'rgba(74,158,255,0.08)' }}>
@@ -183,8 +184,8 @@ export default function TranslateDialog({ onClose }: { onClose: () => void }) {
             <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <span style={{ fontSize: 12, opacity: 0.7 }}>✓ Translated to <strong>{langName}</strong></span>
               <button className="modal-btn-secondary" onClick={() => handleCopy(translatedText)}>Copy Translation</button>
-              <button className="modal-btn-secondary" onClick={() => handleSave(translatedText, langName.toLowerCase())}>⬇ Save .txt</button>
-              <button className="modal-btn-secondary" onClick={() => setStep('review')}>← Back</button>
+              <button className="modal-btn-secondary" onClick={() => handleSave(translatedText, langName.toLowerCase())}><Download size={14} /> Save .txt</button>
+              <button className="modal-btn-secondary" onClick={() => setStep('review')}><ArrowLeft size={14} /> Back</button>
             </div>
             <div style={{ flex: 1, display: 'flex', gap: 0, overflow: 'hidden' }}>
               <div style={{ flex: 1, overflowY: 'auto', padding: '8px 8px 8px 16px', borderRight: '1px solid var(--border)' }}>
@@ -204,7 +205,7 @@ export default function TranslateDialog({ onClose }: { onClose: () => void }) {
             <>
               <button className="modal-btn-secondary" onClick={onClose}>Cancel</button>
               <button className="modal-btn" onClick={handleExtract} disabled={loading || !pdfBytes}>
-                {loading ? 'Extracting…' : 'Extract Text →'}
+                {loading ? 'Extracting…' : <>Extract Text <ArrowRight size={14} /></>}
               </button>
             </>
           )}

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FileSignature } from 'lucide-react'
+import { FileSignature, PenTool, ShieldCheck, BadgeCheck } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
@@ -128,13 +128,14 @@ export default function DigitalSignDialog({ onClose }: Props) {
           {(['sign', 'certify', 'verify'] as Tab[]).map(t => (
             <button key={t}
               style={{
+                display: 'flex', alignItems: 'center', gap: 6,
                 padding: '6px 16px', fontSize: 13, border: 'none', cursor: 'pointer',
                 background: tab === t ? 'var(--bg-page)' : 'transparent',
                 borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent',
                 color: tab === t ? 'var(--text)' : 'var(--text-muted)',
               }}
               onClick={() => setTab(t)}>
-              {t === 'sign' ? '✒ Sign' : t === 'certify' ? '🛡 Certify' : '✅ Verify'}
+              {t === 'sign' ? <><PenTool size={14} /> Sign</> : t === 'certify' ? <><ShieldCheck size={14} /> Certify</> : <><BadgeCheck size={14} /> Verify</>}
             </button>
           ))}
         </div>
@@ -285,12 +286,12 @@ export default function DigitalSignDialog({ onClose }: Props) {
           <button className="modal-btn-secondary" onClick={onClose}>{signDone || certDone ? 'Done' : 'Close'}</button>
           {tab === 'sign' && (
             <button className="modal-btn-primary" onClick={handleSign} disabled={!pfxPath || signing || signDone}>
-              {signing ? 'Signing…' : '🔏 Sign & Save Copy'}
+              {signing ? 'Signing…' : <><FileSignature size={15} /> Sign & Save Copy</>}
             </button>
           )}
           {tab === 'certify' && (
             <button className="modal-btn-primary" onClick={handleCertify} disabled={!certPfxPath || certifying || certDone}>
-              {certifying ? 'Certifying…' : '🛡 Certify & Save Copy'}
+              {certifying ? 'Certifying…' : <><ShieldCheck size={15} /> Certify & Save Copy</>}
             </button>
           )}
         </div>

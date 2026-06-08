@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Tags } from 'lucide-react'
+import { Tags, RefreshCw, Save } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
@@ -104,10 +104,10 @@ export default function TaggedPdfDialog({ onClose }: Props) {
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
           <button className="modal-btn-secondary" style={{ fontSize: 12 }} onClick={loadStructure} disabled={loading}>
-            {loading ? '…' : '🔄 Refresh Structure'}
+            {loading ? '…' : <><RefreshCw size={14} /> Refresh Structure</>}
           </button>
           <button className="modal-btn-primary" style={{ fontSize: 12 }} onClick={applyLang} disabled={loading}>
-            💾 Apply Accessibility Metadata
+            <Save size={15} /> Apply Accessibility Metadata
           </button>
         </div>
 

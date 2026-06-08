@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { X } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Issue { issue: string; severity: 'error' | 'warning' | 'info'; page?: number }
@@ -47,7 +48,7 @@ export default function AccessibilityDialog({ onClose }: { onClose: () => void }
         onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <span>Accessibility Checker</span>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <button className="modal-close" onClick={onClose}><X size={16} /></button>
         </div>
 
         <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>

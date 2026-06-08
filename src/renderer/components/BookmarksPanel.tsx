@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { Sparkles, Check, Combine, Replace } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import type { BookmarkItem } from '../types/bookmarks'
 
@@ -161,13 +162,13 @@ export default function BookmarksPanel() {
           <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 5px' }}
             title="Sort alphabetically" onClick={handleSortAlpha}>A–Z</button>
           <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 5px' }}
-            title="Remove duplicate page bookmarks" onClick={handleMergeDuplicates}>⊕ Merge</button>
+            title="Remove duplicate page bookmarks" onClick={handleMergeDuplicates}><Combine size={13} /> Merge</button>
           <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 5px' }}
             title="Generate bookmarks from text headings" onClick={handleGenerateFromHeadings}
-            disabled={generating}>{generating ? '…' : '✨ Headings'}</button>
+            disabled={generating}>{generating ? '…' : <><Sparkles size={13} /> Headings</>}</button>
           <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 5px' }}
             title="Find and replace text in bookmark titles"
-            onClick={() => setShowFindReplace(v => !v)}>↔ F&R</button>
+            onClick={() => setShowFindReplace(v => !v)}><Replace size={13} /> F&R</button>
           <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 5px' }}
             title="Export bookmarks as plain text" onClick={handleExportText}>↗ .txt</button>
           <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 5px' }}
@@ -181,7 +182,7 @@ export default function BookmarksPanel() {
           <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 5px' }}
             title="lowercase all titles" onClick={() => handleCase('lower')}>aa</button>
           <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 5px' }}
-            title="Remove bookmarks pointing outside the document" onClick={handleValidate}>✓ Validate</button>
+            title="Remove bookmarks pointing outside the document" onClick={handleValidate}><Check size={13} /> Validate</button>
         </div>
       )}
 
@@ -208,7 +209,7 @@ export default function BookmarksPanel() {
         <div style={{ padding: '4px 8px', borderBottom: '1px solid var(--border)' }}>
           <button className="annot-tool-btn" style={{ fontSize: 10, padding: '2px 5px', width: '100%' }}
             title="Auto-generate bookmarks from text headings" onClick={handleGenerateFromHeadings}
-            disabled={generating}>{generating ? 'Generating…' : '✨ Generate from Headings'}</button>
+            disabled={generating}>{generating ? 'Generating…' : <><Sparkles size={14} /> Generate from Headings</>}</button>
         </div>
       )}
 

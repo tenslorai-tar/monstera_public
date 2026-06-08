@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { X, Layers } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import type { FormField } from '../types/forms'
 import { exportFormAsJson, exportFormAsFdf, applyValueToField, parseFormDataFile } from '../utils/formPdfLib'
@@ -125,14 +126,14 @@ export default function FormsPanel() {
             disabled={formFields.filter(f => !f.isNew).length === 0}
             onClick={flattenForm}
           >
-            ⊞ Flatten
+            <Layers size={13} /> Flatten
           </button>
           <button
             className="annot-tool-btn"
             style={{ fontSize: 12, padding: '2px 5px' }}
             onClick={toggleFormsPanel}
             title="Close forms panel"
-          >✕</button>
+          ><X size={13} /></button>
         </div>
       </div>
 
@@ -192,7 +193,7 @@ export default function FormsPanel() {
                     className="annot-panel-del"
                     title="Remove field"
                     onClick={e => { e.stopPropagation(); deleteFormField(field.id) }}
-                  >✕</button>
+                  ><X size={13} /></button>
                 </div>
               ))}
             </div>

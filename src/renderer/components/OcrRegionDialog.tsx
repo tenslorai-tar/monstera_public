@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react'
-import { ScanText } from 'lucide-react'
+import { ScanText, Copy, Check } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { createWorker } from 'tesseract.js'
 import { OCR_LANGUAGES } from '../utils/ocrUtils'
@@ -160,7 +160,7 @@ export default function OcrRegionDialog({ onClose }: Props) {
           {result && (
             <>
               <button className="modal-btn-secondary" onClick={copyText}>
-                {copyDone ? '✓ Copied' : '📋 Copy Text'}
+                {copyDone ? <><Check size={14} /> Copied</> : <><Copy size={14} /> Copy Text</>}
               </button>
               <button className="modal-btn-secondary" onClick={insertAsAnnotation}>
                 Insert as Annotation

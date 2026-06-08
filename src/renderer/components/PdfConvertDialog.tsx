@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { RefreshCw } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { RefreshCw, Package, Printer, Palette, Wrench, Save, ArrowRight } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 type TabId = 'pdfa' | 'pdfx' | 'color' | 'repair'
@@ -60,11 +60,11 @@ export default function PdfConvertDialog({ onClose }: Props) {
     setBusy(false)
   }
 
-  const tabs: { id: TabId; label: string }[] = [
-    { id: 'pdfa',   label: '📦 PDF/A' },
-    { id: 'pdfx',   label: '🖨 PDF/X' },
-    { id: 'color',  label: '🎨 Color' },
-    { id: 'repair', label: '🔧 Repair' },
+  const tabs: { id: TabId; label: string; icon: ReactNode }[] = [
+    { id: 'pdfa',   label: 'PDF/A',  icon: <Package size={14} /> },
+    { id: 'pdfx',   label: 'PDF/X',  icon: <Printer size={14} /> },
+    { id: 'color',  label: 'Color',  icon: <Palette size={14} /> },
+    { id: 'repair', label: 'Repair', icon: <Wrench size={14} /> },
   ]
 
   return (
@@ -76,11 +76,12 @@ export default function PdfConvertDialog({ onClose }: Props) {
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 16 }}>
           {tabs.map(t => (
             <button key={t.id} onClick={() => { setTab(t.id); setStatus(''); setSizes(null) }} style={{
+              display: 'flex', alignItems: 'center', gap: 5,
               padding: '6px 14px', border: 'none', cursor: 'pointer', fontSize: 12,
               background: tab === t.id ? 'var(--bg-page)' : 'transparent',
               borderBottom: tab === t.id ? '2px solid var(--accent)' : '2px solid transparent',
               color: tab === t.id ? 'var(--text)' : 'var(--text-muted)',
-            }}>{t.label}</button>
+            }}>{t.icon} {t.label}</button>
           ))}
         </div>
 
@@ -196,7 +197,7 @@ export default function PdfConvertDialog({ onClose }: Props) {
         {sizes && (
           <div style={{ display: 'flex', gap: 16, fontSize: 12, marginTop: 12, padding: '8px 12px', background: 'var(--bg-secondary)', borderRadius: 6 }}>
             <span>Before: <strong>{fmtSize(sizes.before)}</strong></span>
-            <span>→</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center' }}><ArrowRight size={14} /></span>
             <span>After: <strong style={{ color: sizes.after < sizes.before ? '#4caf50' : 'inherit' }}>{fmtSize(sizes.after)}</strong></span>
             {sizes.after < sizes.before && <span style={{ color: '#4caf50' }}>({Math.round((1 - sizes.after/sizes.before)*100)}% smaller)</span>}
           </div>
@@ -210,7 +211,7 @@ export default function PdfConvertDialog({ onClose }: Props) {
         <div className="modal-actions">
           <button className="modal-btn-secondary" onClick={onClose}>Close</button>
           {sizes && (
-            <button className="modal-btn-primary" onClick={() => save()}>💾 Save Now</button>
+            <button className="modal-btn-primary" onClick={() => save()}><Save size={15} /> Save Now</button>
           )}
         </div>
       </div>

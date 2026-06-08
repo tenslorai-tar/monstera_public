@@ -1,3 +1,5 @@
+import { Keyboard, X } from 'lucide-react'
+
 interface Props { onClose: () => void }
 
 const SECTIONS = [
@@ -70,11 +72,12 @@ export default function ShortcutsDialog({ onClose }: Props) {
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="modal-box" style={{ width: 560, maxHeight: '80vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-          <div className="modal-title" style={{ margin: 0 }}>⌨ Keyboard Shortcuts</div>
+          <div className="modal-title" style={{ margin: 0 }}><Keyboard size={18} /> Keyboard Shortcuts</div>
           <button onClick={onClose} style={{
+            display: 'inline-flex', alignItems: 'center',
             background: 'none', border: 'none', color: 'var(--text-muted)',
             fontSize: 18, cursor: 'pointer', lineHeight: 1, padding: '0 4px',
-          }}>✕</button>
+          }}><X size={18} /></button>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 24px' }}>

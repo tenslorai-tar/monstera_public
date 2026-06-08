@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { X, Pencil, ArrowUpRight } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import type { LinkAnn } from '../types/annotations'
 
@@ -79,7 +80,7 @@ export default function LinksPanel() {
                           borderRadius: 3, color: '#fff', cursor: 'pointer' }}>OK</button>
                       <button onClick={() => setEditId(null)}
                         style={{ padding: '2px 6px', fontSize: 10, background: 'transparent',
-                          border: '1px solid var(--border)', borderRadius: 3, color: 'inherit', cursor: 'pointer' }}>✕</button>
+                          border: '1px solid var(--border)', borderRadius: 3, color: 'inherit', cursor: 'pointer' }}><X size={12} /></button>
                     </div>
                   </div>
                 ) : (
@@ -98,11 +99,11 @@ export default function LinksPanel() {
                     </div>
                     <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
                       <button className="annot-tool-btn" title="Go to page"
-                        onClick={() => scrollToPage(link.pageNum)}>⤴</button>
+                        onClick={() => scrollToPage(link.pageNum)}><ArrowUpRight size={13} /></button>
                       <button className="annot-tool-btn" title="Edit"
-                        onClick={() => startEdit(link)}>✎</button>
+                        onClick={() => startEdit(link)}><Pencil size={13} /></button>
                       <button className="annot-tool-btn" title="Delete"
-                        onClick={() => deleteAnnotation(link.id)}>✕</button>
+                        onClick={() => deleteAnnotation(link.id)}><X size={13} /></button>
                     </div>
                   </div>
                 )}

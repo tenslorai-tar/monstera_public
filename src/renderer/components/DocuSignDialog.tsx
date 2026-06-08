@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Signature } from 'lucide-react'
+import { Signature, SendHorizontal, Settings } from 'lucide-react'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { usePdfStore } from '../store/usePdfStore'
 
@@ -95,12 +95,13 @@ export default function DocuSignDialog({ onClose }: Props) {
         <div style={{ display: 'flex', gap: 0, marginBottom: 14, borderBottom: '1px solid var(--border)' }}>
           {(['send', 'settings'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
               padding: '6px 16px', border: 'none', cursor: 'pointer',
               background: tab === t ? 'var(--bg-page)' : 'transparent',
               borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent',
               color: tab === t ? 'var(--text)' : 'var(--text-muted)', fontSize: 13,
             }}>
-              {t === 'send' ? '📤 Send' : '⚙ Settings'}
+              {t === 'send' ? <><SendHorizontal size={14} /> Send</> : <><Settings size={14} /> Settings</>}
             </button>
           ))}
         </div>
@@ -192,7 +193,7 @@ export default function DocuSignDialog({ onClose }: Props) {
           {tab === 'settings' && <button className="modal-btn-primary" onClick={saveSettings}>Save Settings</button>}
           {tab === 'send' && (
             <button className="modal-btn-primary" onClick={sendEnvelope} disabled={busy || !pdfBytes}>
-              {busy ? 'Sending…' : '📤 Send for Signature'}
+              {busy ? 'Sending…' : <><SendHorizontal size={15} /> Send for Signature</>}
             </button>
           )}
         </div>

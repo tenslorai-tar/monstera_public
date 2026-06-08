@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { X } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { textCache } from '../utils/textCache'
 
@@ -62,7 +63,7 @@ export default function WordCountDialog({ onClose }: { onClose: () => void }) {
         onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <span>Word Count</span>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <button className="modal-close" onClick={onClose}><X size={16} /></button>
         </div>
 
         {loading ? (

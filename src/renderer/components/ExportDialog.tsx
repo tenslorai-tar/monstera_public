@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { Upload } from 'lucide-react'
+import { Upload, Image as ImageIcon, FileText, FileType, Table, MessageSquare, Download, FileJson, Ruler, Link, Presentation } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
@@ -219,12 +219,17 @@ export default function ExportDialog({ onClose }: Props) {
             <button key={t}
               onClick={() => setTab(t)}
               style={{
+                display: 'flex', alignItems: 'center', gap: 5,
                 padding: '6px 14px', border: 'none', cursor: 'pointer',
                 background: tab === t ? 'var(--accent)' : 'transparent',
                 color: tab === t ? '#fff' : 'var(--text-muted)',
                 borderRadius: '4px 4px 0 0', fontSize: 13, fontWeight: tab === t ? 600 : 400,
               }}>
-              {t === 'images' ? '🖼 Images' : t === 'text' ? '📄 Text (.txt)' : t === 'docx' ? '📝 Word (.docx)' : t === 'xlsx' ? '📊 Excel (.xlsx)' : '💬 Annotations'}
+              {t === 'images' ? <><ImageIcon size={14} /> Images</>
+                : t === 'text' ? <><FileText size={14} /> Text (.txt)</>
+                : t === 'docx' ? <><FileType size={14} /> Word (.docx)</>
+                : t === 'xlsx' ? <><Table size={14} /> Excel (.xlsx)</>
+                : <><MessageSquare size={14} /> Annotations</>}
             </button>
           ))}
         </div>
@@ -329,7 +334,7 @@ export default function ExportDialog({ onClose }: Props) {
                   a.href = url; a.download = `${baseName}_annotations.json`; a.click()
                   URL.revokeObjectURL(url)
                 }}>
-                📋 Export All as JSON
+                <FileJson size={15} /> Export All as JSON
               </button>
               <button className="modal-btn-secondary" style={{ justifyContent: 'flex-start', gap: 8 }}
                 onClick={() => {
@@ -349,7 +354,7 @@ export default function ExportDialog({ onClose }: Props) {
                   URL.revokeObjectURL(url)
                 }}
                 disabled={!annotations.some(a => a.type.startsWith('measure-'))}>
-                📏 Export Measurements as CSV
+                <Ruler size={15} /> Export Measurements as CSV
               </button>
               <button className="modal-btn-secondary" style={{ justifyContent: 'flex-start', gap: 8 }}
                 onClick={() => {
@@ -369,7 +374,7 @@ export default function ExportDialog({ onClose }: Props) {
                   URL.revokeObjectURL(url)
                 }}
                 disabled={!annotations.some(a => a.type === 'link')}>
-                🔗 Export Links as CSV
+                <Link size={15} /> Export Links as CSV
               </button>
             </div>
           </div>
@@ -392,27 +397,27 @@ export default function ExportDialog({ onClose }: Props) {
 
           {tab === 'images' && (
             <button className="modal-btn-primary" onClick={exportImages} disabled={busy}>
-              {busy ? 'Exporting…' : '↓ Export Images'}
+              {busy ? 'Exporting…' : <><Download size={15} /> Export Images</>}
             </button>
           )}
           {tab === 'text' && (
             <button className="modal-btn-primary" onClick={exportText} disabled={busy}>
-              {busy ? 'Extracting…' : '↓ Save as .txt'}
+              {busy ? 'Extracting…' : <><Download size={15} /> Save as .txt</>}
             </button>
           )}
           {tab === 'docx' && (
             <>
               <button className="modal-btn-secondary" onClick={exportPptx} disabled={busy}>
-                ↓ PowerPoint
+                <Presentation size={15} /> PowerPoint
               </button>
               <button className="modal-btn-primary" onClick={exportDocx} disabled={busy}>
-                {busy ? 'Working…' : '↓ Export to Word'}
+                {busy ? 'Working…' : <><Download size={15} /> Export to Word</>}
               </button>
             </>
           )}
           {tab === 'xlsx' && (
             <button className="modal-btn-primary" onClick={exportXlsx} disabled={busy}>
-              {busy ? 'Exporting…' : '↓ Export to Excel'}
+              {busy ? 'Exporting…' : <><Download size={15} /> Export to Excel</>}
             </button>
           )}
           {tab === 'annotations' && null}

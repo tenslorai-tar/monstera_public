@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { X } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface DiffLine { text: string; kind: 'same' | 'add' | 'del' }
@@ -72,7 +73,7 @@ export default function CompareDialog({ onClose }: { onClose: () => void }) {
         onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <span>Compare Documents</span>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <button className="modal-close" onClick={onClose}><X size={16} /></button>
         </div>
 
         <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>

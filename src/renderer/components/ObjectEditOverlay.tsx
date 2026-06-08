@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { Trash2 } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { canvasToPdf, pdfToCanvas } from '../utils/annotationUtils'
 
@@ -199,7 +200,7 @@ export default function ObjectEditOverlay({ pageNum, scale, pageW, pageH }: Prop
                 style={{ width: 22, height: 18, padding: 0, border: '1px solid var(--border,#444)', borderRadius: 3, cursor: 'pointer', background: 'none' }} />
             )}
             <button title="Delete object (Del)" onClick={() => void doDelete()}
-              style={{ background: 'transparent', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 13, padding: '0 2px' }}>🗑</button>
+              style={{ background: 'transparent', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 13, padding: '0 2px', display: 'inline-flex', alignItems: 'center' }}><Trash2 size={14} /></button>
           </div>
         </foreignObject>
       )}

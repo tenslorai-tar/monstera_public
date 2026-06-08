@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Cloud } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { Cloud, HardDrive, Package, Box, Building2, FolderOpen, Settings, RefreshCw, Upload, FileText, Download } from 'lucide-react'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { usePdfStore } from '../store/usePdfStore'
 import { useRecentFiles } from '../hooks/useRecentFiles'
@@ -208,21 +208,22 @@ export default function CloudStorageDialog({ onClose }: Props) {
         {/* Provider + tab */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
           {([
-            { id: 'googledrive', label: '🔵 Google Drive' },
-            { id: 'dropbox',     label: '📦 Dropbox' },
-            { id: 'onedrive',    label: '☁ OneDrive' },
-            { id: 'box',         label: '📂 Box' },
-            { id: 'sharepoint',  label: '🏢 SharePoint' },
-          ] as { id: Provider; label: string }[]).map(p => (
+            { id: 'googledrive', label: 'Google Drive', icon: <HardDrive size={14} /> },
+            { id: 'dropbox',     label: 'Dropbox',      icon: <Package size={14} /> },
+            { id: 'onedrive',    label: 'OneDrive',     icon: <Cloud size={14} /> },
+            { id: 'box',         label: 'Box',          icon: <Box size={14} /> },
+            { id: 'sharepoint',  label: 'SharePoint',   icon: <Building2 size={14} /> },
+          ] as { id: Provider; label: string; icon: ReactNode }[]).map(p => (
             <button key={p.id}
               onClick={() => { setProvider(p.id); setFiles([]); setStatus('') }}
               style={{
+                display: 'flex', alignItems: 'center', gap: 6,
                 padding: '6px 14px', border: '1px solid', fontSize: 12, borderRadius: 5, cursor: 'pointer',
                 borderColor: provider === p.id ? 'var(--accent)' : 'var(--border)',
-                background: provider === p.id ? 'rgba(74,158,255,0.12)' : 'var(--bg-secondary)',
+                background: provider === p.id ? 'var(--accent-dim)' : 'var(--bg-secondary)',
                 color: provider === p.id ? 'var(--accent)' : 'var(--text-primary)', fontWeight: provider === p.id ? 600 : 400,
               }}>
-              {p.label}
+              {p.icon} {p.label}
             </button>
           ))}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
@@ -230,11 +231,12 @@ export default function CloudStorageDialog({ onClose }: Props) {
               <button key={t}
                 onClick={() => setTab(t)}
                 style={{
+                  display: 'flex', alignItems: 'center', gap: 5,
                   padding: '5px 12px', border: 'none', fontSize: 12, borderRadius: 4, cursor: 'pointer',
                   background: tab === t ? 'var(--accent)' : 'transparent',
                   color: tab === t ? '#fff' : 'var(--text-muted)',
                 }}>
-                {t === 'browse' ? '📂 Browse' : '⚙ Settings'}
+                {t === 'browse' ? <><FolderOpen size={14} /> Browse</> : <><Settings size={14} /> Settings</>}
               </button>
             ))}
           </div>
@@ -281,11 +283,11 @@ export default function CloudStorageDialog({ onClose }: Props) {
           <>
             <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
               <button className="modal-btn-secondary" onClick={listFiles} disabled={busy}>
-                {busy ? '…' : '🔄 Refresh'}
+                {busy ? '…' : <><RefreshCw size={14} /> Refresh</>}
               </button>
               {pdfBytes && (
                 <button className="modal-btn-secondary" onClick={uploadFile} disabled={busy}>
-                  ⬆ Upload Current PDF
+                  <Upload size={14} /> Upload Current PDF
                 </button>
               )}
             </div>
@@ -298,13 +300,13 @@ export default function CloudStorageDialog({ onClose }: Props) {
               )}
               {files.map(f => (
                 <div key={f.id} style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid var(--border)', gap: 8 }}>
-                  <span style={{ flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.name}>
-                    📄 {f.name}
+                  <span style={{ flex: 1, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6 }} title={f.name}>
+                    <FileText size={14} /> {f.name}
                   </span>
                   {f.size && <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>{fmtSize(f.size)}</span>}
                   <button className="modal-btn-secondary" style={{ fontSize: 11, flexShrink: 0 }}
                     onClick={() => downloadFile(f)} disabled={busy}>
-                    ⬇ Open
+                    <Download size={13} /> Open
                   </button>
                 </div>
               ))}

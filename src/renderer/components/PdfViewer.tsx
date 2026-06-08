@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
+import { Pause, FastForward } from 'lucide-react'
 import { usePdfStore, PAGE_GAP } from '../store/usePdfStore'
 import { useSettingsStore } from '../store/useSettingsStore'
 import PdfPage from './PdfPage'
@@ -182,7 +183,7 @@ export default function PdfViewer() {
             boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
           }}
         >
-          {isAutoscrolling ? '⏸' : '▶▶'}
+          {isAutoscrolling ? <Pause size={16} /> : <FastForward size={16} />}
         </button>
       )}
 

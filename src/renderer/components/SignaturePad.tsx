@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react'
-import { Signature } from 'lucide-react'
+import { Signature, Pen, Type, Upload, FolderOpen } from 'lucide-react'
 
 interface Props {
   onConfirm: (dataUrl: string) => void
@@ -143,13 +143,14 @@ export default function SignaturePad({ onConfirm, onClose }: Props) {
           {(['draw', 'type', 'upload'] as Tab[]).map(t => (
             <button key={t}
               style={{
+                display: 'flex', alignItems: 'center', gap: 6,
                 padding: '6px 18px', fontSize: 13, border: 'none', cursor: 'pointer',
                 background: tab === t ? 'var(--bg-page)' : 'transparent',
                 borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent',
                 color: tab === t ? 'var(--text)' : 'var(--text-muted)',
               }}
               onClick={() => setTab(t)}>
-              {t === 'draw' ? '✏ Draw' : t === 'type' ? 'Aa Type' : '📁 Upload'}
+              {t === 'draw' ? <><Pen size={14} /> Draw</> : t === 'type' ? <><Type size={14} /> Type</> : <><Upload size={14} /> Upload</>}
             </button>
           ))}
         </div>
@@ -196,7 +197,7 @@ export default function SignaturePad({ onConfirm, onClose }: Props) {
         {tab === 'upload' && (
           <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
             <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileUpload} />
-            <button className="modal-btn-secondary" onClick={() => fileRef.current?.click()}>📁 Browse image…</button>
+            <button className="modal-btn-secondary" onClick={() => fileRef.current?.click()}><FolderOpen size={14} /> Browse image…</button>
             {uploadUrl && (
               <img src={uploadUrl} alt="Signature preview"
                 style={{ maxWidth: 460, maxHeight: 180, border: '1px solid var(--border)', borderRadius: 4, background: '#fff' }} />

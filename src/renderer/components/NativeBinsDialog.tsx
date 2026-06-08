@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Settings } from 'lucide-react'
+import { Settings, Download, Globe, RefreshCw } from 'lucide-react'
 
 interface BinInfo { path: string; available: boolean }
 interface BinStatus { mutool: BinInfo; ghostscript: BinInfo; libreoffice: BinInfo }
@@ -105,12 +105,12 @@ export default function NativeBinsDialog({ onClose }: Props) {
                     {meta.canDownload && (
                       <button className="modal-btn-primary" style={{ fontSize: 11, padding: '4px 12px' }}
                         onClick={download} disabled={busy}>
-                        {busy && dlPct !== null ? `⬇ ${dlStatus}` : '⬇ Download & Install'}
+                        {busy && dlPct !== null ? <><Download size={13} /> {dlStatus}</> : <><Download size={13} /> Download & Install</>}
                       </button>
                     )}
                     <button className="modal-btn-secondary" style={{ fontSize: 11, padding: '4px 12px' }}
                       onClick={() => open(meta.installUrl)}>
-                      🌐 {meta.canDownload ? 'Manual Download' : 'Download & Install'}
+                      <Globe size={13} /> {meta.canDownload ? 'Manual Download' : 'Download & Install'}
                     </button>
                   </div>
                 )}
@@ -136,7 +136,7 @@ export default function NativeBinsDialog({ onClose }: Props) {
         </div>
 
         <div className="modal-actions">
-          <button className="modal-btn-secondary" onClick={refresh} disabled={busy}>↻ Refresh</button>
+          <button className="modal-btn-secondary" onClick={refresh} disabled={busy}><RefreshCw size={14} /> Refresh</button>
           <button className="modal-btn-primary" onClick={onClose}>Close</button>
         </div>
       </div>

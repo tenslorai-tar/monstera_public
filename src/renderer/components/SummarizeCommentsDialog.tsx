@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { ClipboardList } from 'lucide-react'
+import { ClipboardList, Copy, Download } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import type { Annotation } from '../types/annotations'
 
@@ -138,10 +138,10 @@ export default function SummarizeCommentsDialog({ onClose }: Props) {
         <div className="modal-actions" style={{ marginTop: 14 }}>
           <button className="modal-btn-secondary" onClick={onClose}>Close</button>
           <button className="modal-btn-secondary" onClick={copyToClipboard} disabled={annotations.length === 0}>
-            📋 Copy to Clipboard
+            <Copy size={14} /> Copy to Clipboard
           </button>
           <button className="modal-btn-primary" onClick={saveToFile} disabled={annotations.length === 0}>
-            💾 Save as .txt
+            <Download size={14} /> Save as .txt
           </button>
         </div>
       </div>

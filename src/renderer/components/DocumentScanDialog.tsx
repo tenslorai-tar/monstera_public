@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { Wand2 } from 'lucide-react'
+import { Wand2, FolderOpen } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { newId } from '../utils/annotationUtils'
 import { scanDocument, type ScanMode } from '../utils/opencvScan'
@@ -91,7 +91,7 @@ export default function DocumentScanDialog({ onClose }: { onClose: () => void })
         </div>
 
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
-          <button className="modal-btn-secondary" onClick={() => fileRef.current?.click()}>📂 Choose image…</button>
+          <button className="modal-btn-secondary" onClick={() => fileRef.current?.click()}><FolderOpen size={14} /> Choose image…</button>
           <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={pickFile} />
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
             <input type="checkbox" checked={dewarp} onChange={e => setDewarp(e.target.checked)} />

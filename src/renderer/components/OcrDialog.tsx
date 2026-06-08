@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ScanText } from 'lucide-react'
+import { ScanText, Save } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { detectScannedPages, OCR_LANGUAGES, runOcrOnPages } from '../utils/ocrUtils'
 import { setOcrTextInCache } from '../utils/textCache'
@@ -204,7 +204,7 @@ export default function OcrDialog({ onClose }: Props) {
                   disabled={saving}
                   title="Overwrite the current file with OCR text embedded"
                 >
-                  {saving ? 'Saving…' : '💾 Save (overwrite)'}
+                  {saving ? 'Saving…' : <><Save size={14} /> Save (overwrite)</>}
                 </button>
                 <button
                   className="modal-btn-secondary"

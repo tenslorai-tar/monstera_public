@@ -82,7 +82,7 @@ export default function ReplacePageDialog({ numPages, currentPage, onReplace, on
         <div className="modal-actions">
           <button className="modal-btn-secondary" onClick={onClose}>Cancel</button>
           <button className="modal-btn-primary" onClick={handleReplace} disabled={!srcBytes}>
-            🔄 Replace Page
+            <RefreshCw size={15} /> Replace Page
           </button>
         </div>
       </div>

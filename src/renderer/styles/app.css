@@ -2261,6 +2261,13 @@
 }
 .modal-btn-primary:hover:not(:disabled) { box-shadow: 0 5px 16px color-mix(in srgb, var(--accent) 38%, transparent); }
 .modal-btn-secondary { border-radius: var(--radius); }
+/* Modal buttons center an optional leading icon next to their label */
+.modal-btn-primary, .modal-btn-secondary, .modal-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+/* Custom dialog headers (modal-header) align an optional leading icon too */
+.modal-header > span:first-child { display: inline-flex; align-items: center; gap: 9px; }
+/* Inline Lucide icons (in panel buttons/spans without flex) sit on the text baseline.
+   Ignored automatically inside flex/inline-flex contexts. */
+.lucide { vertical-align: -0.125em; }
 
 /* Settings dialog close button + headers pick up the rounder language */
 .settings-modal { border-radius: var(--radius-xl); }

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Anchor } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 export default function NamedDestsPanel() {
@@ -46,7 +47,7 @@ export default function NamedDestsPanel() {
             onClick={() => scrollToPage(dest.pageNum)}
             title={`Go to page ${dest.pageNum}`}
           >
-            <span style={{ fontSize: 16, opacity: 0.5 }}>⚓</span>
+            <span style={{ opacity: 0.5, display: 'inline-flex' }}><Anchor size={15} /></span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 500, wordBreak: 'break-all' }}>
                 {dest.name.length > 35 ? dest.name.slice(0, 32) + '…' : dest.name}

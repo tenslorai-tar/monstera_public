@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Table } from 'lucide-react'
+import { Table, FolderOpen } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
@@ -64,7 +64,7 @@ export default function CsvPdfDialog({ onClose }: Props) {
         </p>
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-          <button className="modal-btn-secondary" style={{ fontSize: 12 }} onClick={openFile}>📂 Open CSV File</button>
+          <button className="modal-btn-secondary" style={{ fontSize: 12 }} onClick={openFile}><FolderOpen size={14} /> Open CSV File</button>
           <button className="modal-btn-secondary" style={{ fontSize: 12 }} onClick={() => setText('')}>Clear</button>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
             <label style={{ fontSize: 12, color: 'var(--text-muted)' }}>Output:</label>

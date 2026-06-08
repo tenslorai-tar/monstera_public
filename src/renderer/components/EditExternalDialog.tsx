@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { SquarePen } from 'lucide-react'
+import { SquarePen, Download, ExternalLink } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
@@ -99,11 +99,11 @@ export default function EditExternalDialog({ onClose }: Props) {
           <button className="modal-btn-secondary" onClick={onClose}>Close</button>
           {pngPath && (
             <button className="modal-btn-secondary" onClick={reimport} disabled={importing}>
-              {importing ? 'Importing…' : '⬇ Reimport Edited Page'}
+              {importing ? 'Importing…' : <><Download size={15} /> Reimport Edited Page</>}
             </button>
           )}
           <button className="modal-btn-primary" onClick={exportPage} disabled={exporting || !pdfBytes}>
-            {exporting ? 'Exporting…' : '↗ Export & Open in Editor'}
+            {exporting ? 'Exporting…' : <><ExternalLink size={15} /> Export & Open in Editor</>}
           </button>
         </div>
       </div>

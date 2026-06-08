@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Mail } from 'lucide-react'
+import { Mail, Save } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
@@ -68,7 +68,7 @@ export default function EmailDialog({ onClose }: Props) {
           <button className="modal-btn-secondary" onClick={send}>Open Email Client</button>
           {pdfBytes && (
             <button className="modal-btn-primary" onClick={saveAndOpen}>
-              💾 Save PDF & Open Email
+              <Save size={15} /> Save PDF & Open Email
             </button>
           )}
         </div>

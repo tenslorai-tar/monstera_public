@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react'
-import { Camera } from 'lucide-react'
+import { Camera, Image as ImageIcon, FileText } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
@@ -104,7 +104,7 @@ export default function WebcamDialog({ onClose }: Props) {
                       borderColor: mode === m ? 'var(--accent)' : 'var(--border)',
                       background: mode === m ? 'rgba(74,158,255,0.1)' : 'var(--bg-secondary)',
                       fontSize: 13, color: mode === m ? 'var(--accent)' : 'var(--text)' }}>
-                    {m === 'stamp' ? '🖼 Image stamp on page' : '📄 New page'}
+                    {m === 'stamp' ? <><ImageIcon size={14} /> Image stamp on page</> : <><FileText size={14} /> New page</>}
                   </button>
                 ))}
               </div>
@@ -115,7 +115,7 @@ export default function WebcamDialog({ onClose }: Props) {
         <div className="modal-actions" style={{ marginTop: 14 }}>
           <button className="modal-btn-secondary" onClick={onClose}>Cancel</button>
           {!captured && !error && (
-            <button className="modal-btn-primary" onClick={capture}>📸 Capture</button>
+            <button className="modal-btn-primary" onClick={capture}><Camera size={15} /> Capture</button>
           )}
           {captured && (
             <>

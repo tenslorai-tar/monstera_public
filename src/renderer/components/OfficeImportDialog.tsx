@@ -1,16 +1,16 @@
-import { useState, useEffect } from 'react'
-import { Import } from 'lucide-react'
+import { useState, useEffect, type ReactNode } from 'react'
+import { Import, FileType, Table, Presentation, FileText } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
 
 type ImportType = 'word' | 'excel' | 'pptx' | 'other'
 
-const TYPE_META: Record<ImportType, { label: string; icon: string; ext: string[] }> = {
-  word:  { label: 'Word',       icon: '📝', ext: ['docx','doc','odt','rtf'] },
-  excel: { label: 'Excel',      icon: '📊', ext: ['xlsx','xls','ods','csv'] },
-  pptx:  { label: 'PowerPoint', icon: '📽', ext: ['pptx','ppt','odp'] },
-  other: { label: 'Other',      icon: '📄', ext: ['*'] },
+const TYPE_META: Record<ImportType, { label: string; icon: ReactNode; ext: string[] }> = {
+  word:  { label: 'Word',       icon: <FileType size={14} />,     ext: ['docx','doc','odt','rtf'] },
+  excel: { label: 'Excel',      icon: <Table size={14} />,        ext: ['xlsx','xls','ods','csv'] },
+  pptx:  { label: 'PowerPoint', icon: <Presentation size={14} />, ext: ['pptx','ppt','odp'] },
+  other: { label: 'Other',      icon: <FileText size={14} />,     ext: ['*'] },
 }
 
 export default function OfficeImportDialog({ onClose }: Props) {
@@ -119,9 +119,10 @@ export default function OfficeImportDialog({ onClose }: Props) {
                 onClick={() => { setType(k); setFilePath(''); setStatus('') }}
                 disabled={!loAvail && k === 'pptx'}
                 style={{
-                  flex: 1, padding: '7px 4px', border: '1px solid', borderRadius: 5, cursor: loAvail || k !== 'pptx' ? 'pointer' : 'not-allowed', fontSize: 12,
+                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                  padding: '7px 4px', border: '1px solid', borderRadius: 5, cursor: loAvail || k !== 'pptx' ? 'pointer' : 'not-allowed', fontSize: 12,
                   borderColor: type === k ? 'var(--accent)' : 'var(--border)',
-                  background: type === k ? 'rgba(74,158,255,0.12)' : 'var(--bg-secondary)',
+                  background: type === k ? 'var(--accent-dim)' : 'var(--bg-secondary)',
                   color: (!loAvail && k === 'pptx') ? 'var(--text-muted)' : type === k ? 'var(--accent)' : 'var(--text-primary)',
                   fontWeight: type === k ? 600 : 400,
                   opacity: (!loAvail && k === 'pptx') ? 0.5 : 1,
@@ -165,7 +166,7 @@ export default function OfficeImportDialog({ onClose }: Props) {
         <div className="modal-actions">
           <button className="modal-btn-secondary" onClick={onClose}>Cancel</button>
           <button className="modal-btn-primary" onClick={doImport} disabled={busy || !filePath}>
-            {busy ? 'Converting…' : '📥 Import'}
+            {busy ? 'Converting…' : <><Import size={15} /> Import</>}
           </button>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from 'react'
+import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import * as pdfjsLib from 'pdfjs-dist'
 import { usePdfStore } from '../store/usePdfStore'
 
@@ -74,17 +75,17 @@ export default function SplitViewPanel({ onClose }: Props) {
           disabled={leftPage <= 1 && rightPage <= 1}
           style={{ fontSize: 13, padding: '3px 10px', background: 'var(--btn-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: 3, cursor: 'pointer' }}
           title="Previous page (both panels)"
-        >◀ Both</button>
+        ><ChevronLeft size={14} /> Both</button>
         <button
           onClick={() => { setLeftPage(clamp(leftPage + 1)); setRightPage(clamp(rightPage + 1)) }}
           disabled={leftPage >= numPages && rightPage >= numPages}
           style={{ fontSize: 13, padding: '3px 10px', background: 'var(--btn-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: 3, cursor: 'pointer' }}
           title="Next page (both panels)"
-        >Both ▶</button>
+        >Both <ChevronRight size={14} /></button>
 
         <button onClick={onClose}
-          style={{ fontSize: 13, padding: '3px 10px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer' }}>
-          ✕ Close
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, padding: '3px 10px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer' }}>
+          <X size={14} /> Close
         </button>
       </div>
 

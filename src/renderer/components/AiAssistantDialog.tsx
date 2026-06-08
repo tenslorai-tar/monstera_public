@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { Bot, Settings, FileText, ListChecks, ListTodo, Trash2, CornerDownLeft } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { useSettingsStore } from '../store/useSettingsStore'
 
@@ -80,10 +81,10 @@ export default function AiAssistantDialog({ onClose }: Props) {
       <div className="modal-box" style={{ width: 640, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
         onClick={e => e.stopPropagation()}>
         <div className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span>🤖 AI Assistant</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Bot size={18} /> AI Assistant</span>
           {fileName && <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>— {fileName}</span>}
-          <button style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}
-            onClick={() => setShowKeyEdit(v => !v)}>⚙ API Key</button>
+          <button style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}
+            onClick={() => setShowKeyEdit(v => !v)}><Settings size={13} /> API Key</button>
         </div>
 
         {showKeyEdit && (
@@ -104,19 +105,19 @@ export default function AiAssistantDialog({ onClose }: Props) {
         {/* Quick actions */}
         <div style={{ display: 'flex', gap: 6, padding: '8px 16px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
           <button className="modal-btn-secondary" style={{ fontSize: 11 }} onClick={summarize} disabled={busy || !pdfBytes}>
-            📄 Summarize Document
+            <FileText size={14} /> Summarize Document
           </button>
           <button className="modal-btn-secondary" style={{ fontSize: 11 }} onClick={keyPoints} disabled={busy || !pdfBytes}>
-            📌 Key Points
+            <ListChecks size={14} /> Key Points
           </button>
           <button className="modal-btn-secondary" style={{ fontSize: 11 }}
             onClick={() => send('What are the main conclusions or action items from this document?')}
             disabled={busy || !pdfBytes}>
-            ✅ Action Items
+            <ListTodo size={14} /> Action Items
           </button>
           <button className="modal-btn-secondary" style={{ fontSize: 11 }}
             onClick={() => { setMessages([]); setDocText(null) }}>
-            🗑 Clear
+            <Trash2 size={14} /> Clear
           </button>
         </div>
 
@@ -166,7 +167,7 @@ export default function AiAssistantDialog({ onClose }: Props) {
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input) } }} />
           <button className="modal-btn-primary" style={{ alignSelf: 'flex-end', padding: '8px 16px' }}
             onClick={() => send(input)} disabled={busy || !input.trim()}>
-            Send ↵
+            Send <CornerDownLeft size={13} />
           </button>
         </div>
 

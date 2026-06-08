@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FileCode } from 'lucide-react'
+import { FileCode, FolderOpen } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
@@ -75,7 +75,7 @@ export default function MarkdownPdfDialog({ onClose }: Props) {
         </p>
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-          <button className="modal-btn-secondary" style={{ fontSize: 12 }} onClick={openFile}>📂 Open .md File</button>
+          <button className="modal-btn-secondary" style={{ fontSize: 12 }} onClick={openFile}><FolderOpen size={14} /> Open .md File</button>
           <button className="modal-btn-secondary" style={{ fontSize: 12 }} onClick={() => setText('')}>Clear</button>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
             <label style={{ fontSize: 12, color: 'var(--text-muted)' }}>Output:</label>

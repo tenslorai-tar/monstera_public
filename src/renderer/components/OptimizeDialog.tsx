@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Minimize2 } from 'lucide-react'
+import { Minimize2, ArrowRight, Zap, Wrench } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
@@ -125,7 +125,7 @@ export default function OptimizeDialog({ onClose }: Props) {
             </p>
             {gsAvail === false && (
               <button className="modal-btn-primary" onClick={runMupdfOptimize} disabled={busy || !!result}>
-                {busy ? 'Optimizing…' : '🗜 Optimize Now'}
+                {busy ? 'Optimizing…' : <><Minimize2 size={15} /> Optimize Now</>}
               </button>
             )}
           </>
@@ -134,7 +134,7 @@ export default function OptimizeDialog({ onClose }: Props) {
         {result && (
           <div style={{ display: 'flex', gap: 16, fontSize: 12, marginTop: 14, padding: '8px 12px', background: 'var(--bg-secondary)', borderRadius: 6 }}>
             <span>Before: <strong>{fmtSize(result.origSize)}</strong></span>
-            <span>→</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center' }}><ArrowRight size={14} /></span>
             <span>After: <strong style={{ color: result.newSize < result.origSize ? '#4caf50' : 'inherit' }}>{fmtSize(result.newSize)}</strong></span>
           </div>
         )}
@@ -148,9 +148,9 @@ export default function OptimizeDialog({ onClose }: Props) {
           <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Structure (qpdf — lossless)</div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="modal-btn-secondary" onClick={() => runQpdf('linearize')} disabled={busy}
-              title="Optimize for fast web view (linearize) without re-compressing content">⚡ Linearize</button>
+              title="Optimize for fast web view (linearize) without re-compressing content"><Zap size={14} /> Linearize</button>
             <button className="modal-btn-secondary" onClick={() => runQpdf('repair')} disabled={busy}
-              title="Repair & losslessly rewrite a damaged PDF's structure">🔧 Repair</button>
+              title="Repair & losslessly rewrite a damaged PDF's structure"><Wrench size={14} /> Repair</button>
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
             Lossless — keeps content/quality intact. Requires qpdf (install via Native Tools).

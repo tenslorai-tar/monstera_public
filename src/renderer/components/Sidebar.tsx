@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback } from 'react'
+import { X, Trash2 } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { usePdfOperations } from '../hooks/usePdfOperations'
 import ThumbnailItem from './ThumbnailItem'
@@ -88,8 +89,9 @@ export default function Sidebar() {
       <div className="sidebar-header">
         <span>Pages</span>
         {hasSelection && (
-          <button className="sidebar-clear-sel" onClick={clearSelection} title="Clear selection">
-            {selectedPages.size} selected ✕
+          <button className="sidebar-clear-sel" onClick={clearSelection} title="Clear selection"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            {selectedPages.size} selected <X size={11} />
           </button>
         )}
       </div>
@@ -120,7 +122,7 @@ export default function Sidebar() {
           <button className="ops-btn" title="Rotate CW" onClick={() => ops.rotatePages([...selectedPages], 90)}>↻</button>
           <button className="ops-btn" title="Rotate CCW" onClick={() => ops.rotatePages([...selectedPages], 270)}>↺</button>
           <button className="ops-btn" title="Extract" onClick={() => ops.extractPages([...selectedPages])}>⤓</button>
-          <button className="ops-btn ops-btn-danger" title="Delete" onClick={() => ops.deletePages([...selectedPages])} disabled={selectedPages.size === numPages}>🗑</button>
+          <button className="ops-btn ops-btn-danger" title="Delete" onClick={() => ops.deletePages([...selectedPages])} disabled={selectedPages.size === numPages}><Trash2 size={15} /></button>
         </div>
       )}
 

@@ -1,3 +1,4 @@
+import { X } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import type { Annotation } from '../types/annotations'
 
@@ -77,7 +78,7 @@ export default function AnnotationsPanel() {
                     className="annot-panel-del"
                     onClick={e => handleDelete(e, ann.id)}
                     title="Delete annotation"
-                  >✕</button>
+                  ><X size={13} /></button>
                 </div>
               ))}
             </div>

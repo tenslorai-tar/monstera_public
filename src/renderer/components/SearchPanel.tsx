@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { X } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { textCache } from '../utils/textCache'
 import type { TextEditAnn } from '../types/annotations'
@@ -167,7 +168,7 @@ export default function SearchPanel() {
         <span className="search-count">{matchLabel}</span>
         <button className="search-nav-btn" onClick={prevMatch} disabled={searchMatches.length === 0} title="Previous (Shift+Enter)">▲</button>
         <button className="search-nav-btn" onClick={nextMatch} disabled={searchMatches.length === 0} title="Next (Enter)">▼</button>
-        <button className="search-close-btn" onClick={() => setSearchOpen(false)} title="Close (Escape)">✕</button>
+        <button className="search-close-btn" onClick={() => setSearchOpen(false)} title="Close (Escape)"><X size={14} /></button>
       </div>
 
       {/* Replace row */}
