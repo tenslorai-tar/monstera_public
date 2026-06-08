@@ -2228,6 +2228,24 @@
   background: var(--border);
 }
 
+/* Drag grip on the floating dock */
+.left-pal-grip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 38px;
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  color: var(--text-dim);
+  cursor: grab;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+.left-pal-grip:hover { color: var(--text-secondary); }
+.left-pal-grip:active { cursor: grabbing; }
+
 /* Floating page sits on a slightly rounder card */
 .pdf-page-wrapper { border-radius: 4px; }
 

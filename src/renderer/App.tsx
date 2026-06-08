@@ -248,6 +248,18 @@ export default function App() {
     return () => { if (autosaveRef.current) clearInterval(autosaveRef.current) }
   }, [settings.autosaveIntervalMinutes, numPages, save])
 
+  // ── First-launch: default annotation colour + optional session restore ────────
+
+  const didInitRef = useRef(false)
+  useEffect(() => {
+    if (didInitRef.current) return
+    didInitRef.current = true
+    if (settings.defaultToolColor) usePdfStore.getState().setToolColor(settings.defaultToolColor)
+    if (settings.restoreLastSession && usePdfStore.getState().numPages === 0 && recentFiles.length > 0) {
+      openFile(recentFiles[0].filePath)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Window title sync ────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -302,8 +314,8 @@ export default function App() {
         case 'spellCheck':     setSpellCheckOpen(true); break
         case 'toggleTheme':
           updateSettings({ theme: settings.theme === 'dark' ? 'light' : 'dark' }); break
-        case 'zoomIn':   s.setScale(Math.min(5,    Math.round((s.scale + 0.25) * 100) / 100)); break
-        case 'zoomOut':  s.setScale(Math.max(0.1,  Math.round((s.scale - 0.25) * 100) / 100)); break
+        case 'zoomIn':   { const z = useSettingsStore.getState().settings.zoomStep || 0.25; s.setScale(Math.min(5,   Math.round((s.scale + z) * 100) / 100)); break }
+        case 'zoomOut':  { const z = useSettingsStore.getState().settings.zoomStep || 0.25; s.setScale(Math.max(0.1, Math.round((s.scale - z) * 100) / 100)); break }
         case 'fitPage':  s.setZoomMode('fit-page'); break
         case 'fitWidth': s.setZoomMode('fit-width'); break
         case 'zoom100':  s.setScale(1); break
@@ -333,7 +345,10 @@ export default function App() {
         case 'deskew':          setDeskewOpen(true); break
         case 'flattenForm':    s.flattenForm(); break
         case 'resetForm':      s.resetFormFields(); break
-        case 'applyRedactions': setRedactConfirmOpen(true); break
+        case 'applyRedactions':
+          if (useSettingsStore.getState().settings.confirmRedaction) setRedactConfirmOpen(true)
+          else usePdfStore.getState().applyRedactions()
+          break
         case 'headerFooter':  setHeaderFooterOpen(true); break
         case 'watermark':     setWatermarkOpen(true); break
         case 'background':    setBackgroundOpen(true); break
@@ -403,7 +418,10 @@ export default function App() {
         onSettings={() => setSettingsOpen(true)}
         onShortcuts={() => setShortcutsOpen(true)}
         onExport={() => setExportOpen(true)}
-        onRequestRedactConfirm={() => setRedactConfirmOpen(true)}
+        onRequestRedactConfirm={() => {
+          if (settings.confirmRedaction) setRedactConfirmOpen(true)
+          else applyRedactions()
+        }}
         onOpenSignaturePad={() => setSignaturePadOpen(true)}
         onInsertBlankBefore={() => ops.insertBlankPage(currentPage - 1)}
         onInsertBlankAfter={() => ops.insertBlankPage(currentPage)}

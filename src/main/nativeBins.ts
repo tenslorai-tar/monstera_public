@@ -356,13 +356,20 @@ export async function libreOfficeConvert(
   const lo = requireLibreOffice()
   const inPath = tmpPath(inputExt)
   const outDir = path.join(os.tmpdir(), `monstera-lo-${process.pid}-${Date.now()}`)
+  // A dedicated, throwaway user profile. Without this, a headless --convert-to
+  // silently produces NO output (or a blank file) whenever another LibreOffice
+  // instance is running or the default profile is locked — the usual cause of
+  // "Word export is blank". An isolated UserInstallation sidesteps both.
+  const profileDir = path.join(os.tmpdir(), `monstera-lo-profile-${process.pid}-${Date.now()}`)
+  const profileUrl = 'file:///' + profileDir.replace(/\\/g, '/')
 
   try {
     fs.writeFileSync(inPath, toBuffer(inputBytes))
     fs.mkdirSync(outDir, { recursive: true })
 
     await runProcess(lo, [
-      '--headless', '--norestore', '--nofirststartwizard',
+      '-env:UserInstallation=' + profileUrl,
+      '--headless', '--norestore', '--nofirststartwizard', '--nologo', '--nolockcheck',
       ...(infilter ? ['--infilter=' + infilter] : []),
       '--convert-to', outputFormat,
       '--outdir', outDir,
@@ -384,6 +391,7 @@ export async function libreOfficeConvert(
   } finally {
     try { if (fs.existsSync(inPath)) fs.unlinkSync(inPath) } catch { /* ignore */ }
     try { fs.rmSync(outDir, { recursive: true, force: true }) } catch { /* ignore */ }
+    try { fs.rmSync(profileDir, { recursive: true, force: true }) } catch { /* ignore */ }
   }
 }
 

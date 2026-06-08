@@ -26,7 +26,7 @@
   --bg-inset:      #f1f2f5;   /* inputs / wells */
 
   --bg-hover:      rgba(17, 24, 39, 0.045);
-  --bg-active:     rgba(37, 99, 235, 0.10);
+  --bg-active:     color-mix(in srgb, var(--accent) 10%, transparent);
 
   /* ── Borders ── */
   --border:        #e6e8ec;
@@ -39,13 +39,14 @@
   --text-muted:     #828a99;
   --text-dim:       #aab0bd;
 
-  /* ── Accent (refined violet) ── */
-  --accent:        #7c3aed;
-  --accent-hover:  #6d28d9;
-  --accent-active: #5b21b6;
+  /* ── Accent (Monstera leaf green) — all shades derive from --accent,
+        so a single custom accent colour repaints the whole UI. ── */
+  --accent:        #16a34a;
+  --accent-hover:  color-mix(in srgb, var(--accent), #000 14%);
+  --accent-active: color-mix(in srgb, var(--accent), #000 26%);
   --accent-fg:     #ffffff;
-  --accent-dim:    rgba(124, 58, 237, 0.10);
-  --accent-ring:   rgba(124, 58, 237, 0.34);
+  --accent-dim:    color-mix(in srgb, var(--accent) 10%, transparent);
+  --accent-ring:   color-mix(in srgb, var(--accent) 34%, transparent);
 
   /* ── Status ── */
   --danger:        #dc2626;
@@ -78,7 +79,7 @@
   --bg-inset:      #0f1014;
 
   --bg-hover:      rgba(255, 255, 255, 0.055);
-  --bg-active:     rgba(59, 130, 246, 0.18);
+  --bg-active:     color-mix(in srgb, var(--accent) 18%, transparent);
 
   --border:        #24262e;
   --border-light:  #32353f;
@@ -89,12 +90,12 @@
   --text-muted:     #6e7585;
   --text-dim:       #474d5a;
 
-  --accent:        #8b5cf6;
-  --accent-hover:  #a78bfa;
-  --accent-active: #7c3aed;
+  --accent:        #22c55e;
+  --accent-hover:  color-mix(in srgb, var(--accent), #fff 22%);
+  --accent-active: color-mix(in srgb, var(--accent), #000 12%);
   --accent-fg:     #ffffff;
-  --accent-dim:    rgba(139, 92, 246, 0.16);
-  --accent-ring:   rgba(139, 92, 246, 0.40);
+  --accent-dim:    color-mix(in srgb, var(--accent) 16%, transparent);
+  --accent-ring:   color-mix(in srgb, var(--accent) 40%, transparent);
 
   --danger:        #f87171;
   --danger-dim:    rgba(248, 113, 113, 0.16);
@@ -146,4 +147,29 @@ button, input, select, textarea {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-dim);
   background-clip: padding-box;
+}
+
+/* ── Accessibility settings ───────────────────────────────── */
+[data-reduce-motion] *,
+[data-reduce-motion] *::before,
+[data-reduce-motion] *::after {
+  transition-duration: 0.001ms !important;
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
+}
+
+[data-high-contrast] {
+  --border:        #b3b9c4;
+  --border-light:  #9aa1ae;
+  --border-strong: #7c8493;
+  --text-secondary: #23272f;
+  --text-muted:    #444b59;
+}
+[data-theme="dark"][data-high-contrast] {
+  --border:        #4b5160;
+  --border-light:  #5e6573;
+  --border-strong: #737b8c;
+  --text-secondary: #d8dce4;
+  --text-muted:    #9da4b4;
 }

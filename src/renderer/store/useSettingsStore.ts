@@ -17,6 +17,14 @@ export interface AppSettings {
   pdfiumRender: boolean             // render pages with PDFium instead of PDF.js
   measureUnit: string
   measureScale: number
+  // UX / personalization
+  accentColor: string               // '' = theme default, else a hex that repaints the UI
+  reduceMotion: boolean             // disable transitions/animations
+  restoreLastSession: boolean       // reopen the most recent file on launch
+  defaultToolColor: string          // default colour for new annotations
+  zoomStep: number                  // zoom in/out increment (0.1–0.5)
+  confirmRedaction: boolean         // warn before applying redactions
+  highContrast: boolean             // stronger borders/text contrast
   // Tier 3
   anthropicApiKey: string
   rtlText: boolean
@@ -56,6 +64,13 @@ function defaults(): AppSettings {
     pdfiumRender: false,
     measureUnit: 'pt',
     measureScale: 1.0,
+    accentColor: '',
+    reduceMotion: false,
+    restoreLastSession: false,
+    defaultToolColor: '#16a34a',
+    zoomStep: 0.25,
+    confirmRedaction: true,
+    highContrast: false,
     // Tier 3
     anthropicApiKey: '',
     rtlText: false,
@@ -79,6 +94,17 @@ function applyTheme(theme: Theme) {
   document.documentElement.setAttribute('data-theme', theme)
 }
 
+function applyAccent(hex: string) {
+  const el = document.documentElement
+  if (hex) el.style.setProperty('--accent', hex)
+  else el.style.removeProperty('--accent')
+}
+
+function applyToggle(attr: string, on: boolean) {
+  if (on) document.documentElement.setAttribute(attr, '')
+  else document.documentElement.removeAttribute(attr)
+}
+
 interface SettingsStore {
   settings: AppSettings
   updateSettings: (patch: Partial<AppSettings>) => void
@@ -87,6 +113,9 @@ interface SettingsStore {
 
 const initial = load()
 applyTheme(initial.theme)
+applyAccent(initial.accentColor)
+applyToggle('data-reduce-motion', initial.reduceMotion)
+applyToggle('data-high-contrast', initial.highContrast)
 
 export const useSettingsStore = create<SettingsStore>((set) => ({
   settings: initial,
@@ -95,6 +124,9 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
     const next = { ...s.settings, ...patch }
     persist(next)
     if (patch.theme) applyTheme(patch.theme)
+    if (patch.accentColor !== undefined) applyAccent(next.accentColor)
+    if (patch.reduceMotion !== undefined) applyToggle('data-reduce-motion', next.reduceMotion)
+    if (patch.highContrast !== undefined) applyToggle('data-high-contrast', next.highContrast)
     return { settings: next }
   }),
 
@@ -102,6 +134,9 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
     const d = defaults()
     persist(d)
     applyTheme(d.theme)
+    applyAccent(d.accentColor)
+    applyToggle('data-reduce-motion', d.reduceMotion)
+    applyToggle('data-high-contrast', d.highContrast)
     return { settings: d }
   }),
 }))

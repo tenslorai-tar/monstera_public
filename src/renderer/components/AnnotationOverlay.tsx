@@ -264,6 +264,42 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
     }
   }
 
+  // Find the single text-layer run under a click point. Used as the cover-and-
+  // replace fallback for the Edit Text tool when PDFium is unavailable (or finds
+  // no object), so clicking text always opens an editor instead of doing nothing.
+  const readTextSpanAt = (sx: number, sy: number):
+    { text: string; x: number; y: number; w: number; h: number; fontSize?: number; color?: string } | null => {
+    const svg = svgRef.current
+    const layer = svg?.closest('.pdf-page-wrapper')?.querySelector<HTMLElement>('.text-layer')
+    const svgRect = svg?.getBoundingClientRect()
+    if (!layer || !svgRect) return null
+    const ptX = svgRect.left + sx, ptY = svgRect.top + sy
+    let best: { el: HTMLElement; r: DOMRect } | null = null
+    for (const el of Array.from(layer.querySelectorAll<HTMLElement>('span'))) {
+      if (!el.textContent?.trim()) continue
+      const r = el.getBoundingClientRect()
+      if (ptX >= r.left - 1 && ptX <= r.right + 1 && ptY >= r.top - 2 && ptY <= r.bottom + 2) { best = { el, r }; break }
+    }
+    if (!best) return null
+    const cs = getComputedStyle(best.el)
+    const pxToHex = (c: string): string | undefined => {
+      const m = c.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
+      if (!m) return undefined
+      const h = (n: string) => parseInt(n, 10).toString(16).padStart(2, '0')
+      return `#${h(m[1])}${h(m[2])}${h(m[3])}`
+    }
+    const fontPx = parseFloat(cs.fontSize)
+    return {
+      text: best.el.textContent ?? '',
+      x: best.r.left - svgRect.left,
+      y: best.r.top - svgRect.top,
+      w: best.r.width,
+      h: best.r.height,
+      fontSize: fontPx > 0 ? Math.round((fontPx / scale) * 10) / 10 : undefined,
+      color: pxToHex(cs.color),
+    }
+  }
+
   // ── Poly tool: click to add points, dblclick to finish ──────────────────
 
   const handlePolyClick = (e: React.MouseEvent) => {
@@ -552,8 +588,17 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
                 }
               }
             }
-          } catch { /* fall through to cancel */ }
-          setDraw({ k: 'idle' })
+          } catch { /* fall through to DOM cover-and-replace */ }
+          // PDFium unavailable or no text object found → edit the text run under
+          // the cursor via the PDF.js text layer (cover-and-replace on commit).
+          const span = readTextSpanAt(sx, sy)
+          if (span) {
+            setDraw({ k: 'text-edit-edit', x: span.x, y: span.y,
+              w: Math.max(24, span.w), h: Math.max(10, span.h),
+              text: span.text, fontSize: span.fontSize, color: span.color })
+          } else {
+            setDraw({ k: 'idle' })
+          }
         })()
         return
       }

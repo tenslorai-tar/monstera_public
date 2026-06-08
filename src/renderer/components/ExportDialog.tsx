@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react'
-import { Upload, Image as ImageIcon, FileText, FileType, Table, MessageSquare, Download, FileJson, Ruler, Link, Presentation } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Upload, Image as ImageIcon, FileText, FileType, Table, MessageSquare, Download, FileJson, Ruler, Link, Presentation, CheckCircle2, TriangleAlert } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
@@ -22,7 +22,12 @@ export default function ExportDialog({ onClose }: Props) {
   const [pageRange, setPageRange] = useState('all')
   const [status, setStatus] = useState('')
   const [busy, setBusy] = useState(false)
+  const [loAvail, setLoAvail] = useState<boolean | null>(null)
   const cancelRef = useRef(false)
+
+  useEffect(() => {
+    window.electronAPI.libreofficeIsAvailable().then(setLoAvail).catch(() => setLoAvail(false))
+  }, [])
 
   const baseName = fileName.replace(/\.pdf$/i, '')
 
@@ -291,17 +296,23 @@ export default function ExportDialog({ onClose }: Props) {
         {tab === 'docx' && (
           <div>
             <div style={{
-              background: 'rgba(74,222,128,0.10)', border: '1px solid rgba(74,222,128,0.35)',
-              borderRadius: 6, padding: '10px 14px', marginBottom: 12,
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: loAvail ? 'var(--accent-dim)' : 'rgba(217,119,6,0.10)',
+              border: `1px solid ${loAvail ? 'var(--accent)' : 'rgba(217,119,6,0.4)'}`,
+              borderRadius: 8, padding: '9px 13px', marginBottom: 12,
+              color: loAvail ? 'var(--accent)' : 'var(--warning)', fontSize: 12, fontWeight: 600,
             }}>
-              <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--accent)', marginBottom: 4 }}>Word & PowerPoint export</div>
-              <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
-                If <strong>LibreOffice</strong> is installed, this converts the PDF with a layout-preserving
-                engine — editable paragraphs, headings, and images (still not pixel-perfect for complex
-                layouts). Without LibreOffice it falls back to a text-only DOCX copy. PowerPoint export
-                (one slide per page) requires LibreOffice.
-              </p>
+              {loAvail === null
+                ? 'Checking for LibreOffice…'
+                : loAvail
+                  ? <><CheckCircle2 size={16} /> LibreOffice detected — layout-preserving Word &amp; PowerPoint export.</>
+                  : <><TriangleAlert size={16} /> LibreOffice not found — Word falls back to text-only; PowerPoint is unavailable.</>}
             </div>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
+              With <strong>LibreOffice</strong> the PDF is converted to editable paragraphs, headings, and
+              images (not pixel-perfect for complex layouts). Without it, Word export produces a text-only
+              copy and PowerPoint export is disabled. Install from libreoffice.org, then reopen this dialog.
+            </p>
           </div>
         )}
 
@@ -407,7 +418,8 @@ export default function ExportDialog({ onClose }: Props) {
           )}
           {tab === 'docx' && (
             <>
-              <button className="modal-btn-secondary" onClick={exportPptx} disabled={busy}>
+              <button className="modal-btn-secondary" onClick={exportPptx} disabled={busy || loAvail === false}
+                title={loAvail === false ? 'Requires LibreOffice' : 'Export one slide per page'}>
                 <Presentation size={15} /> PowerPoint
               </button>
               <button className="modal-btn-primary" onClick={exportDocx} disabled={busy}>

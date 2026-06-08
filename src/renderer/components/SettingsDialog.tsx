@@ -1,7 +1,18 @@
 import { useState, useEffect } from 'react'
-import { Settings as SettingsIcon, X as XIcon, Moon, Sun } from 'lucide-react'
+import { Settings as SettingsIcon, X as XIcon, Moon, Sun, Upload, Download } from 'lucide-react'
 import { useSettingsStore } from '../store/useSettingsStore'
 import type { Theme, DefaultZoom } from '../store/useSettingsStore'
+
+const ACCENTS: { name: string; hex: string }[] = [
+  { name: 'Monstera Green', hex: '' },
+  { name: 'Emerald', hex: '#10b981' },
+  { name: 'Teal',    hex: '#14b8a6' },
+  { name: 'Blue',    hex: '#3b82f6' },
+  { name: 'Indigo',  hex: '#6366f1' },
+  { name: 'Violet',  hex: '#8b5cf6' },
+  { name: 'Rose',    hex: '#f43f5e' },
+  { name: 'Amber',   hex: '#f59e0b' },
+]
 
 const OCR_LANGUAGES = [
   { code: 'eng', label: 'English' }, { code: 'fra', label: 'French' },
@@ -70,6 +81,58 @@ export default function SettingsDialog({ onClose }: Props) {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Accent colour */}
+        <div className="modal-field settings-span-2">
+          <label className="modal-label">Accent colour</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+            {ACCENTS.map(a => {
+              const selected = (local.accentColor || '') === a.hex
+              const swatch = a.hex || '#16a34a'
+              return (
+                <button key={a.name} title={a.name}
+                  onClick={() => setLocal(l => ({ ...l, accentColor: a.hex }))}
+                  style={{
+                    width: 26, height: 26, borderRadius: '50%', cursor: 'pointer', padding: 0,
+                    background: swatch,
+                    border: '2px solid ' + (selected ? 'var(--text-primary)' : 'transparent'),
+                    outline: selected ? '0' : '1px solid var(--border)',
+                  }} />
+              )
+            })}
+            <label title="Custom colour" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 2, cursor: 'pointer' }}>
+              <input type="color" value={local.accentColor || '#16a34a'}
+                onChange={e => setLocal(l => ({ ...l, accentColor: e.target.value }))}
+                style={{ width: 28, height: 28, padding: 0, border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', background: 'none' }} />
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Custom</span>
+            </label>
+          </div>
+          <span className="modal-hint">Repaints highlights, buttons and active states across the whole app.</span>
+        </div>
+
+        {/* Default annotation colour */}
+        <div className="modal-field">
+          <label className="modal-label">Default annotation colour</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input type="color" value={local.defaultToolColor || '#16a34a'}
+              onChange={e => setLocal(l => ({ ...l, defaultToolColor: e.target.value }))}
+              style={{ width: 34, height: 28, padding: 0, border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', background: 'none' }} />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{local.defaultToolColor}</span>
+          </div>
+          <span className="modal-hint">Colour new highlights, shapes and ink start with.</span>
+        </div>
+
+        {/* Zoom step */}
+        <div className="modal-field">
+          <label className="modal-label">Zoom step (+ / − buttons)</label>
+          <select className="annot-select" style={{ width: '100%', padding: '7px 10px', fontSize: 13 }}
+            value={local.zoomStep ?? 0.25}
+            onChange={e => setLocal(l => ({ ...l, zoomStep: parseFloat(e.target.value) }))}>
+            <option value={0.1}>10% — fine</option>
+            <option value={0.25}>25% — default</option>
+            <option value={0.5}>50% — coarse</option>
+          </select>
         </div>
 
         {/* Default zoom */}
@@ -147,6 +210,42 @@ export default function SettingsDialog({ onClose }: Props) {
             <input type="checkbox" checked={!!local.showGrid}
               onChange={e => setLocal(l => ({ ...l, showGrid: e.target.checked }))} />
             <span style={{ fontSize: 13 }}>Show grid on each page (1-inch grid)</span>
+          </label>
+        </div>
+
+        {/* Restore last session */}
+        <div className="modal-field">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!local.restoreLastSession}
+              onChange={e => setLocal(l => ({ ...l, restoreLastSession: e.target.checked }))} />
+            <span style={{ fontSize: 13 }}>Reopen the last file on launch</span>
+          </label>
+        </div>
+
+        {/* Confirm redaction */}
+        <div className="modal-field">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!local.confirmRedaction}
+              onChange={e => setLocal(l => ({ ...l, confirmRedaction: e.target.checked }))} />
+            <span style={{ fontSize: 13 }}>Warn before applying redactions</span>
+          </label>
+        </div>
+
+        {/* Reduce motion */}
+        <div className="modal-field">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!local.reduceMotion}
+              onChange={e => setLocal(l => ({ ...l, reduceMotion: e.target.checked }))} />
+            <span style={{ fontSize: 13 }}>Reduce motion (minimize animations)</span>
+          </label>
+        </div>
+
+        {/* High contrast */}
+        <div className="modal-field">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!local.highContrast}
+              onChange={e => setLocal(l => ({ ...l, highContrast: e.target.checked }))} />
+            <span style={{ fontSize: 13 }}>High contrast (stronger borders &amp; text)</span>
           </label>
         </div>
 
@@ -249,10 +348,10 @@ export default function SettingsDialog({ onClose }: Props) {
               a.href = url; a.download = 'monstera-settings.json'; a.click()
               URL.revokeObjectURL(url)
             }}>
-            ↗ Export
+            <Upload size={14} /> Export
           </button>
           <label className="modal-btn-secondary" style={{ cursor: 'pointer' }} title="Import settings from a JSON file">
-            ↙ Import
+            <Download size={14} /> Import
             <input type="file" accept=".json" style={{ display: 'none' }}
               onChange={e => {
                 const file = e.target.files?.[0]; if (!file) return

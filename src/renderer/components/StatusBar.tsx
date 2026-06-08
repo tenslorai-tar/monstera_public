@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Lock } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
+import { useSettingsStore } from '../store/useSettingsStore'
 import type { ZoomMode } from '../store/usePdfStore'
 
 const ZOOM_PRESETS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]
@@ -34,8 +35,9 @@ export default function StatusBar() {
 
   const annCount = annotations.length
 
-  const zoomIn  = () => setScale(Math.min(5,   Math.round((scale + 0.25) * 100) / 100))
-  const zoomOut = () => setScale(Math.max(0.1, Math.round((scale - 0.25) * 100) / 100))
+  const zoomStep = useSettingsStore(s => s.settings.zoomStep) || 0.25
+  const zoomIn  = () => setScale(Math.min(5,   Math.round((scale + zoomStep) * 100) / 100))
+  const zoomOut = () => setScale(Math.max(0.1, Math.round((scale - zoomStep) * 100) / 100))
 
   const handleZoomSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const v = e.target.value as ZoomMode | string
