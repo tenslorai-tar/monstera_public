@@ -197,6 +197,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   confirmUnsaved: (fileName: string): Promise<'save' | 'discard' | 'cancel'> =>
     ipcRenderer.invoke('dialog:confirmUnsaved', fileName),
 
+  // Synchronous OS-keychain encryption for secrets at rest.
+  secureEncryptSync: (plain: string): string =>
+    ipcRenderer.sendSync('secure:encryptSync', plain),
+  secureDecryptSync: (stored: string): string =>
+    ipcRenderer.sendSync('secure:decryptSync', stored),
+
   onMenuAction: (callback: (action: string) => void): void => {
     ipcRenderer.on('menu:action', (_event, action: string) => callback(action))
   },

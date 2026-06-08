@@ -114,6 +114,10 @@ declare global {
       setWindowTitle: (title: string) => Promise<void>
       printWindow: () => Promise<void>
       confirmUnsaved: (fileName: string) => Promise<'save' | 'discard' | 'cancel'>
+
+      // OS-keychain-backed encryption for secrets at rest (synchronous).
+      secureEncryptSync: (plain: string) => string
+      secureDecryptSync: (stored: string) => string
       onMenuAction: (callback: (action: string) => void) => void
       removeMenuActionListener: () => void
 

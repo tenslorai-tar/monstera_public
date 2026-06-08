@@ -42,10 +42,39 @@ export interface AppSettings {
 
 const STORAGE_KEY = 'monstera-settings'
 
+// Secret fields encrypted at rest via the OS keychain (Electron safeStorage).
+// Everything degrades to plaintext passthrough when the bridge is unavailable
+// (e.g. the browser dev preview), so settings never break.
+const SECRET_KEYS: (keyof AppSettings)[] = [
+  'anthropicApiKey', 'gdToken', 'dropboxToken', 'onedriveToken',
+  'boxToken', 'sharepointToken', 'docusignKey',
+]
+
+function encSecret(v: string): string {
+  try {
+    const r = window.electronAPI?.secureEncryptSync?.(v)
+    return typeof r === 'string' ? r : v
+  } catch { return v }
+}
+function decSecret(v: string): string {
+  try {
+    const r = window.electronAPI?.secureDecryptSync?.(v)
+    return typeof r === 'string' ? r : v
+  } catch { return v }
+}
+
 function load(): AppSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return { ...defaults(), ...JSON.parse(raw) }
+    if (raw) {
+      const parsed = { ...defaults(), ...JSON.parse(raw) } as AppSettings
+      const rec = parsed as unknown as Record<string, unknown>
+      for (const k of SECRET_KEYS) {
+        const val = rec[k]
+        if (typeof val === 'string' && val) rec[k] = decSecret(val)
+      }
+      return parsed
+    }
   } catch {}
   return defaults()
 }
@@ -89,7 +118,15 @@ function defaults(): AppSettings {
 }
 
 function persist(s: AppSettings) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)) } catch {}
+  try {
+    const toStore = { ...s } as AppSettings
+    const rec = toStore as unknown as Record<string, unknown>
+    for (const k of SECRET_KEYS) {
+      const val = rec[k]
+      if (typeof val === 'string' && val) rec[k] = encSecret(val)
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(toStore))
+  } catch {}
 }
 
 function applyTheme(theme: Theme) {

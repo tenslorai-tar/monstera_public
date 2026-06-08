@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, shell, utilityProcess } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, Menu, shell, utilityProcess, safeStorage } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import * as nativeBins from './nativeBins'
@@ -342,6 +342,34 @@ ipcMain.handle('window:setTitle', (_event, title: string) => {
 ipcMain.handle('window:print', () => {
   if (!mainWin) return
   mainWin.webContents.print({ silent: false, printBackground: true }, () => {})
+})
+
+// ── Secret storage (OS keychain via safeStorage) ───────────────────────────────
+// Encrypts API keys / cloud tokens at rest. Synchronous so the renderer's
+// settings store stays synchronous. Degrades to plaintext passthrough wherever
+// encryption is unavailable, so settings never break.
+const SECURE_PREFIX = 'enc:v1:'
+ipcMain.on('secure:encryptSync', (event, plain: string) => {
+  try {
+    if (typeof plain !== 'string' || plain === '' || !safeStorage.isEncryptionAvailable()) {
+      event.returnValue = plain; return
+    }
+    event.returnValue = SECURE_PREFIX + safeStorage.encryptString(plain).toString('base64')
+  } catch {
+    event.returnValue = plain
+  }
+})
+ipcMain.on('secure:decryptSync', (event, stored: string) => {
+  try {
+    if (typeof stored !== 'string' || !stored.startsWith(SECURE_PREFIX)) {
+      event.returnValue = stored; return   // legacy plaintext or empty — return as-is
+    }
+    if (!safeStorage.isEncryptionAvailable()) { event.returnValue = ''; return }
+    const b64 = stored.slice(SECURE_PREFIX.length)
+    event.returnValue = safeStorage.decryptString(Buffer.from(b64, 'base64'))
+  } catch {
+    event.returnValue = ''   // can't decrypt (e.g. different machine) — blank, user re-enters
+  }
 })
 
 // ── Unsaved-changes confirmation (native 3-button dialog) ──────────────────────
