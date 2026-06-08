@@ -1585,6 +1585,11 @@ ipcMain.handle('libreoffice:exportDocx', async (_e, b: ArrayBuffer) => abuf(awai
 ipcMain.handle('libreoffice:exportPptx', async (_e, b: ArrayBuffer) => abuf(await nativeBins.libreOfficeToPptx(b)))
 ipcMain.handle('libreoffice:exportXlsx', async (_e, b: ArrayBuffer) => abuf(await nativeBins.libreOfficeToXlsx(b)))
 
+// pdf2docx engine — best-in-class editable+layout Word conversion via system Python
+ipcMain.handle('pdf2docx:status',  async ()                => nativeBins.pdf2docxStatus())
+ipcMain.handle('pdf2docx:convert', async (_e, b: ArrayBuffer) => abuf(await nativeBins.pdf2docxConvert(b)))
+ipcMain.handle('pdf2docx:install', async ()                => nativeBins.pdf2docxInstall())
+
 ipcMain.handle('dict:spellCheck', async (_e, text: string) => spell.spellCheck(text))
 
 // Office file open dialog

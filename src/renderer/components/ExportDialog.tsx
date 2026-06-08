@@ -1,12 +1,13 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import StatusText from './StatusText'
-import { Upload, Image as ImageIcon, FileText, FileType, Table, MessageSquare, Download, FileJson, Ruler, Link, Presentation, CheckCircle2 } from 'lucide-react'
+import { Upload, Image as ImageIcon, FileText, FileType, Table, MessageSquare, Download, FileJson, Ruler, Link, Presentation, CheckCircle2, Sparkles, Download as DownloadIcon } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
 
 type ExportTab = 'images' | 'text' | 'docx' | 'xlsx' | 'annotations'
 type ImageFormat = 'png' | 'jpeg' | 'webp'
+type DocxMode = 'rich' | 'layout' | 'text'
 
 export default function ExportDialog({ onClose }: Props) {
   const pdfDoc = usePdfStore(s => s.pdfDoc)
@@ -23,8 +24,36 @@ export default function ExportDialog({ onClose }: Props) {
   const [pageRange, setPageRange] = useState('all')
   const [status, setStatus] = useState('')
   const [busy, setBusy] = useState(false)
-  const [docxMode, setDocxMode] = useState<'layout' | 'text'>('layout')
+  const [docxMode, setDocxMode] = useState<DocxMode>('layout')
+  const [richStatus, setRichStatus] = useState<{ python: string; version: string; installed: boolean } | null>(null)
+  const [installing, setInstalling] = useState(false)
   const cancelRef = useRef(false)
+
+  useEffect(() => {
+    window.electronAPI.pdf2docxStatus().then(s => {
+      setRichStatus(s)
+      if (s.installed) setDocxMode('rich') // prefer the best engine when present
+    }).catch(() => setRichStatus({ python: '', version: '', installed: false }))
+  }, [])
+
+  const setupRichEngine = async () => {
+    setInstalling(true)
+    setStatus('Setting up the pdf2docx engine (downloads ~80 MB the first time)…')
+    try {
+      const r = await window.electronAPI.pdf2docxInstall()
+      if (r.ok) {
+        const s = await window.electronAPI.pdf2docxStatus()
+        setRichStatus(s)
+        setDocxMode('rich')
+        setStatus('✓ pdf2docx engine ready.')
+      } else {
+        setStatus(`Error: setup failed. ${r.log.split('\n').slice(-1)[0] || ''}`.trim())
+      }
+    } catch (e: any) {
+      setStatus(`Error: ${e?.message ?? 'setup failed'}`)
+    }
+    setInstalling(false)
+  }
 
   const baseName = fileName.replace(/\.pdf$/i, '')
 
@@ -167,14 +196,20 @@ export default function ExportDialog({ onClose }: Props) {
     setBusy(true)
     try {
       const ab = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength) as ArrayBuffer
-      setStatus(docxMode === 'layout' ? 'Rendering pages into Word (preserving design)…' : 'Building editable Word document…')
-      const result = await window.electronAPI.exportToDocx(ab, fileName, docxMode)
+      setStatus(
+        docxMode === 'rich'   ? 'Reconstructing layout with pdf2docx (this can take a moment)…'
+        : docxMode === 'layout' ? 'Rendering pages into Word (preserving design)…'
+        : 'Building editable Word document…')
+      const result = docxMode === 'rich'
+        ? await window.electronAPI.pdf2docxConvert(ab)
+        : await window.electronAPI.exportToDocx(ab, fileName, docxMode)
       if (result) {
         const savePath = await window.electronAPI.saveFileDialog(`${baseName}.docx`)
         if (savePath) {
           await window.electronAPI.writeFile(savePath, result)
-          setStatus(docxMode === 'layout'
-            ? '✓ Word document saved — original design preserved, opens cleanly in Microsoft Word.'
+          setStatus(
+            docxMode === 'rich'   ? '✓ Word document saved — editable text with reconstructed layout (columns, tables, images).'
+            : docxMode === 'layout' ? '✓ Word document saved — original design preserved, opens cleanly in Microsoft Word.'
             : '✓ Word document saved — editable text, opens cleanly in Microsoft Word.')
         } else setStatus('Cancelled.')
       }
@@ -288,11 +323,55 @@ export default function ExportDialog({ onClose }: Props) {
               borderRadius: 8, padding: '9px 13px', marginBottom: 14,
               color: 'var(--accent)', fontSize: 12, fontWeight: 600,
             }}>
-              <CheckCircle2 size={16} /> Built-in converter — no external software required.
+              <CheckCircle2 size={16} /> {richStatus?.installed
+                ? 'Best engine (pdf2docx) ready — editable text with full layout.'
+                : 'Built-in modes need no setup; the “Best” engine is optional.'}
             </div>
 
             <label className="modal-label" style={{ display: 'block', marginBottom: 8 }}>Word (.docx) conversion mode</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+
+              {/* Best: pdf2docx (editable + layout) */}
+              {(() => {
+                const available = richStatus?.installed === true
+                const selected = docxMode === 'rich'
+                return (
+                  <div style={{
+                    borderRadius: 8,
+                    border: `1px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+                    background: selected ? 'var(--accent-dim)' : 'transparent',
+                  }}>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: available ? 'pointer' : 'default', padding: '9px 12px' }}>
+                      <input type="radio" name="docxMode" checked={selected} disabled={!available}
+                        onChange={() => available && setDocxMode('rich')} style={{ marginTop: 2 }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: selected ? 'var(--accent)' : 'var(--text-primary)' }}>
+                          <Sparkles size={14} /> Editable + keep layout
+                          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', background: 'var(--accent)', color: '#fff', padding: '1px 6px', borderRadius: 999 }}>Best</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.45 }}>
+                          Reconstructs columns, tables, images, and coloured text into a fully-editable Word document — the closest match to the original. Powered by the pdf2docx engine.
+                        </div>
+                      </div>
+                    </label>
+                    {!available && (
+                      <div style={{ padding: '0 12px 10px 38px', fontSize: 11 }}>
+                        {richStatus === null
+                          ? <span style={{ color: 'var(--text-muted)' }}>Checking for the engine…</span>
+                          : richStatus.python
+                            ? <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                <button className="modal-btn-secondary" style={{ fontSize: 11, padding: '5px 10px' }} disabled={installing} onClick={setupRichEngine}>
+                                  {installing ? 'Setting up…' : <><DownloadIcon size={13} /> Set up engine (one-time)</>}
+                                </button>
+                                <span style={{ color: 'var(--text-dim)' }}>Uses Python {richStatus.version}. ~80 MB download.</span>
+                              </div>
+                            : <span style={{ color: 'var(--warning)' }}>Requires Python — install Python 3.12 from python.org, then reopen this dialog.</span>}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+
               {([
                 { id: 'layout', title: 'Keep original design', desc: 'Each page is placed as a high-resolution image — looks exactly like the PDF (colours, photos, columns). Text is not editable.' },
                 { id: 'text',   title: 'Editable text',        desc: 'Reconstructs flowing, editable paragraphs (font size, bold/italic). Best for editing content; the visual layout is not preserved.' },

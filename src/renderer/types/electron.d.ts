@@ -174,6 +174,9 @@ declare global {
       libreofficeExportDocx: (bytes: ArrayBuffer) => Promise<ArrayBuffer>
       libreofficeExportPptx: (bytes: ArrayBuffer) => Promise<ArrayBuffer>
       libreofficeExportXlsx: (bytes: ArrayBuffer) => Promise<ArrayBuffer>
+      pdf2docxStatus: () => Promise<{ python: string; version: string; installed: boolean }>
+      pdf2docxConvert: (bytes: ArrayBuffer) => Promise<ArrayBuffer>
+      pdf2docxInstall: () => Promise<{ ok: boolean; version: string; log: string }>
 
       spellCheck: (text: string) => Promise<Array<{ word: string; suggestions: string[] }>>
       emailToPdf: (filePath: string) => Promise<ArrayBuffer>

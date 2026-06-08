@@ -272,6 +272,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   libreofficeExportPptx:  (bytes: ArrayBuffer): Promise<ArrayBuffer> => ipcRenderer.invoke('libreoffice:exportPptx', bytes),
   libreofficeExportXlsx:  (bytes: ArrayBuffer): Promise<ArrayBuffer> => ipcRenderer.invoke('libreoffice:exportXlsx', bytes),
 
+  // pdf2docx engine (best editable+layout Word conversion via system Python)
+  pdf2docxStatus:  (): Promise<{ python: string; version: string; installed: boolean }> =>
+    ipcRenderer.invoke('pdf2docx:status'),
+  pdf2docxConvert: (bytes: ArrayBuffer): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('pdf2docx:convert', bytes),
+  pdf2docxInstall: (): Promise<{ ok: boolean; version: string; log: string }> =>
+    ipcRenderer.invoke('pdf2docx:install'),
+
   spellCheck: (text: string): Promise<Array<{ word: string; suggestions: string[] }>> =>
     ipcRenderer.invoke('dict:spellCheck', text),
 

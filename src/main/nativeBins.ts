@@ -413,6 +413,114 @@ export function libreOfficeToXlsx(bytes: ArrayBuffer | Uint8Array): Promise<Buff
   return libreOfficeConvert(bytes, '.pdf', 'xlsx:Calc MS Excel 2007 XML', 'calc_pdf_import')
 }
 
+// ── pdf2docx engine (best-in-class PDF → editable Word with layout) ────────────
+// pdf2docx (Python) reconstructs columns, tables, images, and coloured text into a
+// real, editable .docx — the one free engine that keeps BOTH editability and layout.
+// We detect a system Python (never bundle one) and offer one-click `pip install`.
+
+// Probe: print "<version>\n<0|1 pdf2docx-installed>"
+const PY_PROBE = "import importlib.util as u,sys;print(sys.version.split()[0]);print('1' if u.find_spec('pdf2docx') else '0')"
+
+function pythonCandidates(): string[] {
+  const out: string[] = []
+  const add = (p: string) => {
+    try {
+      // Reject the 0-byte Microsoft Store alias stubs in WindowsApps.
+      if (p && fs.existsSync(p) && fs.statSync(p).size > 2048 && !out.includes(p)) out.push(p)
+    } catch { /* ignore */ }
+  }
+  const roots = [
+    path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python'),
+    'C:\\', 'C:\\Program Files', 'C:\\Program Files (x86)',
+  ]
+  for (const root of roots) {
+    try {
+      for (const d of fs.readdirSync(root)) {
+        if (/^Python3\d+$/i.test(d)) add(path.join(root, d, 'python.exe'))
+      }
+    } catch { /* ignore */ }
+  }
+  add(findInPath('python.exe'))
+  return out
+}
+
+export interface Pdf2docxStatus { python: string; version: string; installed: boolean }
+
+// Resolve the best Python: prefer one that already has pdf2docx; otherwise the most
+// wheel-compatible interpreter (3.9–3.12) as the install target.
+async function resolvePython(): Promise<Pdf2docxStatus | null> {
+  const cands = pythonCandidates()
+  let best: Pdf2docxStatus | null = null
+  for (const p of cands) {
+    try {
+      const { stdout } = await runProcess(p, ['-c', PY_PROBE])
+      const lines = stdout.trim().split(/\r?\n/)
+      const version = (lines[0] ?? '').trim()
+      const installed = (lines[1] ?? '').trim() === '1'
+      if (installed) return { python: p, version, installed: true }
+      const minor = parseInt(version.split('.')[1] ?? '0', 10)
+      const preferred = minor >= 9 && minor <= 12
+      if (!best) best = { python: p, version, installed: false }
+      else {
+        const bestMinor = parseInt(best.version.split('.')[1] ?? '0', 10)
+        const bestPreferred = bestMinor >= 9 && bestMinor <= 12
+        if (preferred && !bestPreferred) best = { python: p, version, installed: false }
+      }
+    } catch { /* skip this interpreter */ }
+  }
+  return best
+}
+
+export async function pdf2docxStatus(): Promise<Pdf2docxStatus> {
+  const r = await resolvePython()
+  return r ?? { python: '', version: '', installed: false }
+}
+
+const PDF2DOCX_SCRIPT = `import sys
+from pdf2docx import Converter
+src, dst = sys.argv[1], sys.argv[2]
+cv = Converter(src)
+try:
+    cv.convert(dst, start=0, end=None)
+finally:
+    cv.close()
+`
+
+export async function pdf2docxConvert(bytes: ArrayBuffer | Uint8Array): Promise<Buffer> {
+  const r = await resolvePython()
+  if (!r) throw new Error('No Python interpreter found. Install Python 3.12 from python.org, then set up the pdf2docx engine.')
+  if (!r.installed) throw new Error('The pdf2docx engine is not installed yet. Use “Set up engine” in the Export dialog first.')
+  const inPath = tmpPath('.pdf')
+  const outPath = tmpPath('.docx')
+  const scriptPath = tmpPath('.py')
+  try {
+    fs.writeFileSync(inPath, toBuffer(bytes))
+    fs.writeFileSync(scriptPath, PDF2DOCX_SCRIPT)
+    await runProcess(r.python, [scriptPath, inPath, outPath])
+    if (!fs.existsSync(outPath)) throw new Error('pdf2docx produced no output file')
+    return fs.readFileSync(outPath)
+  } finally {
+    for (const f of [inPath, outPath, scriptPath]) {
+      try { if (fs.existsSync(f)) fs.unlinkSync(f) } catch { /* ignore */ }
+    }
+  }
+}
+
+export async function pdf2docxInstall(): Promise<{ ok: boolean; version: string; log: string }> {
+  const r = await resolvePython()
+  if (!r) throw new Error('No Python interpreter found. Install Python 3.12 from python.org first, then retry.')
+  // Upgrade pip quietly, then install pdf2docx (pulls PyMuPDF, opencv, fonttools…).
+  let log = ''
+  try {
+    const a = await runProcess(r.python, ['-m', 'pip', 'install', '--upgrade', 'pip'])
+    log += a.stdout + a.stderr
+  } catch (e) { log += String((e as Error).message) }
+  const b = await runProcess(r.python, ['-m', 'pip', 'install', '--upgrade', 'pdf2docx'])
+  log += b.stdout + b.stderr
+  const after = await resolvePython()
+  return { ok: !!after?.installed, version: after?.version ?? r.version, log: log.slice(-4000) }
+}
+
 // ── mutool convert (XPS / CBZ / SVG / EPUB / FB2 → PDF) ───────────────────────
 export async function mutoolConvert(bytes: ArrayBuffer | Uint8Array, inputExt: string): Promise<Buffer> {
   const mt = getMutoolPath()
