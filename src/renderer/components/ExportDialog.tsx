@@ -23,6 +23,7 @@ export default function ExportDialog({ onClose }: Props) {
   const [pageRange, setPageRange] = useState('all')
   const [status, setStatus] = useState('')
   const [busy, setBusy] = useState(false)
+  const [docxMode, setDocxMode] = useState<'layout' | 'text'>('layout')
   const cancelRef = useRef(false)
 
   const baseName = fileName.replace(/\.pdf$/i, '')
@@ -166,13 +167,15 @@ export default function ExportDialog({ onClose }: Props) {
     setBusy(true)
     try {
       const ab = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength) as ArrayBuffer
-      setStatus('Building editable Word document…')
-      const result = await window.electronAPI.exportToDocx(ab, fileName)
+      setStatus(docxMode === 'layout' ? 'Rendering pages into Word (preserving design)…' : 'Building editable Word document…')
+      const result = await window.electronAPI.exportToDocx(ab, fileName, docxMode)
       if (result) {
         const savePath = await window.electronAPI.saveFileDialog(`${baseName}.docx`)
         if (savePath) {
           await window.electronAPI.writeFile(savePath, result)
-          setStatus('✓ Word document saved — editable text, opens cleanly in Microsoft Word.')
+          setStatus(docxMode === 'layout'
+            ? '✓ Word document saved — original design preserved, opens cleanly in Microsoft Word.'
+            : '✓ Word document saved — editable text, opens cleanly in Microsoft Word.')
         } else setStatus('Cancelled.')
       }
     } catch (e: any) {
@@ -282,22 +285,38 @@ export default function ExportDialog({ onClose }: Props) {
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8,
               background: 'var(--accent-dim)', border: '1px solid var(--accent)',
-              borderRadius: 8, padding: '9px 13px', marginBottom: 12,
+              borderRadius: 8, padding: '9px 13px', marginBottom: 14,
               color: 'var(--accent)', fontSize: 12, fontWeight: 600,
             }}>
               <CheckCircle2 size={16} /> Built-in converter — no external software required.
             </div>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0, lineHeight: 1.55 }}>
-              <strong>Word (.docx)</strong> reconstructs the text as flowing, fully-editable paragraphs with
-              font sizes and bold/italic preserved — it always opens correctly in Microsoft Word.
-              <br /><br />
-              <strong>PowerPoint (.pptx)</strong> places a crisp snapshot of each page on its own slide
-              (one page → one slide), so the result looks exactly like the PDF and never needs repair.
-              <br /><br />
-              <span style={{ color: 'var(--text-dim)' }}>
-                Exact multi-column layout, tables, and inline images aren't reflowed into Word. Scanned
-                pages need OCR first for the Word text to be extractable.
-              </span>
+
+            <label className="modal-label" style={{ display: 'block', marginBottom: 8 }}>Word (.docx) conversion mode</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+              {([
+                { id: 'layout', title: 'Keep original design', desc: 'Each page is placed as a high-resolution image — looks exactly like the PDF (colours, photos, columns). Text is not editable.' },
+                { id: 'text',   title: 'Editable text',        desc: 'Reconstructs flowing, editable paragraphs (font size, bold/italic). Best for editing content; the visual layout is not preserved.' },
+              ] as const).map(opt => (
+                <label key={opt.id}
+                  style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
+                    padding: '9px 12px', borderRadius: 8,
+                    border: `1px solid ${docxMode === opt.id ? 'var(--accent)' : 'var(--border)'}`,
+                    background: docxMode === opt.id ? 'var(--accent-dim)' : 'transparent',
+                  }}>
+                  <input type="radio" name="docxMode" checked={docxMode === opt.id}
+                    onChange={() => setDocxMode(opt.id)} style={{ marginTop: 2 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: docxMode === opt.id ? 'var(--accent)' : 'var(--text-primary)' }}>{opt.title}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.45 }}>{opt.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <p style={{ fontSize: 11.5, color: 'var(--text-dim)', margin: 0, lineHeight: 1.5 }}>
+              <strong style={{ color: 'var(--text-muted)' }}>PowerPoint (.pptx)</strong> places a crisp snapshot of each
+              page on its own slide — looks exactly like the PDF and never needs repair.
             </p>
           </div>
         )}

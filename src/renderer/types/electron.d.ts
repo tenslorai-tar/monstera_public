@@ -90,7 +90,7 @@ declare global {
         contactInfo: string; certValidFrom: string; certValidTo: string; certCurrentlyValid: boolean;
       }>>
 
-      exportToDocx: (bytes: ArrayBuffer, fileName: string) => Promise<ArrayBuffer>
+      exportToDocx: (bytes: ArrayBuffer, fileName: string, mode?: 'text' | 'layout') => Promise<ArrayBuffer>
       exportToPptx: (bytes: ArrayBuffer, dpi?: number) => Promise<ArrayBuffer>
 
       formsIdentify: (bytes: ArrayBuffer) => Promise<Array<{

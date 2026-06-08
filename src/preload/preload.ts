@@ -135,8 +135,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     contactInfo: string; certValidFrom: string; certValidTo: string; certCurrentlyValid: boolean;
   }>> => ipcRenderer.invoke('pdf:verifySignatures', bytes),
 
-  exportToDocx: (bytes: ArrayBuffer, fileName: string): Promise<ArrayBuffer> =>
-    ipcRenderer.invoke('export:toDocx', bytes, fileName),
+  exportToDocx: (bytes: ArrayBuffer, fileName: string, mode?: 'text' | 'layout'): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('export:toDocx', bytes, fileName, mode),
 
   exportToPptx: (bytes: ArrayBuffer, dpi?: number): Promise<ArrayBuffer> =>
     ipcRenderer.invoke('export:toPptx', bytes, dpi),

@@ -912,13 +912,50 @@ ipcMain.handle('forms:identify', async (_event, bytes: ArrayBuffer): Promise<Ide
 interface MuLine { text?: string; font?: { name?: string; weight?: string; style?: string; size?: number }; bbox?: { x: number; y: number; w: number; h: number } }
 interface MuBlock { type?: string; bbox?: { x: number; y: number; w: number; h: number }; lines?: MuLine[] }
 
-ipcMain.handle('export:toDocx', async (_event, bytes: ArrayBuffer, _fileName: string): Promise<ArrayBuffer> => {
+type DocxMode = 'text' | 'layout'
+
+ipcMain.handle('export:toDocx', async (_event, bytes: ArrayBuffer, _fileName: string, mode: DocxMode = 'layout'): Promise<ArrayBuffer> => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { Document, Paragraph, TextRun, Packer, PageBreak, AlignmentType } = require('docx')
+  const docx = require('docx')
+  const { Document, Paragraph, TextRun, Packer, PageBreak, AlignmentType, ImageRun } = docx
   const mupdf = await getMupdf()
   const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
   const numPages = doc.countPages()
 
+  // ── Layout mode: one full-page image per Word page — preserves the exact design.
+  if (mode === 'layout') {
+    const dpi = 150
+    const scale = dpi / 72
+    const sections: unknown[] = []
+    for (let i = 0; i < numPages; i++) {
+      const page = doc.loadPage(i)
+      const b = page.getBounds()
+      const wPt = (b[2] ?? 612) - (b[0] ?? 0)
+      const hPt = (b[3] ?? 792) - (b[1] ?? 0)
+      const pix = page.toPixmap(mupdf.Matrix.scale(scale, scale), mupdf.ColorSpace.DeviceRGB, false)
+      const png = Buffer.from(pix.asPNG())
+      try { pix.destroy() } catch { /* noop */ }
+      const dispW = Math.round(wPt * 96 / 72) // display px at 96 dpi (Word downscales the 150-dpi png → crisp)
+      const dispH = Math.round(hPt * 96 / 72)
+      sections.push({
+        properties: {
+          page: {
+            size: { width: Math.round(wPt * 20), height: Math.round(hPt * 20) }, // twips
+            margin: { top: 0, right: 0, bottom: 0, left: 0 },
+          },
+        },
+        children: [new Paragraph({
+          spacing: { after: 0, line: 240, lineRule: 'exact' },
+          children: [new ImageRun({ type: 'png', data: png, transformation: { width: dispW, height: dispH } })],
+        })],
+      })
+    }
+    const wordDoc = new Document({ creator: 'Monstera PDF Editor', sections })
+    const buf = await Packer.toBuffer(wordDoc)
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
+  }
+
+  // ── Text mode: flowing, fully-editable paragraphs (no exact layout).
   const children: unknown[] = []
 
   for (let i = 0; i < numPages; i++) {
@@ -973,7 +1010,7 @@ ipcMain.handle('export:toDocx', async (_event, bytes: ArrayBuffer, _fileName: st
   })
 
   const buf = await Packer.toBuffer(wordDoc)
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
 })
 
 // ── PPTX Export ───────────────────────────────────────────────────────────────
