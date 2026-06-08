@@ -902,13 +902,19 @@ ipcMain.handle('forms:identify', async (_event, bytes: ArrayBuffer): Promise<Ide
 })
 
 // ── DOCX Export ───────────────────────────────────────────────────────────────
-// Approach: extract text via MuPDF page-by-page, build a Word document using the
-// `docx` npm package. Layout, images, tables, and font matching are NOT preserved —
-// this produces a readable text copy in DOCX format.
+// Approach: walk MuPDF's structured-text blocks (paragraphs, fonts, sizes) and emit a
+// real, fully-editable Word document via the `docx` package. Unlike LibreOffice's
+// PDF import — which produces a wall of absolutely-positioned text boxes under a
+// full-page white shape that Microsoft Word renders as a BLANK page — this output is
+// flowing, editable text that Word always renders correctly. Reading order, paragraph
+// breaks, font size, and bold/italic are preserved; exact pixel layout is not.
+
+interface MuLine { text?: string; font?: { name?: string; weight?: string; style?: string; size?: number }; bbox?: { x: number; y: number; w: number; h: number } }
+interface MuBlock { type?: string; bbox?: { x: number; y: number; w: number; h: number }; lines?: MuLine[] }
 
 ipcMain.handle('export:toDocx', async (_event, bytes: ArrayBuffer, _fileName: string): Promise<ArrayBuffer> => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { Document, Paragraph, TextRun, HeadingLevel, Packer } = require('docx')
+  const { Document, Paragraph, TextRun, Packer, PageBreak, AlignmentType } = require('docx')
   const mupdf = await getMupdf()
   const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
   const numPages = doc.countPages()
@@ -916,39 +922,100 @@ ipcMain.handle('export:toDocx', async (_event, bytes: ArrayBuffer, _fileName: st
   const children: unknown[] = []
 
   for (let i = 0; i < numPages; i++) {
+    if (i > 0) children.push(new Paragraph({ children: [new PageBreak()] }))
+
     const page = doc.loadPage(i)
-    // extractText returns a plain-text string from the page
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let rawText: string = ''
-    try { rawText = page.toStructuredText('preserve-whitespace').asText() } catch {
-      try { rawText = page.toStructuredText().asText() } catch { rawText = '' }
+    let json: { blocks?: MuBlock[] } = {}
+    try { json = JSON.parse(page.toStructuredText('preserve-whitespace').asJSON()) } catch { json = {} }
+    const blocks = json.blocks ?? []
+
+    const pageBounds = page.getBounds() // [x0,y0,x1,y1]
+    const pageW = (pageBounds[2] ?? 612) - (pageBounds[0] ?? 0)
+
+    let emitted = false
+    for (const block of blocks) {
+      if (block.type !== 'text' || !block.lines || block.lines.length === 0) continue
+
+      // One paragraph per block; join wrapped lines with a space.
+      const text = block.lines.map(l => (l.text ?? '')).join(' ').replace(/\s+/g, ' ').trim()
+      if (!text) continue
+
+      const f = block.lines[0].font ?? {}
+      const name = (f.name ?? '').toLowerCase()
+      const size = Math.max(6, Math.round(f.size ?? 11))
+      const bold = f.weight === 'bold' || /bold|black|semibold|heavy|extrabold/.test(name)
+      const italics = f.style === 'italic' || /italic|oblique/.test(name)
+
+      // Centre blocks that sit roughly centred on the page (common for headers).
+      const bx = block.bbox?.x ?? 0, bw = block.bbox?.w ?? 0
+      const centreGap = bx - (pageW - bx - bw)
+      const align = Math.abs(centreGap) < pageW * 0.06 && bw < pageW * 0.85 && bx > pageW * 0.1
+        ? AlignmentType.CENTER : AlignmentType.LEFT
+
+      children.push(new Paragraph({
+        alignment: align,
+        spacing: { after: 120 },
+        children: [new TextRun({ text, size: size * 2, bold, italics })],
+      }))
+      emitted = true
     }
 
-    // Page separator heading
-    children.push(new Paragraph({
-      text: `Page ${i + 1}`,
-      heading: HeadingLevel.HEADING_2,
-      spacing: { before: 240, after: 80 },
-    }))
-
-    // Split into lines and create paragraphs, skipping blank runs
-    const lines = rawText.split('\n')
-    for (const line of lines) {
-      const trimmed = line.trim()
+    if (!emitted) {
       children.push(new Paragraph({
-        children: [new TextRun({ text: trimmed, size: 22 })],
-        spacing: { after: trimmed ? 80 : 20 },
+        children: [new TextRun({ text: `[Page ${i + 1} — no extractable text. Run OCR for scanned pages.]`, italics: true, color: '888888', size: 20 })],
       }))
     }
   }
 
   const wordDoc = new Document({
-    sections: [{ properties: {}, children }],
     creator: 'Monstera PDF Editor',
+    sections: [{ properties: {}, children }],
   })
 
   const buf = await Packer.toBuffer(wordDoc)
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+})
+
+// ── PPTX Export ───────────────────────────────────────────────────────────────
+// Render each page to a PNG via MuPDF and place one full-bleed image per slide using
+// pptxgenjs. This always produces a valid, openable .pptx that looks exactly like the
+// PDF — avoiding the corrupt output LibreOffice's Impress PDF-import generates.
+
+ipcMain.handle('export:toPptx', async (_event, bytes: ArrayBuffer, dpi = 150): Promise<ArrayBuffer> => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const PptxMod = require('pptxgenjs')
+  const PptxGenJS = PptxMod.default || PptxMod
+  const mupdf = await getMupdf()
+  const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
+  const numPages = doc.countPages()
+
+  const pptx = new PptxGenJS()
+  const p0 = doc.loadPage(0)
+  const b0 = p0.getBounds()
+  const wIn = ((b0[2] ?? 612) - (b0[0] ?? 0)) / 72
+  const hIn = ((b0[3] ?? 792) - (b0[1] ?? 0)) / 72
+  pptx.defineLayout({ name: 'PDFPAGE', width: wIn, height: hIn })
+  pptx.layout = 'PDFPAGE'
+
+  const scale = dpi / 72
+  for (let i = 0; i < numPages; i++) {
+    const page = doc.loadPage(i)
+    const bounds = page.getBounds()
+    const pw = ((bounds[2] ?? 612) - (bounds[0] ?? 0)) / 72
+    const ph = ((bounds[3] ?? 792) - (bounds[1] ?? 0)) / 72
+    const mtx = mupdf.Matrix.scale(scale, scale)
+    const pix = page.toPixmap(mtx, mupdf.ColorSpace.DeviceRGB, false)
+    const b64 = Buffer.from(pix.asPNG()).toString('base64')
+    try { pix.destroy() } catch { /* noop */ }
+    const slide = pptx.addSlide()
+    // Centre the page image within the (first-page) slide, preserving aspect ratio.
+    const sizing = { type: 'contain' as const, w: wIn, h: hIn }
+    slide.addImage({ data: `image/png;base64,${b64}`, x: 0, y: 0, w: pw, h: ph, sizing })
+  }
+
+  const out = await pptx.write({ outputType: 'nodebuffer' })
+  const buf = out as Buffer
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
 })
 
 // ── Extract all text (for compare, translate, word count) ─────────────────────

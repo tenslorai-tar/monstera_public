@@ -138,6 +138,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportToDocx: (bytes: ArrayBuffer, fileName: string): Promise<ArrayBuffer> =>
     ipcRenderer.invoke('export:toDocx', bytes, fileName),
 
+  exportToPptx: (bytes: ArrayBuffer, dpi?: number): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('export:toPptx', bytes, dpi),
+
   formsIdentify: (bytes: ArrayBuffer): Promise<Array<{
     pageNum: number; label: string; rect: [number, number, number, number]; fieldType: 'text' | 'checkbox' | 'date';
   }>> => ipcRenderer.invoke('forms:identify', bytes),

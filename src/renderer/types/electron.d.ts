@@ -91,6 +91,7 @@ declare global {
       }>>
 
       exportToDocx: (bytes: ArrayBuffer, fileName: string) => Promise<ArrayBuffer>
+      exportToPptx: (bytes: ArrayBuffer, dpi?: number) => Promise<ArrayBuffer>
 
       formsIdentify: (bytes: ArrayBuffer) => Promise<Array<{
         pageNum: number; label: string; rect: [number, number, number, number]; fieldType: 'text' | 'checkbox' | 'date';

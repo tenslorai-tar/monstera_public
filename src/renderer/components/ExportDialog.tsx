@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import StatusText from './StatusText'
-import { Upload, Image as ImageIcon, FileText, FileType, Table, MessageSquare, Download, FileJson, Ruler, Link, Presentation, CheckCircle2, TriangleAlert } from 'lucide-react'
+import { Upload, Image as ImageIcon, FileText, FileType, Table, MessageSquare, Download, FileJson, Ruler, Link, Presentation, CheckCircle2 } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
@@ -23,12 +23,7 @@ export default function ExportDialog({ onClose }: Props) {
   const [pageRange, setPageRange] = useState('all')
   const [status, setStatus] = useState('')
   const [busy, setBusy] = useState(false)
-  const [loAvail, setLoAvail] = useState<boolean | null>(null)
   const cancelRef = useRef(false)
-
-  useEffect(() => {
-    window.electronAPI.libreofficeIsAvailable().then(setLoAvail).catch(() => setLoAvail(false))
-  }, [])
 
   const baseName = fileName.replace(/\.pdf$/i, '')
 
@@ -171,22 +166,14 @@ export default function ExportDialog({ onClose }: Props) {
     setBusy(true)
     try {
       const ab = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength) as ArrayBuffer
-      const loAvail = await window.electronAPI.libreofficeIsAvailable().catch(() => false)
-      let result: ArrayBuffer
-      let note: string
-      if (loAvail) {
-        setStatus('Converting via LibreOffice (layout-preserving)…')
-        result = await window.electronAPI.libreofficeExportDocx(ab)
-        note = '✓ DOCX saved — LibreOffice conversion with layout & editable text.'
-      } else {
-        setStatus('Building DOCX (text-only)…')
-        result = await window.electronAPI.exportToDocx(ab, fileName)
-        note = '✓ DOCX saved (text-only). Install LibreOffice for a layout-preserving conversion.'
-      }
+      setStatus('Building editable Word document…')
+      const result = await window.electronAPI.exportToDocx(ab, fileName)
       if (result) {
         const savePath = await window.electronAPI.saveFileDialog(`${baseName}.docx`)
-        if (savePath) { await window.electronAPI.writeFile(savePath, result); setStatus(note) }
-        else setStatus('Cancelled.')
+        if (savePath) {
+          await window.electronAPI.writeFile(savePath, result)
+          setStatus('✓ Word document saved — editable text, opens cleanly in Microsoft Word.')
+        } else setStatus('Cancelled.')
       }
     } catch (e: any) {
       setStatus(`Error: ${e?.message ?? 'DOCX export failed'}`)
@@ -197,16 +184,12 @@ export default function ExportDialog({ onClose }: Props) {
   const exportPptx = async () => {
     if (!pdfBytes) return
     setBusy(true)
-    setStatus('Converting to PowerPoint via LibreOffice…')
+    setStatus('Rendering pages to slides…')
     try {
       const ab = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength) as ArrayBuffer
-      if (!(await window.electronAPI.libreofficeIsAvailable().catch(() => false))) {
-        setStatus('PowerPoint export needs LibreOffice. Install it, then retry.')
-        setBusy(false); return
-      }
-      const result = await window.electronAPI.libreofficeExportPptx(ab)
+      const result = await window.electronAPI.exportToPptx(ab, 150)
       const savePath = await window.electronAPI.saveFileDialog(`${baseName}.pptx`)
-      if (savePath) { await window.electronAPI.writeFile(savePath, result); setStatus('✓ PowerPoint saved (one slide per page).') }
+      if (savePath) { await window.electronAPI.writeFile(savePath, result); setStatus('✓ PowerPoint saved — one slide per page, opens cleanly.') }
       else setStatus('Cancelled.')
     } catch (e: any) {
       setStatus(`Error: ${e?.message ?? 'PPTX export failed'}`)
@@ -298,21 +281,23 @@ export default function ExportDialog({ onClose }: Props) {
           <div>
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8,
-              background: loAvail ? 'var(--accent-dim)' : 'rgba(217,119,6,0.10)',
-              border: `1px solid ${loAvail ? 'var(--accent)' : 'rgba(217,119,6,0.4)'}`,
+              background: 'var(--accent-dim)', border: '1px solid var(--accent)',
               borderRadius: 8, padding: '9px 13px', marginBottom: 12,
-              color: loAvail ? 'var(--accent)' : 'var(--warning)', fontSize: 12, fontWeight: 600,
+              color: 'var(--accent)', fontSize: 12, fontWeight: 600,
             }}>
-              {loAvail === null
-                ? 'Checking for LibreOffice…'
-                : loAvail
-                  ? <><CheckCircle2 size={16} /> LibreOffice detected — layout-preserving Word &amp; PowerPoint export.</>
-                  : <><TriangleAlert size={16} /> LibreOffice not found — Word falls back to text-only; PowerPoint is unavailable.</>}
+              <CheckCircle2 size={16} /> Built-in converter — no external software required.
             </div>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0, lineHeight: 1.5 }}>
-              With <strong>LibreOffice</strong> the PDF is converted to editable paragraphs, headings, and
-              images (not pixel-perfect for complex layouts). Without it, Word export produces a text-only
-              copy and PowerPoint export is disabled. Install from libreoffice.org, then reopen this dialog.
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0, lineHeight: 1.55 }}>
+              <strong>Word (.docx)</strong> reconstructs the text as flowing, fully-editable paragraphs with
+              font sizes and bold/italic preserved — it always opens correctly in Microsoft Word.
+              <br /><br />
+              <strong>PowerPoint (.pptx)</strong> places a crisp snapshot of each page on its own slide
+              (one page → one slide), so the result looks exactly like the PDF and never needs repair.
+              <br /><br />
+              <span style={{ color: 'var(--text-dim)' }}>
+                Exact multi-column layout, tables, and inline images aren't reflowed into Word. Scanned
+                pages need OCR first for the Word text to be extractable.
+              </span>
             </p>
           </div>
         )}
@@ -419,8 +404,8 @@ export default function ExportDialog({ onClose }: Props) {
           )}
           {tab === 'docx' && (
             <>
-              <button className="modal-btn-secondary" onClick={exportPptx} disabled={busy || loAvail === false}
-                title={loAvail === false ? 'Requires LibreOffice' : 'Export one slide per page'}>
+              <button className="modal-btn-secondary" onClick={exportPptx} disabled={busy}
+                title="Export one slide per page (page snapshots)">
                 <Presentation size={15} /> PowerPoint
               </button>
               <button className="modal-btn-primary" onClick={exportDocx} disabled={busy}>

@@ -206,6 +206,7 @@ export function installBrowserApi() {
 
     // ── Office / conversion ────────────────────────────────────────────────────
     exportToDocx: emptyBuf,
+    exportToPptx: emptyBuf,
     importDocx: emptyBuf,
     importXlsx: emptyBuf,
     exportToXlsx: emptyBuf,
