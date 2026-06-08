@@ -917,7 +917,8 @@ type DocxMode = 'text' | 'layout'
 ipcMain.handle('export:toDocx', async (_event, bytes: ArrayBuffer, _fileName: string, mode: DocxMode = 'layout'): Promise<ArrayBuffer> => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const docx = require('docx')
-  const { Document, Paragraph, TextRun, Packer, PageBreak, AlignmentType, ImageRun } = docx
+  const { Document, Paragraph, TextRun, Packer, PageBreak, AlignmentType, ImageRun,
+    HorizontalPositionRelativeFrom, VerticalPositionRelativeFrom, TextWrappingType } = docx
   const mupdf = await getMupdf()
   const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
   const numPages = doc.countPages()
@@ -937,6 +938,10 @@ ipcMain.handle('export:toDocx', async (_event, bytes: ArrayBuffer, _fileName: st
       try { pix.destroy() } catch { /* noop */ }
       const dispW = Math.round(wPt * 96 / 72) // display px at 96 dpi (Word downscales the 150-dpi png → crisp)
       const dispH = Math.round(hPt * 96 / 72)
+      // Full-bleed page image as a FLOATING image anchored to the page top-left.
+      // (An inline image with exact line height gets clipped to a sliver in Word —
+      // floating + page-relative offset 0 fills the whole page reliably and never
+      // spills onto a trailing blank page.)
       sections.push({
         properties: {
           page: {
@@ -945,8 +950,19 @@ ipcMain.handle('export:toDocx', async (_event, bytes: ArrayBuffer, _fileName: st
           },
         },
         children: [new Paragraph({
-          spacing: { after: 0, line: 240, lineRule: 'exact' },
-          children: [new ImageRun({ type: 'png', data: png, transformation: { width: dispW, height: dispH } })],
+          spacing: { after: 0, before: 0 },
+          children: [new ImageRun({
+            type: 'png',
+            data: png,
+            transformation: { width: dispW, height: dispH },
+            floating: {
+              horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, offset: 0 },
+              verticalPosition: { relative: VerticalPositionRelativeFrom.PAGE, offset: 0 },
+              wrap: { type: TextWrappingType.NONE },
+              behindDocument: false,
+              allowOverlap: true,
+            },
+          })],
         })],
       })
     }
