@@ -57,6 +57,33 @@ export function useKeyboardShortcuts({ onOpen, onSettings, onShortcuts, onPrint 
               else store.setZoomMode('fit-page')
             }
             return
+          // ── Annotation clipboard (act on the selected annotation) ──────────
+          case 'c': case 'C': {
+            // Don't steal Ctrl+C when the user is copying selected page text.
+            const textSel = window.getSelection()
+            const hasTextSel = !!textSel && !textSel.isCollapsed && textSel.toString().length > 0
+            if (hasPdf && !inInput && !hasTextSel && store.selectedAnnotationId) {
+              e.preventDefault(); store.copyAnnotation(store.selectedAnnotationId)
+            }
+            return
+          }
+          case 'x': case 'X':
+            if (hasPdf && !inInput && store.selectedAnnotationId) {
+              e.preventDefault()
+              const id = store.selectedAnnotationId
+              store.copyAnnotation(id); store.deleteAnnotation(id)
+            }
+            return
+          case 'v': case 'V':
+            if (hasPdf && !inInput && store.annotationClipboard) {
+              e.preventDefault(); store.pasteAnnotation(store.currentPage)
+            }
+            return
+          case 'd': case 'D':
+            if (hasPdf && !inInput && store.selectedAnnotationId) {
+              e.preventDefault(); store.duplicateAnnotation(store.selectedAnnotationId)
+            }
+            return
         }
         return
       }

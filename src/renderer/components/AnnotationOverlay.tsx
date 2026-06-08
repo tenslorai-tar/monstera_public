@@ -57,7 +57,7 @@ const RESIZE_HANDLES: { h: ResizeHandle; fx: number; fy: number; cursor: string 
 // corner handle; stickynote is a fixed icon; markup is bound to the underlying text.)
 const RESIZABLE_TYPES = new Set([
   'rectangle', 'ellipse', 'line', 'arrow', 'redact', 'link',
-  'textbox', 'text-edit', 'callout', 'stamp', 'ink',
+  'textbox', 'text-edit', 'callout', 'stamp', 'ink', 'placed-image',
   'polygon', 'polyline', 'cloud',
   'measure-distance', 'measure-area', 'measure-perimeter', 'typewriter',
 ])
@@ -886,12 +886,35 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
     window.addEventListener('mouseup', onUp)
   }
 
+  // Transparent bounding-box hit-areas so any annotation can be selected by
+  // clicking anywhere on it (shapes are fill:none/stroke-only otherwise) and dragged
+  // to move in one gesture. The selected one is skipped — its chrome handles it.
+  const renderSelectHitAreas = () => {
+    if (activeTool && activeTool !== 'select') return null
+    return pageAnnotations.map(ann => {
+      if (ann.id === selectedAnnotationId) return null
+      if (ann.type === 'placed-image') return null // its <image> handles select/move
+      const box = moveHandleBox(ann)
+      if (!box || box.w < 1 || box.h < 1) return null
+      return (
+        <rect key={'hit-' + ann.id} x={box.x} y={box.y} width={box.w} height={box.h}
+          fill="rgba(0,0,0,0.001)" stroke="none" pointerEvents="all" style={{ cursor: 'move' }}
+          onMouseDown={e => {
+            if (e.button !== 0) return
+            if (ann.type === 'stickynote') setOpenStickyNote(ann.id)
+            beginMove(ann, e)
+          }}
+          onContextMenu={e => openAnnotMenu(ann.id, e)} />
+      )
+    })
+  }
+
   // Selection chrome: move target + dashed outline + 8 resize handles.
   const renderSelectionChrome = () => {
     if (activeTool && activeTool !== 'select') return null
     if (!selectedAnnotationId) return null
     const ann = pageAnnotations.find(a => a.id === selectedAnnotationId)
-    if (!ann || ann.type === 'placed-image') return null // placed-image has its own handles
+    if (!ann) return null
     const box = moveHandleBox(ann)
     if (!box || box.w < 2 || box.h < 2) return null
     const busy = !!moveRef.current || !!resizeRef.current
@@ -1375,20 +1398,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
               const [sx, sy] = getSvgXY(e)
               setImgDrag({ k: 'move', id: a.id, startSvgX: sx, startSvgY: sy, origAnnX: a.x, origAnnY: a.y })
             }} />
-          {sel && (
-            <>
-              <rect x={svgX-1} y={svgY_top-1} width={svgW+2} height={svgH+2}
-                fill="none" stroke="#4a9eff" strokeWidth={1.5} strokeDasharray="5,3" pointerEvents="none" />
-              <rect x={svgX+svgW-6} y={svgY_top+svgH-6} width={12} height={12}
-                fill="#4a9eff" rx={2} style={{ cursor: 'nwse-resize' }}
-                onMouseDown={e => {
-                  e.stopPropagation()
-                  setImgDrag({ k: 'resize', id: a.id, corner: 'br',
-                    startSvgX: getSvgXY(e)[0], startSvgY: getSvgXY(e)[1],
-                    origW: a.width, origH: a.height })
-                }} />
-            </>
-          )}
+          {/* Selection outline + 8 resize handles are drawn by renderSelectionChrome. */}
         </g>
       )
     }
@@ -1852,6 +1862,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
         onContextMenu={handleSvgContextMenu}
       >
         {pageAnnotations.map(renderAnn)}
+        {renderSelectHitAreas()}
         {renderSelectionChrome()}
         {renderPreview()}
         {renderStickyPopup()}
