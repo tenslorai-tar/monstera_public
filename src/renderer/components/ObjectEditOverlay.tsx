@@ -28,9 +28,12 @@ export default function ObjectEditOverlay({ pageNum, scale, pageW, pageH }: Prop
   const [sel, setSel] = useState<Sel | null>(null)
   const [drag, setDrag] = useState<Drag>({ k: 'idle' })
   const [busy, setBusy] = useState(false)
+  const [hint, setHint] = useState<{ x: number; y: number } | null>(null)
+  const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const active = activeTool === 'object-edit'
-  useEffect(() => { if (!active) { setSel(null); setDrag({ k: 'idle' }) } }, [active])
+  useEffect(() => { if (!active) { setSel(null); setDrag({ k: 'idle' }); setHint(null) } }, [active])
+  useEffect(() => () => { if (hintTimer.current) clearTimeout(hintTimer.current) }, [])
 
   // Delete key removes the selected object
   useEffect(() => {
@@ -104,9 +107,16 @@ export default function ObjectEditOverlay({ pageNum, scale, pageW, pageH }: Prop
     } catch { /* ignore */ } finally { setBusy(false) }
   }
 
+  function showHint(x: number, y: number) {
+    setHint({ x, y })
+    if (hintTimer.current) clearTimeout(hintTimer.current)
+    hintTimer.current = setTimeout(() => setHint(null), 4000)
+  }
+
   const onMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0 || busy) return
     e.stopPropagation()
+    setHint(null)
     const [sx, sy] = getXY(e)
     if (sel && onHandle(sx, sy)) { setDrag({ k: 'resize', sx, sy, dx: 0, dy: 0 }); return }
     if (sel && inBox(sx, sy)) { setDrag({ k: 'move', sx, sy, dx: 0, dy: 0 }); return }
@@ -126,7 +136,16 @@ export default function ObjectEditOverlay({ pageNum, scale, pageW, pageH }: Prop
       const [px, py] = toPdf(d.sx, d.sy)
       try {
         const hit = await window.electronAPI.pdfiumObjectAt(ab, pageNum - 1, px, py)
-        setSel(hit.found ? { index: hit.index, type: hit.type, x1: hit.x1, y1: hit.y1, x2: hit.x2, y2: hit.y2, color: hit.color || '#000000' } : null)
+        if (hit.found) {
+          setSel({ index: hit.index, type: hit.type, x1: hit.x1, y1: hit.y1, x2: hit.x2, y2: hit.y2, color: hit.color || '#000000' })
+          setHint(null)
+        } else {
+          // No baked object here. Don't fail silently — explain and point at the
+          // right tool (inserted images/shapes are overlay annotations, edited
+          // with the Select tool, or after saving bakes them into the PDF).
+          setSel(null)
+          showHint(d.sx, d.sy)
+        }
       } catch { setSel(null) }
       return
     }
@@ -201,6 +220,20 @@ export default function ObjectEditOverlay({ pageNum, scale, pageW, pageH }: Prop
             )}
             <button title="Delete object (Del)" onClick={() => void doDelete()}
               style={{ background: 'transparent', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 13, padding: '0 2px', display: 'inline-flex', alignItems: 'center' }}><Trash2 size={14} /></button>
+          </div>
+        </foreignObject>
+      )}
+
+      {hint && (
+        <foreignObject
+          x={Math.min(Math.max(0, hint.x - 110), Math.max(0, W - 234))}
+          y={Math.max(2, hint.y - 52)}
+          width={232} height={48} style={{ pointerEvents: 'none' }}>
+          <div style={{ background: 'var(--bg-ribbon, #1d1e26)', border: '1px solid var(--border-light, #3c3f52)',
+            borderRadius: 6, padding: '6px 9px', boxShadow: '0 2px 10px rgba(0,0,0,0.5)',
+            fontSize: 10.5, lineHeight: 1.4, color: 'var(--text-secondary, #c2c5d6)' }}>
+            No editable PDF object here. Images or shapes you inserted are moved/resized
+            with the <strong style={{ color: 'var(--text-primary, #eee)' }}>Select</strong> tool — or after you save.
           </div>
         </foreignObject>
       )}
