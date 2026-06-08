@@ -38,8 +38,9 @@
   -webkit-user-drag: none;
 }
 .ribbon-logo-text {
-  font-size: 14px;
-  font-weight: 800;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
   color: var(--accent);
   letter-spacing: 0.2px;
 }
@@ -605,8 +606,9 @@
 }
 
 .app-name {
-  font-size: 14px;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
   color: var(--accent);
   letter-spacing: 0.4px;
   padding: 0 4px;
@@ -993,11 +995,12 @@
 }
 
 .start-title {
-  font-size: 44px;
-  font-weight: 800;
+  font-family: var(--font-display);
+  font-size: 56px;
+  font-weight: 600;
   margin: 0;
   line-height: 1.05;
-  letter-spacing: -0.8px;
+  letter-spacing: 0.5px;
   background: linear-gradient(135deg, var(--text-primary) 30%, var(--accent));
   -webkit-background-clip: text;
   background-clip: text;
@@ -1992,9 +1995,10 @@
   filter: drop-shadow(0 2px 6px rgba(16, 24, 40, 0.18));
 }
 .appbar-wordmark {
-  font-size: 16px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   background: linear-gradient(135deg, var(--text-primary) 20%, var(--accent));
   -webkit-background-clip: text;
   background-clip: text;

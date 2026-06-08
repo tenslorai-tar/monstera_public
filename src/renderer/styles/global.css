@@ -108,6 +108,33 @@
   --shadow-page: 0 2px 8px rgba(0, 0, 0, 0.45), 0 12px 36px rgba(0, 0, 0, 0.55);
 }
 
+/* ── Brand display font: Cormorant Garamond (self-hosted, offline) ──
+   Used only for the "Monstera" wordmark, not body/UI text. */
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('../assets/fonts/cormorant-garamond-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../assets/fonts/cormorant-garamond-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Cormorant Garamond';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../assets/fonts/cormorant-garamond-700.woff2') format('woff2');
+}
+:root {
+  --font-display: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+}
+
 html, body, #root {
   height: 100%;
   overflow: hidden;
