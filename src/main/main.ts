@@ -9,6 +9,30 @@ const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
 let mainWin: BrowserWindow | null = null
 
+// ── Resilience: never let an unhandled error hard-crash the whole app ──────────
+process.on('uncaughtException', (err) => {
+  console.error('[main] Uncaught exception:', err)
+  try { dialog.showErrorBox('Monstera — Unexpected Error', String((err && err.stack) || err)) } catch { /* ignore */ }
+})
+process.on('unhandledRejection', (reason) => {
+  console.error('[main] Unhandled promise rejection:', reason)
+})
+
+// ── Security: block in-app navigation away from the app shell; send links to OS ─
+app.on('web-contents-created', (_event, contents) => {
+  contents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url).catch(() => {})
+    return { action: 'deny' }
+  })
+  contents.on('will-navigate', (event, url) => {
+    const sameApp = isDev ? url.startsWith('http://localhost:5173') : url.startsWith('file://')
+    if (!sameApp) {
+      event.preventDefault()
+      if (/^https?:\/\//i.test(url)) shell.openExternal(url).catch(() => {})
+    }
+  })
+})
+
 function buildAppMenu(win: BrowserWindow): Menu {
   const send = (action: string) => () => {
     if (!win.isDestroyed()) win.webContents.send('menu:action', action)
@@ -466,7 +490,36 @@ ipcMain.handle('pdfium:editText', async (
 // ── File write ───────────────────────────────────────────────────────────────
 
 ipcMain.handle('file:writeBytes', async (_event, filePath: string, bytes: ArrayBuffer) => {
-  fs.writeFileSync(filePath, Buffer.from(bytes))
+  const buf = Buffer.from(bytes)
+  const isPdf = filePath.toLowerCase().endsWith('.pdf')
+
+  // Never destroy a file by writing empty/garbage bytes (e.g. a bake or engine
+  // regression). PDFs must carry a real %PDF signature and a sane length.
+  if (isPdf) {
+    const head = buf.subarray(0, 1024).toString('latin1')
+    if (buf.length < 1024 || !head.includes('%PDF-')) {
+      throw new Error(
+        `Refusing to overwrite "${path.basename(filePath)}": the data is not a valid PDF ` +
+        `(${buf.length} bytes, no %PDF header). Your original file was left untouched.`
+      )
+    }
+  }
+
+  // Atomic write: write a sibling temp file, then rename over the target so a
+  // crash mid-write can never leave the original half-written.
+  const dir = path.dirname(filePath)
+  const tmp = path.join(dir, `.${path.basename(filePath)}.tmp-${process.pid}-${Date.now()}`)
+  fs.writeFileSync(tmp, buf)
+  try {
+    // Keep one rolling backup of the previous PDF before replacing it.
+    if (isPdf && fs.existsSync(filePath)) {
+      try { fs.copyFileSync(filePath, filePath + '.bak') } catch { /* best-effort */ }
+    }
+    fs.renameSync(tmp, filePath)
+  } catch (e) {
+    try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp) } catch { /* ignore */ }
+    throw e
+  }
 })
 
 ipcMain.handle('dialog:saveFile', async (_event, defaultPath: string) => {

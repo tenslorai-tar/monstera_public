@@ -169,6 +169,7 @@ export default function App() {
   const [passwordError,     setPasswordError]      = useState('')
   const [passwordInput,     setPasswordInput]      = useState('')
   const [openError,         setOpenError]          = useState('')
+  const [autosaveError,     setAutosaveError]      = useState('')
 
   const pendingRedactCount = annotations.filter(a => a.type === 'redact').length
 
@@ -242,7 +243,15 @@ export default function App() {
     const mins = settings.autosaveIntervalMinutes
     if (mins > 0 && numPages > 0) {
       autosaveRef.current = setInterval(() => {
-        if (usePdfStore.getState().isDirty) save()
+        if (usePdfStore.getState().isDirty) {
+          save()
+            .then(() => setAutosaveError(''))
+            .catch((err: unknown) => {
+              const msg = err instanceof Error ? err.message : String(err)
+              console.error('Autosave failed:', err)
+              setAutosaveError(msg)
+            })
+        }
       }, mins * 60_000)
     }
     return () => { if (autosaveRef.current) clearInterval(autosaveRef.current) }
@@ -407,6 +416,21 @@ export default function App() {
 
   return (
     <div className="app">
+      {autosaveError && (
+        <div role="alert" style={{
+          position: 'fixed', top: 8, left: '50%', transform: 'translateX(-50%)',
+          zIndex: 100000, maxWidth: 640, display: 'flex', alignItems: 'center', gap: 10,
+          padding: '8px 12px', borderRadius: 8,
+          background: '#7f1d1d', color: '#fff', fontSize: 12.5,
+          boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
+        }}>
+          <span>⚠ Autosave failed — your changes are <strong>not</strong> saved: {autosaveError}</span>
+          <button onClick={() => setAutosaveError('')} style={{
+            background: 'rgba(255,255,255,0.18)', border: 'none', color: '#fff',
+            borderRadius: 4, cursor: 'pointer', padding: '2px 8px', flexShrink: 0,
+          }}>Dismiss</button>
+        </div>
+      )}
       <RibbonToolbar
         onOpen={openFile}
         onMerge={ops.mergePdfs}

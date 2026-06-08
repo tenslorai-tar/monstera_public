@@ -10,6 +10,10 @@ import { readFormFieldsFromPdf, writeFormToBytes, flattenFormToBytes } from '../
 import type { OcrWord } from '../utils/ocrUtils'
 import type { BookmarkItem } from '../types/bookmarks'
 
+// Guards against overlapping saves (e.g. autosave firing while a previous save
+// is still baking a large PDF). Concurrent callers await the same in-flight save.
+let saveInFlight: Promise<void> | null = null
+
 // Shift every geometry field of an annotation by (dx, dy) PDF points, in place.
 // Used for paste/duplicate offset so the copy doesn't sit exactly on the original.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -509,20 +513,26 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   },
 
   save: async () => {
-    const { filePath, pdfBytes, annotations, formFields, encryptionSettings, bookmarks } = get()
-    if (!pdfBytes || !filePath) return
-    let baked = pdfBytes
-    if (annotations.length > 0) baked = await writeAnnotationsToPdf(baked, annotations)
-    if (formFields.length > 0) baked = await writeFormToBytes(baked, formFields)
-    baked = new Uint8Array(await window.electronAPI.mupdfWriteOutline(baked.buffer as ArrayBuffer, bookmarks))
-    if (encryptionSettings) {
-      baked = new Uint8Array(await window.electronAPI.mupdfEncrypt(baked.buffer as ArrayBuffer, encryptionSettings))
-    }
-    await window.electronAPI.writeFile(filePath, baked.slice(0).buffer)
-    const hasNew = formFields.some(f => f.isNew)
-    const hasPlacedImages = annotations.some(a => a.type === 'placed-image')
-    if (hasNew || hasPlacedImages) await get().reloadWithBytes(baked)
-    else set({ isDirty: false })
+    // Re-entrancy guard: if a save is already running, await it instead of
+    // launching a second concurrent write to the same file.
+    if (saveInFlight) return saveInFlight
+    saveInFlight = (async () => {
+      const { filePath, pdfBytes, annotations, formFields, encryptionSettings, bookmarks } = get()
+      if (!pdfBytes || !filePath) return
+      let baked = pdfBytes
+      if (annotations.length > 0) baked = await writeAnnotationsToPdf(baked, annotations)
+      if (formFields.length > 0) baked = await writeFormToBytes(baked, formFields)
+      baked = new Uint8Array(await window.electronAPI.mupdfWriteOutline(baked.buffer as ArrayBuffer, bookmarks))
+      if (encryptionSettings) {
+        baked = new Uint8Array(await window.electronAPI.mupdfEncrypt(baked.buffer as ArrayBuffer, encryptionSettings))
+      }
+      await window.electronAPI.writeFile(filePath, baked.slice(0).buffer)
+      const hasNew = formFields.some(f => f.isNew)
+      const hasPlacedImages = annotations.some(a => a.type === 'placed-image')
+      if (hasNew || hasPlacedImages) await get().reloadWithBytes(baked)
+      else set({ isDirty: false })
+    })()
+    try { await saveInFlight } finally { saveInFlight = null }
   },
 
   saveAs: async () => {
