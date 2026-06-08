@@ -108,31 +108,18 @@
   --shadow-page: 0 2px 8px rgba(0, 0, 0, 0.45), 0 12px 36px rgba(0, 0, 0, 0.55);
 }
 
-/* ── Brand display font: Cormorant Garamond (self-hosted, offline) ──
-   Used only for the "Monstera" wordmark, not body/UI text. */
+/* ── Brand display font: Marcellus (self-hosted, offline) ──
+   Used only for the "Monstera" wordmark, not body/UI text.
+   Marcellus ships a single weight (400). */
 @font-face {
-  font-family: 'Cormorant Garamond';
+  font-family: 'Marcellus';
   font-style: normal;
-  font-weight: 500;
+  font-weight: 400;
   font-display: swap;
-  src: url('../assets/fonts/cormorant-garamond-500.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Cormorant Garamond';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url('../assets/fonts/cormorant-garamond-600.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Cormorant Garamond';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url('../assets/fonts/cormorant-garamond-700.woff2') format('woff2');
+  src: url('../assets/fonts/marcellus-400.woff2') format('woff2');
 }
 :root {
-  --font-display: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  --font-display: 'Marcellus', Georgia, 'Times New Roman', serif;
 }
 
 html, body, #root {
