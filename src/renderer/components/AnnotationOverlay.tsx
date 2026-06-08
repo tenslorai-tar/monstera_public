@@ -917,20 +917,21 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
     if (!ann) return null
     const box = moveHandleBox(ann)
     if (!box || box.w < 2 || box.h < 2) return null
-    const busy = !!moveRef.current || !!resizeRef.current
     const hs = 8
+    // Note: do NOT gate these on moveRef/resizeRef. Those are refs, so clearing them
+    // on mouseup doesn't re-render — gating here left the handles hidden after a
+    // click-select. The move rect + handles are safe to keep mounted during a drag
+    // (the drag runs on window listeners; no new mousedown fires until released).
     return (
       <g>
-        {!busy && (
-          <rect x={box.x} y={box.y} width={box.w} height={box.h}
-            fill="rgba(0,0,0,0.001)" stroke="none" pointerEvents="all"
-            style={{ cursor: 'move' }}
-            onMouseDown={e => beginMove(ann, e)}
-            onContextMenu={e => openAnnotMenu(ann.id, e)} />
-        )}
+        <rect x={box.x} y={box.y} width={box.w} height={box.h}
+          fill="rgba(0,0,0,0.001)" stroke="none" pointerEvents="all"
+          style={{ cursor: 'move' }}
+          onMouseDown={e => beginMove(ann, e)}
+          onContextMenu={e => openAnnotMenu(ann.id, e)} />
         <rect x={box.x} y={box.y} width={box.w} height={box.h}
           fill="none" stroke="#4a9eff" strokeWidth={1} strokeDasharray="4,3" pointerEvents="none" />
-        {isResizable(ann) && !busy && RESIZE_HANDLES.map(hd => (
+        {isResizable(ann) && RESIZE_HANDLES.map(hd => (
           <rect key={hd.h}
             x={box.x + box.w * hd.fx - hs / 2} y={box.y + box.h * hd.fy - hs / 2}
             width={hs} height={hs} rx={1.5}
