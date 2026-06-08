@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { usePdfStore } from '../store/usePdfStore'
 import { useSettingsStore } from '../store/useSettingsStore'
-import { MousePointer2, Hand, TextCursor, ZoomIn, ZoomOut, Crop, Files, Bookmark, MessageSquare, GripVertical } from 'lucide-react'
+import { MousePointer2, Hand, TextCursor, ZoomIn, ZoomOut, Crop, Files, Bookmark, MessageSquare, GripHorizontal } from 'lucide-react'
 
 const ICON = 19
 const TOOLS = [
@@ -104,7 +104,7 @@ export default function LeftPalette() {
     <div className="left-palette" ref={dockRef} style={dockStyle}>
       <button className="left-pal-grip" title="Drag to move · double-click to reset"
         onMouseDown={startDrag} onDoubleClick={resetPos}>
-        <GripVertical size={16} />
+        <GripHorizontal size={16} />
       </button>
       <div className="left-pal-sep" />
       {TOOLS.map(t => (
