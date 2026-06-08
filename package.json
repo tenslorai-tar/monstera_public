@@ -64,7 +64,11 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "shortcutName": "Monstera PDF Editor",
-      "uninstallDisplayName": "Monstera PDF Editor (Tenslor Inc.)"
+      "uninstallDisplayName": "Monstera PDF Editor (Tenslor Inc.)",
+      "license": "build/license.txt",
+      "installerHeaderIcon": "assets/icons/icon.ico",
+      "installerSidebar": "build/installerSidebar.bmp",
+      "installerHeader": "build/installerHeader.bmp"
     }
   },
   "devDependencies": {
