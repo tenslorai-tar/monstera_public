@@ -2,40 +2,38 @@ import { useTabsStore } from '../store/useTabsStore'
 import { usePdfStore } from '../store/usePdfStore'
 
 export default function TabsBar() {
-  const { tabs, activeTabId, removeTab, setActiveTab } = useTabsStore()
-  const loadPdf     = usePdfStore(s => s.loadPdf)
-  const getBakedBytes = usePdfStore(s => s.getBakedBytes)
-  const annotations = usePdfStore(s => s.annotations)
-  const formFields  = usePdfStore(s => s.formFields)
-  const bookmarks   = usePdfStore(s => s.bookmarks)
+  const tabs        = useTabsStore(s => s.tabs)
+  const activeTabId = useTabsStore(s => s.activeTabId)
   const isDirty     = usePdfStore(s => s.isDirty)
-  const currentPage = usePdfStore(s => s.currentPage)
-  const scale       = usePdfStore(s => s.scale)
-  const fileName    = usePdfStore(s => s.fileName)
-  const filePath    = usePdfStore(s => s.filePath)
-  const updateTab   = useTabsStore(s => s.updateTab)
 
   if (tabs.length === 0) return null
 
-  const switchTo = async (tabId: string) => {
-    if (tabId === activeTabId) return
-
-    // Snapshot current PDF into active tab
-    if (activeTabId && filePath) {
+  // Snapshot the live PDF store into whichever tab is currently active.
+  // Reads fresh state from the stores so it stays correct when called
+  // multiple times in one handler (e.g. switching twice while closing a tab).
+  const snapshotActive = async () => {
+    const st = useTabsStore.getState()
+    const ps = usePdfStore.getState()
+    if (st.activeTabId && ps.filePath) {
       try {
-        const bytes = await getBakedBytes()
-        updateTab(activeTabId, {
-          pdfBytes: bytes, annotations, formFields, bookmarks,
-          isDirty, currentPage, scale,
-          fileName, filePath,
+        const bytes = await ps.getBakedBytes()
+        st.updateTab(st.activeTabId, {
+          pdfBytes: bytes,
+          annotations: ps.annotations, formFields: ps.formFields, bookmarks: ps.bookmarks,
+          isDirty: ps.isDirty, currentPage: ps.currentPage, scale: ps.scale,
+          fileName: ps.fileName, filePath: ps.filePath,
         })
       } catch { /* ignore */ }
     }
+  }
 
+  const switchTo = async (tabId: string) => {
+    if (tabId === useTabsStore.getState().activeTabId) return
+    await snapshotActive()
     const target = useTabsStore.getState().tabs.find(t => t.id === tabId)
     if (!target) return
-    setActiveTab(tabId)
-    await loadPdf(
+    useTabsStore.getState().setActiveTab(tabId)
+    await usePdfStore.getState().loadPdf(
       target.pdfBytes.buffer.slice(target.pdfBytes.byteOffset, target.pdfBytes.byteOffset + target.pdfBytes.byteLength) as ArrayBuffer,
       target.filePath,
       target.fileName
@@ -44,16 +42,34 @@ export default function TabsBar() {
 
   const closeTab = async (e: React.MouseEvent, tabId: string) => {
     e.stopPropagation()
-    const tab = tabs.find(t => t.id === tabId)
-    if (tab?.isDirty && tabId === activeTabId) {
-      const ok = window.confirm(`"${tab.fileName}" has unsaved changes. Close anyway?`)
-      if (!ok) return
+    const tab = useTabsStore.getState().tabs.find(t => t.id === tabId)
+    if (!tab) return
+
+    // The active tab's dirty flag lives in the live PDF store; inactive tabs
+    // keep their last snapshot. (The old code read the stale snapshot for the
+    // active tab, so a single-tab close never prompted.)
+    const liveActive = useTabsStore.getState().activeTabId
+    const tabDirty = tabId === liveActive ? usePdfStore.getState().isDirty : tab.isDirty
+
+    if (tabDirty) {
+      // Make the tab we're prompting about the active document so Save targets it.
+      if (tabId !== liveActive) await switchTo(tabId)
+      const choice = await window.electronAPI.confirmUnsaved(tab.fileName)
+      if (choice === 'cancel') return
+      if (choice === 'save') {
+        const ps = usePdfStore.getState()
+        if (ps.filePath) await ps.save()
+        else await ps.saveAs()
+        // Save As was cancelled (still dirty) → abort the close, keep the tab.
+        if (usePdfStore.getState().isDirty) return
+      }
     }
-    const remaining = tabs.filter(t => t.id !== tabId)
-    if (tabId === activeTabId && remaining.length > 0) {
+
+    const remaining = useTabsStore.getState().tabs.filter(t => t.id !== tabId)
+    if (tabId === useTabsStore.getState().activeTabId && remaining.length > 0) {
       await switchTo(remaining[remaining.length - 1].id)
     }
-    removeTab(tabId)
+    useTabsStore.getState().removeTab(tabId)
     if (remaining.length === 0) {
       usePdfStore.getState().closePdf()
     }
