@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Crop } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import type { CropConfig } from '../utils/documentEnhance'
 
@@ -59,7 +60,7 @@ export default function CropDialog({ onApply, onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 480 }}>
-        <div className="modal-title">✂ Crop Pages</div>
+        <div className="modal-title"><Crop size={18} /> Crop Pages</div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
           Sets the CropBox to hide content outside the margins. Content is not deleted —
           use Undo to restore. Original page size: {pSize.width.toFixed(0)} × {pSize.height.toFixed(0)} pt.

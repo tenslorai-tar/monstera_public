@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Film } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { PDFDocument, PDFName, PDFDict, PDFNumber } from 'pdf-lib'
 
@@ -97,7 +98,7 @@ export default function PageTransitionsDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 480 }}>
-        <div className="modal-title">🎬 Page Transitions</div>
+        <div className="modal-title"><Film size={18} /> Page Transitions</div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
           Sets slide-show transition effects when moving between pages in full-screen PDF viewers.
         </p>

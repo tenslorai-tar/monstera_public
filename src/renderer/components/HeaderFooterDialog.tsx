@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { PanelTop } from 'lucide-react'
 import type { HeaderFooterConfig } from '../utils/documentEnhance'
 
 interface Props {
@@ -36,7 +37,7 @@ export default function HeaderFooterDialog({ numPages, fileName, onApply, onClos
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 560 }}>
-        <div className="modal-title">📄 Add Headers & Footers</div>
+        <div className="modal-title"><PanelTop size={18} /> Add Headers & Footers</div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
           Available macros: <code style={{ background: 'var(--bg-secondary)', padding: '1px 5px', borderRadius: 3 }}>{MACROS}</code>
         </p>

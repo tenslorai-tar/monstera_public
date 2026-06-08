@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { SquarePen } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
@@ -67,7 +68,7 @@ export default function EditExternalDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 480 }}>
-        <div className="modal-title">✏ Edit Page in External App</div>
+        <div className="modal-title"><SquarePen size={18} /> Edit Page in External App</div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
           Exports a PDF page as a PNG image, opens it in your system's default image editor,
           then reimports the edited result as an overlay annotation.

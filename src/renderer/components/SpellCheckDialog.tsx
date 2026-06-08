@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { SpellCheck } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import type { Annotation } from '../types/annotations'
 
@@ -50,7 +51,7 @@ export default function SpellCheckDialog({ onClose }: { onClose: () => void }) {
   return (
     <div className="modal-overlay" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="modal-box" style={{ width: 560, maxHeight: '78vh', display: 'flex', flexDirection: 'column' }}>
-        <div className="modal-title">🔤 Spell Check</div>
+        <div className="modal-title"><SpellCheck size={18} /> Spell Check</div>
 
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
           Checks all text annotations (text boxes, sticky notes, typewriter, callouts) with a

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Layers } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { PDFDocument, PDFName, PDFDict, PDFArray } from 'pdf-lib'
 
@@ -91,7 +92,7 @@ export default function ImportToLayerDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 460 }}>
-        <div className="modal-title">📑 Import Pages to Layer</div>
+        <div className="modal-title"><Layers size={18} /> Import Pages to Layer</div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
           Imports the first page of another PDF as an Optional Content Group (layer) on a page
           in the current document. The imported content appears as a named layer.

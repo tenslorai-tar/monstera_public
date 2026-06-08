@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { FileCode } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
@@ -68,7 +69,7 @@ export default function MarkdownPdfDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 680, maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
-        <div className="modal-title">📝 Markdown → PDF</div>
+        <div className="modal-title"><FileCode size={18} /> Markdown → PDF</div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
           Type or paste Markdown text below, then convert to PDF. Supports headings, bold, italic, lists, and code.
         </p>

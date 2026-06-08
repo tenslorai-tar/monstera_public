@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { ClipboardList } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import type { Annotation } from '../types/annotations'
 
@@ -80,7 +81,7 @@ export default function SummarizeCommentsDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 560, maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
-        <div className="modal-title">💬 Comment Summary</div>
+        <div className="modal-title"><ClipboardList size={18} /> Comment Summary</div>
 
         {/* Stats */}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>

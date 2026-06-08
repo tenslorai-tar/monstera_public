@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { SearchX } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { newId } from '../utils/annotationUtils'
 import type { RedactAnn } from '../types/annotations'
@@ -43,7 +44,7 @@ export default function FindRedactDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 440 }}>
-        <div className="modal-title">🔍 Find & Redact</div>
+        <div className="modal-title"><SearchX size={18} /> Find & Redact</div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
           Search for text across all pages and mark every match for redaction.
           After finding, use "Apply Redactions" in the Edit tab to permanently remove the content.

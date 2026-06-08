@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Settings } from 'lucide-react'
 
 interface BinInfo { path: string; available: boolean }
 interface BinStatus { mutool: BinInfo; ghostscript: BinInfo; libreoffice: BinInfo }
@@ -73,7 +74,7 @@ export default function NativeBinsDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 580 }}>
-        <div className="modal-title">⚙ Native Tools Setup</div>
+        <div className="modal-title"><Settings size={18} /> Native Tools Setup</div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
           These tools unlock advanced PDF operations not possible with JavaScript alone.
           Install them once — Monstera detects them automatically.

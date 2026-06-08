@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Import } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
@@ -86,7 +87,7 @@ export default function OfficeImportDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 480 }}>
-        <div className="modal-title">📥 Import Office Document</div>
+        <div className="modal-title"><Import size={18} /> Import Office Document</div>
 
         {/* LibreOffice status badge */}
         {loAvail !== null && (

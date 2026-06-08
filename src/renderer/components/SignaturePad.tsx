@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect } from 'react'
+import { Signature } from 'lucide-react'
 
 interface Props {
   onConfirm: (dataUrl: string) => void
@@ -136,7 +137,7 @@ export default function SignaturePad({ onConfirm, onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 500 }}>
-        <div className="modal-title">✍ Capture Signature</div>
+        <div className="modal-title"><Signature size={18} /> Capture Signature</div>
 
         <div style={{ display: 'flex', gap: 0, marginTop: 12, borderBottom: '1px solid var(--border)' }}>
           {(['draw', 'type', 'upload'] as Tab[]).map(t => (

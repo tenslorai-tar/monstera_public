@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { Wand2 } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { newId } from '../utils/annotationUtils'
 import { scanDocument, type ScanMode } from '../utils/opencvScan'
@@ -83,7 +84,7 @@ export default function DocumentScanDialog({ onClose }: { onClose: () => void })
   return (
     <div className="modal-overlay" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="modal-box" style={{ width: 720, maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}>
-        <div className="modal-title">🪄 Scan / Enhance Document</div>
+        <div className="modal-title"><Wand2 size={18} /> Scan / Enhance Document</div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
           Turn a photo or scan into a clean page — auto-detects the document edges, corrects
           perspective, and enhances. Powered by OpenCV.

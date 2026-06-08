@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect } from 'react'
+import { ScanText } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { createWorker } from 'tesseract.js'
 import { OCR_LANGUAGES } from '../utils/ocrUtils'
@@ -123,7 +124,7 @@ export default function OcrRegionDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 680, maxHeight: '92vh', overflowY: 'auto' }}>
-        <div className="modal-title">🔍 OCR Selected Region</div>
+        <div className="modal-title"><ScanText size={18} /> OCR Selected Region</div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
           Drag to select a region on page {currentPage}, then run OCR on just that area.
         </p>

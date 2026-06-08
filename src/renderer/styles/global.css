@@ -39,13 +39,13 @@
   --text-muted:     #828a99;
   --text-dim:       #aab0bd;
 
-  /* ── Accent (refined blue) ── */
-  --accent:        #2563eb;
-  --accent-hover:  #1d4ed8;
-  --accent-active: #1e40af;
+  /* ── Accent (refined violet) ── */
+  --accent:        #7c3aed;
+  --accent-hover:  #6d28d9;
+  --accent-active: #5b21b6;
   --accent-fg:     #ffffff;
-  --accent-dim:    rgba(37, 99, 235, 0.10);
-  --accent-ring:   rgba(37, 99, 235, 0.35);
+  --accent-dim:    rgba(124, 58, 237, 0.10);
+  --accent-ring:   rgba(124, 58, 237, 0.34);
 
   /* ── Status ── */
   --danger:        #dc2626;
@@ -89,12 +89,12 @@
   --text-muted:     #6e7585;
   --text-dim:       #474d5a;
 
-  --accent:        #3b82f6;
-  --accent-hover:  #60a5fa;
-  --accent-active: #2563eb;
+  --accent:        #8b5cf6;
+  --accent-hover:  #a78bfa;
+  --accent-active: #7c3aed;
   --accent-fg:     #ffffff;
-  --accent-dim:    rgba(59, 130, 246, 0.16);
-  --accent-ring:   rgba(59, 130, 246, 0.40);
+  --accent-dim:    rgba(139, 92, 246, 0.16);
+  --accent-ring:   rgba(139, 92, 246, 0.40);
 
   --danger:        #f87171;
   --danger-dim:    rgba(248, 113, 113, 0.16);

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Signature } from 'lucide-react'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { usePdfStore } from '../store/usePdfStore'
 
@@ -89,7 +90,7 @@ export default function DocuSignDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 520 }}>
-        <div className="modal-title">✍ DocuSign — Send for Signature</div>
+        <div className="modal-title"><Signature size={18} /> DocuSign — Send for Signature</div>
 
         <div style={{ display: 'flex', gap: 0, marginBottom: 14, borderBottom: '1px solid var(--border)' }}>
           {(['send', 'settings'] as const).map(t => (

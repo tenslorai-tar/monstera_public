@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { ScanText } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { detectScannedPages, OCR_LANGUAGES, runOcrOnPages } from '../utils/ocrUtils'
 import { setOcrTextInCache } from '../utils/textCache'
@@ -118,7 +119,7 @@ export default function OcrDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 480 }}>
-        <div className="modal-title">📄 OCR — Make Scanned Pages Searchable</div>
+        <div className="modal-title"><ScanText size={18} /> OCR — Make Scanned Pages Searchable</div>
 
         {phase === 'detecting' && (
           <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '16px 0' }}>

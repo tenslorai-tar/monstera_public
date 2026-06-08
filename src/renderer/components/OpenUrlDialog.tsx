@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Globe } from 'lucide-react'
 
 interface Props {
   onClose: () => void
@@ -31,7 +32,7 @@ export default function OpenUrlDialog({ onClose, onOpen }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 460 }}>
-        <div className="modal-title">🌐 Open PDF from URL</div>
+        <div className="modal-title"><Globe size={18} /> Open PDF from URL</div>
         <div className="modal-field">
           <label className="modal-label">PDF URL</label>
           <input className="modal-input" type="url" value={url} autoFocus

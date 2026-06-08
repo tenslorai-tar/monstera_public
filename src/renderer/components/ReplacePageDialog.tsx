@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { RefreshCw } from 'lucide-react'
 import { PDFDocument } from 'pdf-lib'
 
 interface Props {
@@ -45,7 +46,7 @@ export default function ReplacePageDialog({ numPages, currentPage, onReplace, on
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 420 }}>
-        <div className="modal-title">🔄 Replace Page</div>
+        <div className="modal-title"><RefreshCw size={18} /> Replace Page</div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
           Replace a page in the current document with a page from another PDF file.
         </p>

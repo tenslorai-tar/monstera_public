@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { PencilRuler } from 'lucide-react'
 import { useSettingsStore } from '../store/useSettingsStore'
 
 interface Props { onClose: () => void }
@@ -28,7 +29,7 @@ export default function MeasureCalibrationDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 400 }}>
-        <div className="modal-title">📐 Measurement Calibration</div>
+        <div className="modal-title"><PencilRuler size={18} /> Measurement Calibration</div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
           Set the unit for distance, area, and perimeter measurements.
           Scale = PDF points per unit (1 inch = 72pt).

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Droplets } from 'lucide-react'
 import type { WatermarkConfig } from '../utils/documentEnhance'
 
 interface Props {
@@ -28,7 +29,7 @@ export default function WatermarkDialog({ numPages, onApply, onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 440 }}>
-        <div className="modal-title">💧 Add Watermark</div>
+        <div className="modal-title"><Droplets size={18} /> Add Watermark</div>
 
         <div className="modal-field">
           <label className="modal-label">Watermark Text</label>

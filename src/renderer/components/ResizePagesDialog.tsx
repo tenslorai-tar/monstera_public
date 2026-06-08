@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Scaling } from 'lucide-react'
 
 const PRESETS: { label: string; w: number; h: number }[] = [
   { label: 'Letter (8.5×11 in)',  w: 612,  h: 792  },
@@ -65,7 +66,7 @@ export default function ResizePagesDialog({ numPages, onClose, onApply }: Props)
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 420 }}>
-        <div className="modal-title">↔ Resize Pages</div>
+        <div className="modal-title"><Scaling size={18} /> Resize Pages</div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 14px' }}>
           Changes the page dimensions (MediaBox). Content is not scaled or repositioned.
         </p>

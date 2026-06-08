@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Lock } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
@@ -90,7 +91,7 @@ export default function PasswordDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal-box" style={{ width: 440 }}>
-        <div className="modal-title">🔒 Security</div>
+        <div className="modal-title"><Lock size={18} /> Security</div>
 
         {/* Tab bar */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 18 }}>

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Hash } from 'lucide-react'
 import type { BatesConfig, BatesPosition } from '../utils/documentEnhance'
 
 interface Props {
@@ -39,7 +40,7 @@ export default function BatesDialog({ numPages, onApply, onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 460 }}>
-        <div className="modal-title">🔢 Bates Numbering</div>
+        <div className="modal-title"><Hash size={18} /> Bates Numbering</div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
           Adds sequential numbering to each page in a fixed position.
           Format: <code style={{ background: 'var(--bg-secondary)', padding: '1px 5px', borderRadius: 3 }}>{previewText}</code>

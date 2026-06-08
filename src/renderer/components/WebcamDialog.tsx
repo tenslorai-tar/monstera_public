@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect } from 'react'
+import { Camera } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
@@ -78,7 +79,7 @@ export default function WebcamDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 520 }}>
-        <div className="modal-title">📷 Webcam Capture</div>
+        <div className="modal-title"><Camera size={18} /> Webcam Capture</div>
 
         {error ? (
           <div style={{ color: '#f44336', fontSize: 13, padding: '12px 0' }}>{error}</div>

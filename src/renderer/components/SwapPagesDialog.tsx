@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ArrowLeftRight } from 'lucide-react'
 
 interface Props {
   numPages: number
@@ -24,7 +25,7 @@ export default function SwapPagesDialog({ numPages, onClose, onSwap }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 360 }}>
-        <div className="modal-title">⇄ Swap Pages</div>
+        <div className="modal-title"><ArrowLeftRight size={18} /> Swap Pages</div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 14px' }}>
           Exchange the positions of two pages in the document.
         </p>

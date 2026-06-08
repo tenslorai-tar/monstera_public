@@ -1,4 +1,5 @@
 import { useCallback, useState, useEffect, useRef } from 'react'
+import { Lock as LockIcon, Trash2 as TrashIcon } from 'lucide-react'
 import RibbonToolbar from './components/RibbonToolbar'
 import CommandPalette from './components/CommandPalette'
 import StatusBar from './components/StatusBar'
@@ -510,10 +511,10 @@ export default function App() {
       >
         {hasPdf ? (
           <div className="main-row">
-            <LeftPalette />
             <div className="content-area">
               <PdfViewer />
               <SearchPanel />
+              <LeftPalette />
             </div>
           </div>
         ) : (
@@ -623,7 +624,7 @@ export default function App() {
       {deleteEmptyResult !== null && (
         <div className="modal-overlay">
           <div className="modal-box" style={{ width: 380 }}>
-            <div className="modal-title">🗑 Delete Empty Pages</div>
+            <div className="modal-title"><TrashIcon size={18} /> Delete Empty Pages</div>
             {deleteEmptyResult.length === 0
               ? <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>No empty pages found.</p>
               : <p style={{ fontSize: 13 }}>Deleted {deleteEmptyResult.length} empty page(s): {deleteEmptyResult.join(', ')}.</p>
@@ -711,7 +712,7 @@ export default function App() {
       {passwordPrompt && (
         <div className="modal-overlay">
           <div className="modal-box" style={{ width: 400 }}>
-            <div className="modal-title">🔒 Password Required</div>
+            <div className="modal-title"><LockIcon size={18} /> Password Required</div>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>
               <strong>{passwordPrompt.name || 'This file'}</strong> is password-protected.
             </p>

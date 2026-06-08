@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Search } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
@@ -79,7 +80,7 @@ export default function FindDuplicatesDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 480, maxHeight: '85vh', overflowY: 'auto' }}>
-        <div className="modal-title">🔍 Find Duplicate Pages</div>
+        <div className="modal-title"><Search size={18} /> Find Duplicate Pages</div>
         <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
           Compares page renderings to detect visually identical pages.
         </p>

@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { Ruler } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { PDFDocument } from 'pdf-lib'
 
@@ -150,7 +151,7 @@ export default function DeskewDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 480, maxHeight: '88vh', overflowY: 'auto' }}>
-        <div className="modal-title">📐 Deskew & Enhance Scanned Pages</div>
+        <div className="modal-title"><Ruler size={18} /> Deskew & Enhance Scanned Pages</div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
           Detects and corrects skewed text in scanned pages using projection-based angle detection.
           Best results on pages with mostly horizontal text.

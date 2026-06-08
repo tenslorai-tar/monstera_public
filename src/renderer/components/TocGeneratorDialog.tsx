@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ListTree } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { PDFDocument, PDFPage, rgb, StandardFonts } from 'pdf-lib'
 
@@ -77,7 +78,7 @@ export default function TocGeneratorDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 440 }}>
-        <div className="modal-title">📑 Generate Table of Contents</div>
+        <div className="modal-title"><ListTree size={18} /> Generate Table of Contents</div>
 
         {bookmarks.length === 0 ? (
           <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>

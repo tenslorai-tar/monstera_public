@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Tags } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
@@ -70,7 +71,7 @@ export default function TaggedPdfDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 540, maxHeight: '88vh', overflowY: 'auto' }}>
-        <div className="modal-title">🏷 Tagged PDF / Reading Order</div>
+        <div className="modal-title"><Tags size={18} /> Tagged PDF / Reading Order</div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
           View the document's structural headings (reading order) and set accessibility metadata.
           For full PDF/UA tagging, run the PDF conversion tool.

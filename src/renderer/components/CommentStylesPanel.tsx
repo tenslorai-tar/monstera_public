@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Palette } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface CommentStyle {
@@ -74,7 +75,7 @@ export default function CommentStylesPanel({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 340 }}>
-        <div className="modal-title">🎨 Comment Styles</div>
+        <div className="modal-title"><Palette size={18} /> Comment Styles</div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
           Save and reuse annotation style presets.
         </p>

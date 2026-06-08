@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { RefreshCw } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 type TabId = 'pdfa' | 'pdfx' | 'color' | 'repair'
@@ -69,7 +70,7 @@ export default function PdfConvertDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 500 }}>
-        <div className="modal-title">🔄 Document Conversion & Repair</div>
+        <div className="modal-title"><RefreshCw size={18} /> Document Conversion & Repair</div>
 
         {/* Tabs */}
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 16 }}>

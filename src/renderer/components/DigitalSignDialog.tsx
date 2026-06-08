@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { FileSignature } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
@@ -121,7 +122,7 @@ export default function DigitalSignDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 540, maxHeight: '90vh', overflowY: 'auto' }}>
-        <div className="modal-title">🔏 Digital Signature</div>
+        <div className="modal-title"><FileSignature size={18} /> Digital Signature</div>
 
         <div style={{ display: 'flex', gap: 0, marginTop: 12, borderBottom: '1px solid var(--border)' }}>
           {(['sign', 'certify', 'verify'] as Tab[]).map(t => (

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Table } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
@@ -56,7 +57,7 @@ export default function CsvPdfDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 680, maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
-        <div className="modal-title">📊 CSV → PDF</div>
+        <div className="modal-title"><Table size={18} /> CSV → PDF</div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
           Paste CSV data or open a CSV file to convert it into a formatted PDF table.
           First row is treated as the header.

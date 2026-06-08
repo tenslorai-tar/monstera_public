@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Mail } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
@@ -36,7 +37,7 @@ export default function EmailDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 500 }}>
-        <div className="modal-title">📧 Email Document</div>
+        <div className="modal-title"><Mail size={18} /> Email Document</div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
           Opens your default email client with a pre-filled message. You'll need to manually attach the saved PDF file.
         </p>

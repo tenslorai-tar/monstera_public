@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Minimize2 } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
@@ -90,7 +91,7 @@ export default function OptimizeDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 460 }}>
-        <div className="modal-title">🗜 Optimize PDF</div>
+        <div className="modal-title"><Minimize2 size={18} /> Optimize PDF</div>
 
         {gsAvail === true ? (
           <>

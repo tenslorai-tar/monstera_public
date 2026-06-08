@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { CopyPlus } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import type { Annotation } from '../types/annotations'
 import { newId } from '../utils/annotationUtils'
@@ -45,7 +46,7 @@ export default function MultiPageStampDialog({ onClose, sourceAnnotation }: Prop
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 400 }}>
-        <div className="modal-title">🖋 Stamp on Multiple Pages</div>
+        <div className="modal-title"><CopyPlus size={18} /> Stamp on Multiple Pages</div>
         <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>
           Place the same stamp/signature on additional pages. The original page ({sourceAnnotation.pageNum}) is excluded.
         </p>

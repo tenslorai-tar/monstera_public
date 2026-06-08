@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Palette } from 'lucide-react'
 import type { BackgroundConfig } from '../utils/documentEnhance'
 
 interface Props {
@@ -31,7 +32,7 @@ export default function BackgroundDialog({ numPages, onApply, onClose }: Props) 
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 380 }}>
-        <div className="modal-title">🎨 Page Background</div>
+        <div className="modal-title"><Palette size={18} /> Page Background</div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
           Adds a colored rectangle over the page. At 100% opacity it covers existing content.
           Reduce opacity to use as a translucent tint.

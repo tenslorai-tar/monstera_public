@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { Upload } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
@@ -210,7 +211,7 @@ export default function ExportDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 480 }}>
-        <div className="modal-title">↗ Export</div>
+        <div className="modal-title"><Upload size={18} /> Export</div>
 
         {/* tabs */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Cloud } from 'lucide-react'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { usePdfStore } from '../store/usePdfStore'
 import { useRecentFiles } from '../hooks/useRecentFiles'
@@ -202,7 +203,7 @@ export default function CloudStorageDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 540, maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
-        <div className="modal-title">☁ Cloud Storage</div>
+        <div className="modal-title"><Cloud size={18} /> Cloud Storage</div>
 
         {/* Provider + tab */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
