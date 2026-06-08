@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react'
-import { Signature, Pen, Type, Upload, FolderOpen } from 'lucide-react'
+import { Signature, Pen, Type, Upload, FolderOpen, Trash2 } from 'lucide-react'
 
 interface Props {
   onConfirm: (dataUrl: string) => void
@@ -7,6 +7,11 @@ interface Props {
 }
 
 type Tab = 'draw' | 'type' | 'upload'
+
+const SAVED_KEY = 'monstera-saved-signatures'
+function loadSaved(): string[] {
+  try { const s = localStorage.getItem(SAVED_KEY); const a = s ? JSON.parse(s) : []; return Array.isArray(a) ? a : [] } catch { return [] }
+}
 
 const SIG_FONTS = [
   { label: 'Cursive (Script)',  value: 'cursive' },
@@ -43,6 +48,8 @@ export default function SignaturePad({ onConfirm, onClose }: Props) {
   const [typedFont, setTypedFont]   = useState(SIG_FONTS[0].value)
   const [typedColor, setTypedColor] = useState('#1a1a1a')
   const [typedSize, setTypedSize]   = useState(52)
+  const [saved, setSaved]           = useState<string[]>(loadSaved)
+  const [saveForReuse, setSaveForReuse] = useState(true)
   const canvasRef  = useRef<HTMLCanvasElement>(null)
   const previewRef = useRef<HTMLCanvasElement>(null)
   const drawing    = useRef(false)
@@ -117,6 +124,26 @@ export default function SignaturePad({ onConfirm, onClose }: Props) {
     reader.readAsDataURL(file)
   }
 
+  const persist = (list: string[]) => {
+    try { localStorage.setItem(SAVED_KEY, JSON.stringify(list.slice(0, 12))) } catch { /* ignore quota */ }
+  }
+
+  // Store (optionally) then place the signature.
+  const commit = (dataUrl: string) => {
+    if (saveForReuse) {
+      setSaved(prev => {
+        const next = [dataUrl, ...prev.filter(s => s !== dataUrl)].slice(0, 12)
+        persist(next)
+        return next
+      })
+    }
+    onConfirm(dataUrl)
+  }
+
+  const deleteSaved = (url: string) => {
+    setSaved(prev => { const next = prev.filter(s => s !== url); persist(next); return next })
+  }
+
   const handleConfirm = () => {
     if (tab === 'draw') {
       const canvas = canvasRef.current!
@@ -124,13 +151,13 @@ export default function SignaturePad({ onConfirm, onClose }: Props) {
       const px = ctx.getImageData(0, 0, canvas.width, canvas.height).data
       const blank = px.every((v, i) => (i % 4 === 3) ? v === 255 : v === 255)
       if (blank) return
-      onConfirm(canvas.toDataURL('image/png'))
+      commit(canvas.toDataURL('image/png'))
     } else if (tab === 'type') {
       if (!typedText.trim()) return
-      onConfirm(renderTypedSignature(typedText, typedFont, typedColor, typedSize))
+      commit(renderTypedSignature(typedText, typedFont, typedColor, typedSize))
     } else {
       if (!uploadUrl) return
-      onConfirm(uploadUrl)
+      commit(uploadUrl)
     }
   }
 
@@ -205,7 +232,46 @@ export default function SignaturePad({ onConfirm, onClose }: Props) {
           </div>
         )}
 
-        <div className="modal-actions" style={{ marginTop: 16 }}>
+        {/* ── Saved signatures (reusable library) ─────────────────── */}
+        {saved.length > 0 && (
+          <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>
+              Saved signatures — click to place
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {saved.map((url, i) => (
+                <div key={i} style={{ position: 'relative' }}>
+                  <button
+                    onClick={() => onConfirm(url)}
+                    title="Use this saved signature"
+                    style={{
+                      width: 96, height: 44, padding: 2, cursor: 'pointer',
+                      background: '#fff', border: '1px solid var(--border)', borderRadius: 6,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                    <img src={url} alt={`Saved signature ${i + 1}`} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                  </button>
+                  <button
+                    onClick={() => deleteSaved(url)}
+                    title="Delete saved signature"
+                    style={{
+                      position: 'absolute', top: -7, right: -7, width: 18, height: 18, borderRadius: '50%',
+                      background: 'var(--danger, #e5484d)', color: '#fff', border: '1px solid var(--bg-elevated)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0,
+                    }}>
+                    <Trash2 size={10} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="modal-actions" style={{ marginTop: 16, alignItems: 'center' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)', cursor: 'pointer', marginRight: 'auto' }}>
+            <input type="checkbox" checked={saveForReuse} onChange={e => setSaveForReuse(e.target.checked)} />
+            Save for reuse
+          </label>
           <button className="modal-btn-secondary" onClick={onClose}>Cancel</button>
           <button className="modal-btn-primary" onClick={handleConfirm}
             disabled={tab === 'upload' && !uploadUrl}>

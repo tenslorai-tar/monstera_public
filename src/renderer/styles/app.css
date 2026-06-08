@@ -286,18 +286,6 @@
 .rbn-icon-btn:disabled { opacity: 0.3; cursor: default; pointer-events: none; }
 
 /* Hint pointing to the native menu for less-common tools */
-.rbn-more-hint {
-  display: flex;
-  align-items: center;
-  align-self: center;
-  max-width: 200px;
-  margin: 0 14px;
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-.rbn-more-hint strong { color: var(--text-secondary); }
 
 /* ── Right side: nav + zoom ──────────────────────────────── */
 .rbn-right {

@@ -714,7 +714,9 @@ export default function RibbonToolbar(props: Props) {
       </Group>
 
       <Group label="Signatures">
-        <LBtn icon={<FileSignature size={20} />} label="Sign PDF" onClick={onDigitalSign} title="Sign document with a PFX/P12 certificate" />
+        <LBtn icon={<Signature size={20} />} label="Signature" onClick={onOpenSignaturePad}
+          title="Draw, type, or upload a handwritten signature, save it, and place it on the page" />
+        <LBtn icon={<FileSignature size={20} />} label="Sign PDF" onClick={onDigitalSign} title="Sign document with a PFX/P12 certificate (cryptographic)" />
         <LBtn icon={<ShieldCheck size={20} />} label="Verify" onClick={onDigitalSign} title="Verify digital signatures in this document" />
       </Group>
 
@@ -803,11 +805,6 @@ export default function RibbonToolbar(props: Props) {
           <SBtn icon={<Keyboard size={15} />} label="Shortcuts" onClick={onShortcuts} title="Keyboard shortcut reference (F1)" />
         </div>
       </Group>
-
-      <div className="rbn-more-hint">
-        Cloud, PDF/A·X, Tagged PDF, TOC, Email, Duplicates, DocuSign &amp; more&nbsp;→&nbsp;
-        <strong>Tools</strong> menu in the top menu bar
-      </div>
     </>
   )
 
