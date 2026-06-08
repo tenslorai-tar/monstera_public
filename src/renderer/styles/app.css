@@ -1776,3 +1776,61 @@
   padding: 2px 4px;
   outline: none;
 }
+
+/* ══════════════════════════════════════════════════════════
+   PHASE 3 — Depth & motion
+   ══════════════════════════════════════════════════════════ */
+
+/* Smoother, unified easing on interactive chrome */
+.rbn-btn-lg, .rbn-btn-sm, .rbn-icon-btn, .left-pal-btn, .ribbon-action-btn, .ribbon-tab, .annot-tool-btn {
+  transition:
+    background-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.12s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Subtle hover lift on the large ribbon buttons; gentle press feedback */
+.rbn-btn-lg:hover:not(:disabled) { box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+.rbn-btn-lg:active:not(:disabled),
+.rbn-btn-sm:active:not(:disabled),
+.rbn-icon-btn:active:not(:disabled),
+.left-pal-btn:active:not(:disabled),
+.ribbon-action-btn:active:not(:disabled) { transform: translateY(0.5px) scale(0.97); }
+
+/* Lucide icons crossfade their colour with the button state */
+.lucide { transition: color 0.15s cubic-bezier(0.4, 0, 0.2, 1); }
+
+/* Tasteful frosted glass on floating surfaces (kept subtle for readability) */
+.context-menu,
+.search-panel {
+  background: color-mix(in srgb, var(--bg-elevated) 86%, transparent);
+  backdrop-filter: saturate(1.4) blur(14px);
+  -webkit-backdrop-filter: saturate(1.4) blur(14px);
+}
+
+.modal-box {
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  backdrop-filter: saturate(1.4) blur(20px);
+  -webkit-backdrop-filter: saturate(1.4) blur(20px);
+}
+
+/* Slightly stronger, layered scrim behind dialogs */
+.modal-overlay {
+  background: color-mix(in srgb, var(--bg-canvas) 55%, rgba(0, 0, 0, 0.45));
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* Active ribbon tab: a cleaner pill-less underline that animates in */
+.ribbon-tab { position: relative; }
+.ribbon-tab-active::after {
+  content: '';
+  position: absolute;
+  left: 12px; right: 12px; bottom: -1px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 2px 2px 0 0;
+}
+
