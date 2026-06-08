@@ -5,6 +5,7 @@ import type { AnnotationTool, StampName, PlacedImageAnn } from '../types/annotat
 import type { FormCreationTool } from '../types/forms'
 import { newId } from '../utils/annotationUtils'
 import logoUrl from '../assets/monstera-logo.png'
+import { Accessibility, ArrowDownUp, ArrowUpRight, Barcode, Bookmark, Bot, BoxSelect, Brush, Calculator, Calendar, Camera, ChevronDown, ChevronUp, Circle, CircleDot, ClipboardList, Cloud, Columns2, Combine, Copy, CopyPlus, Crop, Droplets, Eraser, EyeOff, FileCode, FileOutput, FilePlus2, FileSignature, FileText, FolderOpen, FormInput, GitCompare, Globe, Grid3x3, Hash, Hexagon, Highlighter, Image, ImagePlus, Images, Import, Info, Keyboard, Languages, Layers, Link, List, Lock, Mail, MessageSquare, MessageSquareMore, Minimize2, Moon, MousePointer2, MousePointerClick, Palette, PanelLeft, PanelRight, PanelTop, Pen, PencilRuler, Pentagon, QrCode, Redo2, RefreshCw, Replace, RotateCcw, RotateCw, Ruler, Save, SaveAll, ScanLine, ScanSearch, ScanText, Scissors, Search, SearchX, Settings, Shapes, ShieldCheck, Signature, Slash, Sparkles, SpellCheck, Spline, Square, SquareCheckBig, SquarePen, Stamp, StickyNote, Strikethrough, Table, Telescope, TextCursorInput, Trash2, TriangleAlert, Type, Underline, Undo2, Unlock, Upload, Wand2, Webcam, Sun, CircleHelp } from 'lucide-react'
 
 type RibbonTab = 'home' | 'comment' | 'edit' | 'organize' | 'forms' | 'review' | 'protect' | 'tools'
 
@@ -281,11 +282,11 @@ export default function RibbonToolbar(props: Props) {
   const HomeTab = () => (
     <>
       <Group label="File">
-        <LBtn icon="📂" label="Open" onClick={onOpen} title="Open PDF (Ctrl+O)" />
+        <LBtn icon={<FolderOpen size={20} />} label="Open" onClick={onOpen} title="Open PDF (Ctrl+O)" />
         {hasPdf && (
           <div className="rbn-stack">
-            <SBtn icon="💾" label="Save" onClick={save} disabled={!isDirty} title="Save (Ctrl+S)" />
-            <SBtn icon="📄" label="Save As…" onClick={saveAs} title="Save As (Ctrl+Shift+S)" />
+            <SBtn icon={<Save size={15} />} label="Save" onClick={save} disabled={!isDirty} title="Save (Ctrl+S)" />
+            <SBtn icon={<SaveAll size={15} />} label="Save As…" onClick={saveAs} title="Save As (Ctrl+Shift+S)" />
           </div>
         )}
       </Group>
@@ -293,27 +294,27 @@ export default function RibbonToolbar(props: Props) {
       {hasPdf && (
         <>
           <Group label="History">
-            <LBtn icon="↩" label="Undo" onClick={() => undo()} disabled={undoStack.length === 0} title="Undo (Ctrl+Z)" />
-            <LBtn icon="↪" label="Redo" onClick={() => redo()} disabled={redoStack.length === 0} title="Redo (Ctrl+Y)" />
+            <LBtn icon={<Undo2 size={20} />} label="Undo" onClick={() => undo()} disabled={undoStack.length === 0} title="Undo (Ctrl+Z)" />
+            <LBtn icon={<Redo2 size={20} />} label="Redo" onClick={() => redo()} disabled={redoStack.length === 0} title="Redo (Ctrl+Y)" />
           </Group>
 
           <Group label="View">
             <div className="rbn-grid2" style={{ gridTemplateColumns: '1fr 1fr', width: 'auto' }}>
-              <SBtn icon="▤" label="Thumbnails" active={sidebarOpen} onClick={toggleSidebar} title="Page thumbnails sidebar (F4)" />
-              <SBtn icon="🔖" label="Bookmarks" active={bookmarksPanelOpen} onClick={toggleBookmarksPanel} title="Bookmarks panel (F5)" />
-              <SBtn icon="💬" label="Comments" active={annotationsPanelOpen} onClick={toggleAnnotationsPanel} title="Annotations panel (F6)" />
-              <SBtn icon="📋" label="Fields" active={formsPanelOpen} onClick={toggleFormsPanel} title="Form fields panel (F7)" />
+              <SBtn icon={<PanelLeft size={15} />} label="Thumbnails" active={sidebarOpen} onClick={toggleSidebar} title="Page thumbnails sidebar (F4)" />
+              <SBtn icon={<Bookmark size={15} />} label="Bookmarks" active={bookmarksPanelOpen} onClick={toggleBookmarksPanel} title="Bookmarks panel (F5)" />
+              <SBtn icon={<MessageSquare size={15} />} label="Comments" active={annotationsPanelOpen} onClick={toggleAnnotationsPanel} title="Annotations panel (F6)" />
+              <SBtn icon={<FormInput size={15} />} label="Fields" active={formsPanelOpen} onClick={toggleFormsPanel} title="Form fields panel (F7)" />
             </div>
-            <LBtn icon="⧉" label="Split View" onClick={onSplitView} disabled={!hasPdf} title="Show two pages side by side" />
+            <LBtn icon={<Columns2 size={20} />} label="Split View" onClick={onSplitView} disabled={!hasPdf} title="Show two pages side by side" />
           </Group>
 
           <Group label="Combine">
-            <LBtn icon="⊕" label="Merge" onClick={onMerge} title="Merge other PDFs into this document" />
-            <LBtn icon="✂" label="Split" onClick={onSplit} title="Split document by page ranges" />
+            <LBtn icon={<Combine size={20} />} label="Merge" onClick={onMerge} title="Merge other PDFs into this document" />
+            <LBtn icon={<Scissors size={20} />} label="Split" onClick={onSplit} title="Split document by page ranges" />
           </Group>
 
           <Group label="Export">
-            <LBtn icon="↗" label="Export" onClick={onExport} title="Export pages as PNG/JPEG, text, Word, or annotations" />
+            <LBtn icon={<Upload size={18} />} label="Export" onClick={onExport} title="Export pages as PNG/JPEG, text, Word, or annotations" />
           </Group>
         </>
       )}
@@ -325,48 +326,48 @@ export default function RibbonToolbar(props: Props) {
   const CommentTab = () => (
     <>
       <Group label="Select">
-        <LBtn icon="↖" label="Select" active={activeTool === 'select'} onClick={() => toggle('select')} title="Select annotation" />
-        <LBtn icon="⌫" label="Erase" active={activeTool === 'eraser'} onClick={() => toggle('eraser')} title="Click annotation to delete it" />
+        <LBtn icon={<MousePointer2 size={20} />} label="Select" active={activeTool === 'select'} onClick={() => toggle('select')} title="Select annotation" />
+        <LBtn icon={<Eraser size={20} />} label="Erase" active={activeTool === 'eraser'} onClick={() => toggle('eraser')} title="Click annotation to delete it" />
       </Group>
 
       <Group label="Text Markup">
         <div className="rbn-stack">
           <SBtn
-            icon={<span style={{ background:'#ffcc00', color:'#000', padding:'0 3px', borderRadius:2, fontWeight:700 }}>H</span>}
+            icon={<Highlighter size={15} />}
             label="Highlight" active={activeTool === 'highlight'} onClick={() => toggle('highlight')} title="Highlight selected text" />
           <SBtn
-            icon={<span style={{ textDecoration:'underline' }}>U</span>}
+            icon={<Underline size={15} />}
             label="Underline" active={activeTool === 'underline'} onClick={() => toggle('underline')} title="Underline selected text" />
           <SBtn
-            icon={<span style={{ textDecoration:'line-through' }}>S</span>}
+            icon={<Strikethrough size={15} />}
             label="Strikethrough" active={activeTool === 'strikethrough'} onClick={() => toggle('strikethrough')} title="Strikethrough selected text" />
         </div>
       </Group>
 
       <Group label="Drawing">
-        <LBtn icon="✏" label="Ink / Pen" active={activeTool === 'ink'} onClick={() => toggle('ink')} title="Freehand drawing" />
+        <LBtn icon={<Pen size={20} />} label="Ink / Pen" active={activeTool === 'ink'} onClick={() => toggle('ink')} title="Freehand drawing" />
       </Group>
 
       <Group label="Shapes">
         <div className="rbn-icon-grid">
-          <IBtn icon="▭" active={activeTool === 'rectangle'} onClick={() => toggle('rectangle')} title="Rectangle" />
-          <IBtn icon="◯" active={activeTool === 'ellipse'} onClick={() => toggle('ellipse')} title="Ellipse / circle" />
-          <IBtn icon="╱" active={activeTool === 'line'} onClick={() => toggle('line')} title="Line" />
-          <IBtn icon="→" active={activeTool === 'arrow'} onClick={() => toggle('arrow')} title="Arrow" />
-          <IBtn icon="⬠" active={activeTool === 'polygon'} onClick={() => toggle('polygon')} title="Polygon — click points, DblClick to finish" />
-          <IBtn icon="〰" active={activeTool === 'polyline'} onClick={() => toggle('polyline')} title="Polyline — click points, DblClick to finish" />
-          <IBtn icon="☁" active={activeTool === 'cloud'} onClick={() => toggle('cloud')} title="Cloud — click points, DblClick to finish" />
-          <IBtn icon="⌃" active={activeTool === 'caret'} onClick={() => toggle('caret')} title="Caret insertion mark — single click to place" />
+          <IBtn icon={<Square size={17} />} active={activeTool === 'rectangle'} onClick={() => toggle('rectangle')} title="Rectangle" />
+          <IBtn icon={<Circle size={17} />} active={activeTool === 'ellipse'} onClick={() => toggle('ellipse')} title="Ellipse / circle" />
+          <IBtn icon={<Slash size={17} />} active={activeTool === 'line'} onClick={() => toggle('line')} title="Line" />
+          <IBtn icon={<ArrowUpRight size={17} />} active={activeTool === 'arrow'} onClick={() => toggle('arrow')} title="Arrow" />
+          <IBtn icon={<Pentagon size={17} />} active={activeTool === 'polygon'} onClick={() => toggle('polygon')} title="Polygon — click points, DblClick to finish" />
+          <IBtn icon={<Spline size={17} />} active={activeTool === 'polyline'} onClick={() => toggle('polyline')} title="Polyline — click points, DblClick to finish" />
+          <IBtn icon={<Cloud size={17} />} active={activeTool === 'cloud'} onClick={() => toggle('cloud')} title="Cloud — click points, DblClick to finish" />
+          <IBtn icon={<ChevronUp size={17} />} active={activeTool === 'caret'} onClick={() => toggle('caret')} title="Caret insertion mark — single click to place" />
         </div>
       </Group>
 
       <Group label="Notes">
-        <LBtn icon="💬" label="Callout" active={activeTool === 'callout'} onClick={() => toggle('callout')} title="Callout — drag text box, leader arrow auto-placed" />
-        <LBtn icon="📌" label="Sticky Note" active={activeTool === 'stickynote'} onClick={() => toggle('stickynote')} title="Sticky note / comment bubble" />
+        <LBtn icon={<MessageSquareMore size={20} />} label="Callout" active={activeTool === 'callout'} onClick={() => toggle('callout')} title="Callout — drag text box, leader arrow auto-placed" />
+        <LBtn icon={<StickyNote size={20} />} label="Sticky Note" active={activeTool === 'stickynote'} onClick={() => toggle('stickynote')} title="Sticky note / comment bubble" />
       </Group>
 
       <Group label="Stamps">
-        <LBtn icon="⬡" label="Stamp" active={activeTool === 'stamp'} onClick={() => toggle('stamp')} title="Place a stamp" />
+        <LBtn icon={<Stamp size={20} />} label="Stamp" active={activeTool === 'stamp'} onClick={() => toggle('stamp')} title="Place a stamp" />
         {activeTool === 'stamp' && (
           <div className="rbn-stack" style={{ gap: 3 }}>
             <select className="rbn-select-sm" value={stampName}
@@ -383,23 +384,23 @@ export default function RibbonToolbar(props: Props) {
               </optgroup>
             </select>
             {stampName === 'Custom' && (
-              <SBtn icon="🖼" label="Browse" onClick={() => stampFileRef.current?.click()} title="Load custom stamp image" />
+              <SBtn icon={<ImagePlus size={15} />} label="Browse" onClick={() => stampFileRef.current?.click()} title="Load custom stamp image" />
             )}
           </div>
         )}
-        <LBtn icon="✍" label="Signature" onClick={onOpenSignaturePad} title="Draw / upload a visible signature image" />
+        <LBtn icon={<Signature size={18} />} label="Signature" onClick={onOpenSignaturePad} title="Draw / upload a visible signature image" />
         {selectedAnnotationId && (
-          <LBtn icon="⊕" label="Multi-Page" onClick={onMultiPageStamp} title="Copy selected annotation to multiple pages at once" />
+          <LBtn icon={<CopyPlus size={20} />} label="Multi-Page" onClick={onMultiPageStamp} title="Copy selected annotation to multiple pages at once" />
         )}
         <input ref={stampFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleCustomStamp} />
       </Group>
 
       <Group label="Measure & Link">
         <div className="rbn-icon-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
-          <IBtn icon="↔" active={activeTool === 'measure-distance'} onClick={() => toggle('measure-distance')} title="Measure distance — click 2 points" />
-          <IBtn icon="⬡" active={activeTool === 'measure-area'} onClick={() => toggle('measure-area')} title="Measure area — click points, DblClick to close" />
-          <IBtn icon="⬠" active={activeTool === 'measure-perimeter'} onClick={() => toggle('measure-perimeter')} title="Measure perimeter — click points, DblClick to close" />
-          <IBtn icon="🔗" active={activeTool === 'link'} onClick={() => toggle('link')} title="Create a link — drag a rectangle, then enter URL or page number" />
+          <IBtn icon={<Ruler size={17} />} active={activeTool === 'measure-distance'} onClick={() => toggle('measure-distance')} title="Measure distance — click 2 points" />
+          <IBtn icon={<Shapes size={17} />} active={activeTool === 'measure-area'} onClick={() => toggle('measure-area')} title="Measure area — click points, DblClick to close" />
+          <IBtn icon={<Hexagon size={17} />} active={activeTool === 'measure-perimeter'} onClick={() => toggle('measure-perimeter')} title="Measure perimeter — click points, DblClick to close" />
+          <IBtn icon={<Link size={17} />} active={activeTool === 'link'} onClick={() => toggle('link')} title="Create a link — drag a rectangle, then enter URL or page number" />
         </div>
       </Group>
 
@@ -451,10 +452,10 @@ export default function RibbonToolbar(props: Props) {
 
       <Group label="Manage">
         <div className="rbn-grid2">
-          <SBtn icon="≡" label="Panel" active={annotationsPanelOpen} onClick={toggleAnnotationsPanel} title="Annotations panel (F6)" />
-          <SBtn icon="🎨" label="Styles" onClick={onCommentStyles} title="Save and reuse annotation style presets" />
-          <SBtn icon="📋" label="Summary" onClick={onSummarizeComments} disabled={annotations.length === 0} title="View comment summary and export to text" />
-          <SBtn icon="⊞" label="Flatten" onClick={onFlattenAnnotations} disabled={annotations.filter(a => a.type !== 'redact').length === 0} title="Commit annotations to PDF structure (clear overlays)" />
+          <SBtn icon={<PanelRight size={15} />} label="Panel" active={annotationsPanelOpen} onClick={toggleAnnotationsPanel} title="Annotations panel (F6)" />
+          <SBtn icon={<Palette size={15} />} label="Styles" onClick={onCommentStyles} title="Save and reuse annotation style presets" />
+          <SBtn icon={<ClipboardList size={15} />} label="Summary" onClick={onSummarizeComments} disabled={annotations.length === 0} title="View comment summary and export to text" />
+          <SBtn icon={<Layers size={15} />} label="Flatten" onClick={onFlattenAnnotations} disabled={annotations.filter(a => a.type !== 'redact').length === 0} title="Commit annotations to PDF structure (clear overlays)" />
         </div>
       </Group>
     </>
@@ -465,46 +466,46 @@ export default function RibbonToolbar(props: Props) {
   const EditTab = () => (
     <>
       <Group label="Add Text">
-        <LBtn icon={<span style={{ fontFamily:'monospace', fontSize:16 }}>Ꭲ</span>} label="Typewriter" active={activeTool === 'typewriter'} onClick={() => toggle('typewriter')} title="Typewriter — click anywhere to type new text" />
-        <LBtn icon="T" label="Text Box" active={activeTool === 'textbox'} onClick={() => toggle('textbox')} title="Text box — drag area then type" />
+        <LBtn icon={<Type size={20} />} label="Typewriter" active={activeTool === 'typewriter'} onClick={() => toggle('typewriter')} title="Typewriter — click anywhere to type new text" />
+        <LBtn icon={<TextCursorInput size={20} />} label="Text Box" active={activeTool === 'textbox'} onClick={() => toggle('textbox')} title="Text box — drag area then type" />
       </Group>
 
       <Group label="Objects">
-        <LBtn icon="⬚" label="Edit Objects" active={activeTool === 'object-edit'} onClick={() => toggle('object-edit')}
+        <LBtn icon={<BoxSelect size={20} />} label="Edit Objects" active={activeTool === 'object-edit'} onClick={() => toggle('object-edit')}
           title="Select any text, image or shape on the page — move, resize, recolour or delete it" />
-        <LBtn icon="▦" label="Barcode/QR" onClick={onBarcode}
+        <LBtn icon={<QrCode size={20} />} label="Barcode/QR" onClick={onBarcode}
           title="Generate a QR code or barcode and place it on the page" />
-        <LBtn icon="🔎" label="Read Codes" onClick={onReadBarcode}
+        <LBtn icon={<ScanLine size={20} />} label="Read Codes" onClick={onReadBarcode}
           title="Detect & decode barcodes/QR codes on the current page" />
       </Group>
 
       <Group label="Content">
         <div className="rbn-stack">
-          <SBtn icon={<span style={{ fontSize:10 }}>ab→cd</span>} label="Edit Text" active={activeTool === 'text-edit'} onClick={() => toggle('text-edit')} title="Click any text to edit it in place (font preserved), or drag to replace a region" />
-          <SBtn icon="🖼" label="Image" onClick={() => imageFileRef.current?.click()} title="Insert a PNG / JPEG onto the page" />
-          <SBtn icon="📷" label="Snapshot" active={activeTool === 'snapshot'} onClick={() => toggle('snapshot')} title="Drag a region on the page to capture it as a PNG" />
+          <SBtn icon={<Replace size={15} />} label="Edit Text" active={activeTool === 'text-edit'} onClick={() => toggle('text-edit')} title="Click any text to edit it in place (font preserved), or drag to replace a region" />
+          <SBtn icon={<Image size={15} />} label="Image" onClick={() => imageFileRef.current?.click()} title="Insert a PNG / JPEG onto the page" />
+          <SBtn icon={<Camera size={15} />} label="Snapshot" active={activeTool === 'snapshot'} onClick={() => toggle('snapshot')} title="Drag a region on the page to capture it as a PNG" />
         </div>
         <input ref={imageFileRef} type="file" accept="image/png,image/jpeg,image/jpg" style={{ display:'none' }} onChange={handleInsertImage} />
       </Group>
 
       <Group label="Redact">
         <LBtn
-          icon={<span style={{ background:'#1a1a1a', color:'#f55', padding:'0 3px', borderRadius:2, fontSize:10, fontWeight:700, border:'1px solid #f55' }}>REDACT</span>}
+          icon={<EyeOff size={20} />}
           label="Mark Area" active={activeTool === 'redact'} onClick={() => toggle('redact')}
           title="Drag to mark an area for permanent redaction" danger />
-        <LBtn icon="🔍" label="Find & Redact" onClick={onFindRedact}
+        <LBtn icon={<SearchX size={20} />} label="Find & Redact" onClick={onFindRedact}
           title="Search for text and mark all matches for redaction" danger />
         {pendingRedact > 0 && (
-          <LBtn icon="⚠" label={`Apply ${pendingRedact}`} onClick={onRequestRedactConfirm}
+          <LBtn icon={<TriangleAlert size={20} />} label={`Apply ${pendingRedact}`} onClick={onRequestRedactConfirm}
             title="Permanently remove all marked areas" danger />
         )}
       </Group>
 
       <Group label="Enhance">
         <div className="rbn-stack">
-          <SBtn icon="🔄" label="Replace Page" onClick={onReplacePage} title="Replace a page with a page from another PDF" />
-          <SBtn icon="🗜" label="Optimize" onClick={onOptimize} title="Compress and optimize PDF file size" />
-          <SBtn icon="🌐" label="Open URL" onClick={onOpenUrl} title="Download and open a PDF from a web URL" />
+          <SBtn icon={<RefreshCw size={15} />} label="Replace Page" onClick={onReplacePage} title="Replace a page with a page from another PDF" />
+          <SBtn icon={<Minimize2 size={15} />} label="Optimize" onClick={onOptimize} title="Compress and optimize PDF file size" />
+          <SBtn icon={<Globe size={15} />} label="Open URL" onClick={onOpenUrl} title="Download and open a PDF from a web URL" />
         </div>
       </Group>
 
@@ -544,41 +545,41 @@ export default function RibbonToolbar(props: Props) {
   const OrganizeTab = () => (
     <>
       <Group label="Insert Pages">
-        <LBtn icon="+" label="Blank Before" onClick={onInsertBlankBefore} title="Insert blank page before current page" />
-        <LBtn icon="+" label="Blank After" onClick={onInsertBlankAfter} title="Insert blank page after current page" />
+        <LBtn icon={<FilePlus2 size={20} />} label="Blank Before" onClick={onInsertBlankBefore} title="Insert blank page before current page" />
+        <LBtn icon={<FilePlus2 size={20} />} label="Blank After" onClick={onInsertBlankAfter} title="Insert blank page after current page" />
         <div className="rbn-stack">
-          <SBtn icon="📄" label="From PDF" onClick={onInsertFromPdf} title="Insert pages from another PDF file" />
-          <SBtn icon="🖼" label="From Image" onClick={onInsertFromImage} title="Insert image as a new page" />
+          <SBtn icon={<FileText size={15} />} label="From PDF" onClick={onInsertFromPdf} title="Insert pages from another PDF file" />
+          <SBtn icon={<ImagePlus size={15} />} label="From Image" onClick={onInsertFromImage} title="Insert image as a new page" />
         </div>
       </Group>
 
       <Group label="Page Operations">
         <div className="rbn-grid2">
-          <SBtn icon="🗑" label="Delete" onClick={onDeletePages} title="Delete selected pages (or the current page)" />
-          <SBtn icon="⟳" label="Rot CW" onClick={onRotateCW} title="Rotate clockwise 90° — selected pages, or the current page" />
-          <SBtn icon="⟲" label="Rot CCW" onClick={onRotateCCW} title="Rotate counter-clockwise 90° — selected pages, or the current page" />
-          <SBtn icon="↻" label="Rot 180°" onClick={onRotate180} title="Rotate 180° — selected pages, or the current page" />
-          <SBtn icon="⧉" label="Duplicate" onClick={onDuplicatePages} title="Duplicate selected pages (or the current page)" />
-          <SBtn icon="↕" label="Reverse" onClick={onReverseOrder} title="Reverse the order of all pages" />
+          <SBtn icon={<Trash2 size={15} />} label="Delete" onClick={onDeletePages} title="Delete selected pages (or the current page)" />
+          <SBtn icon={<RotateCw size={15} />} label="Rot CW" onClick={onRotateCW} title="Rotate clockwise 90° — selected pages, or the current page" />
+          <SBtn icon={<RotateCcw size={15} />} label="Rot CCW" onClick={onRotateCCW} title="Rotate counter-clockwise 90° — selected pages, or the current page" />
+          <SBtn icon={<RefreshCw size={15} />} label="Rot 180°" onClick={onRotate180} title="Rotate 180° — selected pages, or the current page" />
+          <SBtn icon={<Copy size={15} />} label="Duplicate" onClick={onDuplicatePages} title="Duplicate selected pages (or the current page)" />
+          <SBtn icon={<ArrowDownUp size={15} />} label="Reverse" onClick={onReverseOrder} title="Reverse the order of all pages" />
         </div>
       </Group>
 
       <Group label="Extract & Split">
-        <LBtn icon="📤" label="Extract" onClick={onExtractPages} title="Extract selected pages (or current page) to a new PDF" />
-        <LBtn icon="✂" label="Split" onClick={onSplit} title="Split document into multiple files by page ranges" />
+        <LBtn icon={<FileOutput size={20} />} label="Extract" onClick={onExtractPages} title="Extract selected pages (or current page) to a new PDF" />
+        <LBtn icon={<Scissors size={20} />} label="Split" onClick={onSplit} title="Split document into multiple files by page ranges" />
       </Group>
 
       <Group label="Combine">
-        <LBtn icon="⊕" label="Merge" onClick={onMerge} title="Merge other PDF files into this document" />
-        <SBtn icon="📥" label="Import Office" onClick={onOfficeImport} title="Convert and import Word or Excel file as PDF" />
+        <LBtn icon={<Combine size={20} />} label="Merge" onClick={onMerge} title="Merge other PDF files into this document" />
+        <SBtn icon={<Import size={15} />} label="Import Office" onClick={onOfficeImport} title="Convert and import Word or Excel file as PDF" />
       </Group>
 
       <Group label="Page Design">
         <div className="rbn-grid2">
-          <SBtn icon="📑" label="Header/Footer" onClick={onHeaderFooter} title="Add headers and footers to pages" />
-          <SBtn icon="💧" label="Watermark" onClick={onWatermark} title="Add a text watermark to pages" />
-          <SBtn icon="🔢" label="Bates Nos." onClick={onBatesNumbers} title="Add Bates sequential numbering" />
-          <SBtn icon="✂" label="Crop" onClick={onCropPages} title="Crop pages by setting the visible area" />
+          <SBtn icon={<PanelTop size={15} />} label="Header/Footer" onClick={onHeaderFooter} title="Add headers and footers to pages" />
+          <SBtn icon={<Droplets size={15} />} label="Watermark" onClick={onWatermark} title="Add a text watermark to pages" />
+          <SBtn icon={<Hash size={15} />} label="Bates Nos." onClick={onBatesNumbers} title="Add Bates sequential numbering" />
+          <SBtn icon={<Crop size={15} />} label="Crop" onClick={onCropPages} title="Crop pages by setting the visible area" />
         </div>
       </Group>
     </>
@@ -589,10 +590,10 @@ export default function RibbonToolbar(props: Props) {
   const FormsTab = () => (
     <>
       <Group label="Mode">
-        <LBtn icon="📋" label={formMode ? 'Exit Forms' : 'Edit Forms'}
+        <LBtn icon={<ClipboardList size={20} />} label={formMode ? 'Exit Forms' : 'Edit Forms'}
           active={formMode} onClick={() => setFormMode(!formMode)}
           title="Toggle interactive form editing mode" />
-        <LBtn icon="🔍" label="Identify" onClick={() => identifyForms().catch(() => {})}
+        <LBtn icon={<ScanSearch size={20} />} label="Identify" onClick={() => identifyForms().catch(() => {})}
           title="Auto-detect form areas on flat PDFs and create field overlays" />
       </Group>
 
@@ -601,45 +602,45 @@ export default function RibbonToolbar(props: Props) {
           <Group label="Text & Date">
             <div className="rbn-stack">
               <SBtn
-                icon={<span style={{ fontFamily:'monospace', border:'1px solid currentColor', padding:'0 2px', borderRadius:2, fontSize:10 }}>T</span>}
+                icon={<Type size={15} />}
                 label="Text" active={formCreationTool === 'form-text'}
                 onClick={() => toggleFTool('form-text')} title="Draw a text input field" />
-              <SBtn icon="📅" label="Date" active={formCreationTool === 'form-date'}
+              <SBtn icon={<Calendar size={15} />} label="Date" active={formCreationTool === 'form-date'}
                 onClick={() => toggleFTool('form-date')} title="Draw a date picker field" />
             </div>
           </Group>
 
           <Group label="Choice">
             <div className="rbn-stack">
-              <SBtn icon="☑" label="Checkbox" active={formCreationTool === 'form-checkbox'}
+              <SBtn icon={<SquareCheckBig size={15} />} label="Checkbox" active={formCreationTool === 'form-checkbox'}
                 onClick={() => toggleFTool('form-checkbox')} title="Draw a checkbox" />
-              <SBtn icon="◉" label="Radio" active={formCreationTool === 'form-radio'}
+              <SBtn icon={<CircleDot size={15} />} label="Radio" active={formCreationTool === 'form-radio'}
                 onClick={() => toggleFTool('form-radio')} title="Draw a radio button" />
-              <SBtn icon="▼" label="Dropdown" active={formCreationTool === 'form-dropdown'}
+              <SBtn icon={<ChevronDown size={15} />} label="Dropdown" active={formCreationTool === 'form-dropdown'}
                 onClick={() => toggleFTool('form-dropdown')} title="Draw a dropdown list" />
-              <SBtn icon="≡" label="List Box" active={formCreationTool === 'form-listbox'}
+              <SBtn icon={<List size={15} />} label="List Box" active={formCreationTool === 'form-listbox'}
                 onClick={() => toggleFTool('form-listbox')} title="Draw a multi-select list box" />
             </div>
           </Group>
 
           <Group label="Other">
             <div className="rbn-stack">
-              <SBtn icon="🖱" label="Button" active={formCreationTool === 'form-button'}
+              <SBtn icon={<MousePointerClick size={15} />} label="Button" active={formCreationTool === 'form-button'}
                 onClick={() => toggleFTool('form-button')} title="Draw a push button" />
-              <SBtn icon="▦" label="Barcode" active={formCreationTool === 'form-barcode'}
+              <SBtn icon={<Barcode size={15} />} label="Barcode" active={formCreationTool === 'form-barcode'}
                 onClick={() => toggleFTool('form-barcode')} title="Draw a QR / barcode field" />
-              <SBtn icon="✍" label="Signature" active={formCreationTool === 'form-signature'}
+              <SBtn icon={<Signature size={18} />} label="Signature" active={formCreationTool === 'form-signature'}
                 onClick={() => toggleFTool('form-signature')} title="Draw a signature field area" />
             </div>
           </Group>
 
           <Group label="Operations">
             <div className="rbn-stack">
-              <SBtn icon="⊞" label="Flatten" onClick={flattenForm}
+              <SBtn icon={<Layers size={15} />} label="Flatten" onClick={flattenForm}
                 disabled={formFields.filter(f => !f.isNew).length === 0}
                 title="Bake all field values permanently into the page content" />
-              <SBtn icon="↺" label="Reset" onClick={resetFormFields} title="Reset all fields to their default/empty values" />
-              <SBtn icon="↗" label="Export" onClick={() => {
+              <SBtn icon={<RotateCcw size={15} />} label="Reset" onClick={resetFormFields} title="Reset all fields to their default/empty values" />
+              <SBtn icon={<Upload size={18} />} label="Export" onClick={() => {
                 const json = exportFormData()
                 const blob = new Blob([json], { type: 'application/json' })
                 const url = URL.createObjectURL(blob)
@@ -650,7 +651,7 @@ export default function RibbonToolbar(props: Props) {
           </Group>
 
           <Group label="Manage">
-            <LBtn icon="≡" label="Fields Panel" active={formsPanelOpen}
+            <LBtn icon={<PanelRight size={20} />} label="Fields Panel" active={formsPanelOpen}
               onClick={toggleFormsPanel} title="Form fields panel (F7)" />
           </Group>
         </>
@@ -663,32 +664,32 @@ export default function RibbonToolbar(props: Props) {
   const ReviewTab = () => (
     <>
       <Group label="OCR">
-        <LBtn icon="🔍" label="Run OCR" onClick={onOcr} title="Run Optical Character Recognition on scanned pages" />
+        <LBtn icon={<ScanText size={20} />} label="Run OCR" onClick={onOcr} title="Run Optical Character Recognition on scanned pages" />
       </Group>
 
       <Group label="Search">
-        <LBtn icon="🔎" label="Find" active={searchOpen} onClick={() => setSearchOpen(!searchOpen)} title="Find in document (Ctrl+F)" />
-        <LBtn icon="↔" label="Replace" onClick={() => setSearchOpen(true)} title="Find & replace text in annotations (Ctrl+H)" />
+        <LBtn icon={<Search size={20} />} label="Find" active={searchOpen} onClick={() => setSearchOpen(!searchOpen)} title="Find in document (Ctrl+F)" />
+        <LBtn icon={<Replace size={20} />} label="Replace" onClick={() => setSearchOpen(true)} title="Find & replace text in annotations (Ctrl+H)" />
       </Group>
 
       <Group label="Compare">
-        <LBtn icon="⊕" label="Compare" onClick={onCompare} title="Compare this document with another PDF" />
+        <LBtn icon={<GitCompare size={20} />} label="Compare" onClick={onCompare} title="Compare this document with another PDF" />
       </Group>
 
       <Group label="Proofing">
         <div className="rbn-stack">
-          <SBtn icon="ABC" label="Spell Check" onClick={onSpellCheck} title="Spell-check all text annotations" />
-          <SBtn icon="🔢" label="Word Count" onClick={onWordCount} title="Count words, characters, and pages" />
+          <SBtn icon={<SpellCheck size={15} />} label="Spell Check" onClick={onSpellCheck} title="Spell-check all text annotations" />
+          <SBtn icon={<Calculator size={15} />} label="Word Count" onClick={onWordCount} title="Count words, characters, and pages" />
         </div>
       </Group>
 
       <Group label="Language">
-        <LBtn icon="🌐" label="Translate" onClick={onTranslate} title="Translate document text using MyMemory API" />
-        <LBtn icon="🤖" label="AI" onClick={onAiAssistant} title="AI Assistant — document Q&A and summarization" />
+        <LBtn icon={<Languages size={20} />} label="Translate" onClick={onTranslate} title="Translate document text using MyMemory API" />
+        <LBtn icon={<Bot size={20} />} label="AI" onClick={onAiAssistant} title="AI Assistant — document Q&A and summarization" />
       </Group>
 
       <Group label="Export">
-        <LBtn icon="↗" label="Export" onClick={onExport} title="Export pages as PNG/JPEG, extract text, or convert to Word" />
+        <LBtn icon={<Upload size={18} />} label="Export" onClick={onExport} title="Export pages as PNG/JPEG, extract text, or convert to Word" />
       </Group>
     </>
   )
@@ -698,30 +699,30 @@ export default function RibbonToolbar(props: Props) {
   const ProtectTab = () => (
     <>
       <Group label="Document Info">
-        <LBtn icon="ℹ" label="Properties" onClick={onMetadata} title="View and edit document metadata (title, author, subject, keywords)" />
+        <LBtn icon={<Info size={20} />} label="Properties" onClick={onMetadata} title="View and edit document metadata (title, author, subject, keywords)" />
       </Group>
 
       <Group label="Security">
-        <LBtn icon="🔒" label="Password" active={!!encryptionSettings} onClick={onSecurity}
+        <LBtn icon={<Lock size={20} />} label="Password" active={!!encryptionSettings} onClick={onSecurity}
           title="Password-protect document, set permissions (print, copy, edit)" />
         {encryptionSettings && (
-          <LBtn icon="🔓" label="Remove Password" onClick={onSecurity}
+          <LBtn icon={<Unlock size={20} />} label="Remove Password" onClick={onSecurity}
             title="Remove password protection from this document" />
         )}
       </Group>
 
       <Group label="Signatures">
-        <LBtn icon="🔏" label="Sign PDF" onClick={onDigitalSign} title="Sign document with a PFX/P12 certificate" />
-        <LBtn icon="✅" label="Verify" onClick={onDigitalSign} title="Verify digital signatures in this document" />
+        <LBtn icon={<FileSignature size={20} />} label="Sign PDF" onClick={onDigitalSign} title="Sign document with a PFX/P12 certificate" />
+        <LBtn icon={<ShieldCheck size={20} />} label="Verify" onClick={onDigitalSign} title="Verify digital signatures in this document" />
       </Group>
 
       <Group label="Sanitize">
-        <LBtn icon="🧹" label="Sanitize" onClick={onSanitize}
+        <LBtn icon={<Brush size={20} />} label="Sanitize" onClick={onSanitize}
           title="Remove hidden data — metadata, scripts, embedded junk — and rewrite the file cleanly (mutool)" />
       </Group>
 
       <Group label="Accessibility">
-        <LBtn icon="♿" label="Check" onClick={onAccessibility} title="Check document for accessibility issues (screen reader, tags, lang)" />
+        <LBtn icon={<Accessibility size={20} />} label="Check" onClick={onAccessibility} title="Check document for accessibility issues (screen reader, tags, lang)" />
       </Group>
     </>
   )
@@ -732,19 +733,19 @@ export default function RibbonToolbar(props: Props) {
     <>
       <Group label="Display">
         <div className="rbn-grid2">
-          <SBtn icon="🌙" label="Dark Pages" active={settings.darkPageMode}
+          <SBtn icon={<Moon size={15} />} label="Dark Pages" active={settings.darkPageMode}
             onClick={() => updateSettings({ darkPageMode: !settings.darkPageMode })}
             title="Invert page colors for comfortable night reading" />
-          <SBtn icon="🔭" label="Loupe" active={settings.loupeEnabled}
+          <SBtn icon={<Telescope size={15} />} label="Loupe" active={settings.loupeEnabled}
             onClick={() => updateSettings({ loupeEnabled: !settings.loupeEnabled })}
             title="Enable circular magnifier that follows the cursor" />
-          <SBtn icon="📏" label="Rulers" active={settings.showRulers}
+          <SBtn icon={<Ruler size={15} />} label="Rulers" active={settings.showRulers}
             onClick={() => updateSettings({ showRulers: !settings.showRulers })}
             title="Show inch rulers around pages" />
-          <SBtn icon="⊞" label="Grid" active={settings.showGrid}
+          <SBtn icon={<Grid3x3 size={15} />} label="Grid" active={settings.showGrid}
             onClick={() => updateSettings({ showGrid: !settings.showGrid })}
             title="Show alignment grid on pages" />
-          <SBtn icon="✨" label="HD Render" active={settings.pdfiumRender}
+          <SBtn icon={<Sparkles size={15} />} label="HD Render" active={settings.pdfiumRender}
             onClick={() => updateSettings({ pdfiumRender: !settings.pdfiumRender })}
             title="Render pages with the PDFium engine — higher fidelity on complex fonts/vectors (uses more memory)" />
         </div>
@@ -760,44 +761,44 @@ export default function RibbonToolbar(props: Props) {
       </Group>
 
       <Group label="Calibration">
-        <LBtn icon="📐" label="Measure" onClick={onMeasureCalibration}
+        <LBtn icon={<PencilRuler size={20} />} label="Measure" onClick={onMeasureCalibration}
           title={`Set measurement unit (current: ${settings.measureUnit})`} />
       </Group>
 
       <Group label="Import">
         <div className="rbn-stack">
-          <SBtn icon="📥" label="Office" onClick={onOfficeImport}
+          <SBtn icon={<Import size={15} />} label="Office" onClick={onOfficeImport}
             title="Convert Word, Excel, PowerPoint, ODF → PDF (LibreOffice when available)" />
-          <SBtn icon="📝" label="Markdown" onClick={onMarkdownToPdf}
+          <SBtn icon={<FileCode size={15} />} label="Markdown" onClick={onMarkdownToPdf}
             title="Convert Markdown text to a PDF document" />
-          <SBtn icon="📊" label="CSV" onClick={onCsvToPdf}
+          <SBtn icon={<Table size={15} />} label="CSV" onClick={onCsvToPdf}
             title="Convert CSV data to a formatted PDF table" />
-          <SBtn icon="📧" label="Email" onClick={onEmailImport}
+          <SBtn icon={<Mail size={15} />} label="Email" onClick={onEmailImport}
             title="Convert an email (.eml) into a PDF" />
         </div>
       </Group>
 
       <Group label="Edit & OCR">
         <div className="rbn-grid2">
-          <SBtn icon="🪄" label="Scan/Enhance" onClick={onScan}
+          <SBtn icon={<Wand2 size={15} />} label="Scan/Enhance" onClick={onScan}
             title="Turn a photo of a page into a clean scan — auto-crop, perspective correct, enhance (OpenCV)" />
-          <SBtn icon="✏" label="Ext Edit" onClick={onEditExternal}
+          <SBtn icon={<SquarePen size={15} />} label="Ext Edit" onClick={onEditExternal}
             title="Export a page as PNG and open in an external image editor" />
-          <SBtn icon="🔍" label="OCR Region" onClick={onOcrRegion}
+          <SBtn icon={<ScanText size={15} />} label="OCR Region" onClick={onOcrRegion}
             title="Run OCR on a selected region of the current page" />
-          <SBtn icon="📐" label="Deskew" onClick={onDeskew}
+          <SBtn icon={<RotateCw size={15} />} label="Deskew" onClick={onDeskew}
             title="Detect and correct skew in scanned pages" />
-          <SBtn icon="📷" label="Webcam" onClick={onWebcam}
+          <SBtn icon={<Webcam size={15} />} label="Webcam" onClick={onWebcam}
             title="Capture an image from webcam and insert into the PDF" />
-          <SBtn icon="🖼" label="Extract Imgs" onClick={onExtractImages}
+          <SBtn icon={<Images size={15} />} label="Extract Imgs" onClick={onExtractImages}
             title="Extract all embedded images to a folder (Poppler)" />
         </div>
       </Group>
 
       <Group label="Preferences">
         <div className="rbn-stack">
-          <SBtn icon="⚙" label="Settings" onClick={onSettings} title="Application preferences (Ctrl+,)" />
-          <SBtn icon="⌨" label="Shortcuts" onClick={onShortcuts} title="Keyboard shortcut reference (F1)" />
+          <SBtn icon={<Settings size={15} />} label="Settings" onClick={onSettings} title="Application preferences (Ctrl+,)" />
+          <SBtn icon={<Keyboard size={15} />} label="Shortcuts" onClick={onShortcuts} title="Keyboard shortcut reference (F1)" />
         </div>
       </Group>
 
@@ -853,15 +854,15 @@ export default function RibbonToolbar(props: Props) {
           <button
             className={`ribbon-action-btn${searchOpen ? ' ribbon-action-active' : ''}`}
             onClick={() => setSearchOpen(!searchOpen)} title="Find in document (Ctrl+F)">
-            🔍
+            <Search size={16} />
           </button>
           <button className="ribbon-action-btn"
             onClick={() => updateSettings({ theme: theme === 'dark' ? 'light' : 'dark' })}
             title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}>
-            {theme === 'dark' ? '☀' : '🌙'}
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
           </button>
-          <button className="ribbon-action-btn" onClick={onSettings} title="Preferences (Ctrl+,)">⚙</button>
-          <button className="ribbon-action-btn" onClick={onShortcuts} title="Keyboard shortcuts (F1)">?</button>
+          <button className="ribbon-action-btn" onClick={onSettings} title="Preferences (Ctrl+,)"><Settings size={16} /></button>
+          <button className="ribbon-action-btn" onClick={onShortcuts} title="Keyboard shortcuts (F1)"><CircleHelp size={16} /></button>
         </div>
       </div>
 

@@ -197,7 +197,11 @@
   border-color: var(--danger) !important;
   color: var(--danger) !important;
 }
-.rbn-btn-icon { font-size: 24px; line-height: 1; height: 26px; display: flex; align-items: center; }
+.rbn-btn-icon { font-size: 24px; line-height: 1; height: 26px; display: flex; align-items: center; justify-content: center; }
+
+/* Lucide line icons: refined stroke weight + crisp flex centering everywhere */
+.lucide { stroke-width: 1.75px; }
+.rbn-btn-sm-icon, .left-pal-icon { display: inline-flex; align-items: center; justify-content: center; }
 .rbn-btn-label { font-size: 11.5px; font-weight: 600; white-space: nowrap; line-height: 1; color: inherit; }
 
 /* ── Small button (inline icon + optional label) ─────────── */
