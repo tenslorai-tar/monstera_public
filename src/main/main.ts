@@ -513,19 +513,41 @@ async function getMupdf(): Promise<any> {
   return _mupdf
 }
 
+// mupdf's Buffer.asUint8Array() returns a VIEW into the WASM heap (HEAPU8.subarray),
+// so `.buffer` is the ENTIRE heap (tens of MB), not the PDF. Returning that over IPC
+// (a) ships the whole heap, and (b) the view detaches whenever WASM memory.grow()
+// runs, corrupting later reads ("cannot recognize version marker"). Copy the exact
+// bytes into a standalone ArrayBuffer instead.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mupdfBytes(buf: any): ArrayBuffer {
+  const u8 = buf.asUint8Array()
+  const out = new Uint8Array(u8.length)
+  out.set(u8)
+  return out.buffer
+}
+// Free WASM-backed mupdf objects (document/buffer/page/pixmap). They are NOT reliably
+// garbage-collected, so not freeing them leaks the whole parsed PDF on every call and
+// grows the heap until allocations fail.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function freeMupdf(...objs: any[]): void {
+  for (const o of objs) { try { o?.destroy?.() } catch { /* ignore */ } }
+}
+
 ipcMain.handle('mupdf:getMetadata', async (_event, bytes: ArrayBuffer) => {
   const mupdf = await getMupdf()
   const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
-  return {
-    title:    doc.getMetaData('info:Title')    ?? '',
-    author:   doc.getMetaData('info:Author')   ?? '',
-    subject:  doc.getMetaData('info:Subject')  ?? '',
-    keywords: doc.getMetaData('info:Keywords') ?? '',
-    creator:  doc.getMetaData('info:Creator')  ?? '',
-    producer: doc.getMetaData('info:Producer') ?? '',
-    needsPassword: doc.needsPassword(),
-    encryption: doc.getMetaData('encryption')  ?? '',
-  }
+  try {
+    return {
+      title:    doc.getMetaData('info:Title')    ?? '',
+      author:   doc.getMetaData('info:Author')   ?? '',
+      subject:  doc.getMetaData('info:Subject')  ?? '',
+      keywords: doc.getMetaData('info:Keywords') ?? '',
+      creator:  doc.getMetaData('info:Creator')  ?? '',
+      producer: doc.getMetaData('info:Producer') ?? '',
+      needsPassword: doc.needsPassword(),
+      encryption: doc.getMetaData('encryption')  ?? '',
+    }
+  } finally { freeMupdf(doc) }
 })
 
 ipcMain.handle('mupdf:setMetadata', async (_event, bytes: ArrayBuffer, meta: Record<string, string>) => {
@@ -536,7 +558,9 @@ ipcMain.handle('mupdf:setMetadata', async (_event, bytes: ArrayBuffer, meta: Rec
   if (meta.subject  !== undefined) doc.setMetaData('info:Subject',  meta.subject)
   if (meta.keywords !== undefined) doc.setMetaData('info:Keywords', meta.keywords)
   const buf = doc.saveToBuffer('')
-  return buf.asUint8Array().buffer
+  const out = mupdfBytes(buf)
+  freeMupdf(buf, doc)
+  return out
 })
 
 interface EncryptOpts {
@@ -555,7 +579,9 @@ ipcMain.handle('mupdf:encrypt', async (_event, bytes: ArrayBuffer, opts: Encrypt
     `permissions=${opts.permissions}`,
   ].join(',')
   const buf = doc.saveToBuffer(optStr)
-  return buf.asUint8Array().buffer
+  const out = mupdfBytes(buf)
+  freeMupdf(buf, doc)
+  return out
 })
 
 ipcMain.handle('mupdf:removePassword', async (_event, bytes: ArrayBuffer, password: string) => {
@@ -563,10 +589,12 @@ ipcMain.handle('mupdf:removePassword', async (_event, bytes: ArrayBuffer, passwo
   const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
   if (doc.needsPassword()) {
     const result = doc.authenticatePassword(password)
-    if (!result) throw new Error('Incorrect password')
+    if (!result) { freeMupdf(doc); throw new Error('Incorrect password') }
   }
   const buf = doc.saveToBuffer('decrypt=yes')
-  return buf.asUint8Array().buffer
+  const out = mupdfBytes(buf)
+  freeMupdf(buf, doc)
+  return out
 })
 
 interface RedactArea {
@@ -593,10 +621,13 @@ ipcMain.handle('mupdf:applyRedactions', async (_event, bytes: ArrayBuffer, areas
     }
     // applyRedactions(blackBoxes, imageHandling)
     page.applyRedactions(true, 0)
+    freeMupdf(page)
   }
 
   const buf = doc.saveToBuffer('')
-  return buf.asUint8Array().buffer
+  const out = mupdfBytes(buf)
+  freeMupdf(buf, doc)
+  return out
 })
 
 // ── Outline (Bookmarks) ───────────────────────────────────────────────────────
@@ -621,6 +652,7 @@ ipcMain.handle('mupdf:getOutline', async (_event, bytes: ArrayBuffer): Promise<B
   const outline = doc.loadOutline()
   const result: BookmarkItem[] = []
   if (outline) flatten(outline, result)
+  freeMupdf(doc)
   return result
 })
 
@@ -637,7 +669,9 @@ ipcMain.handle('mupdf:writeOutline', async (
     iter.insert({ title: bm.title, uri: `#page=${bm.pageNum}`, open: false })
   }
   const outBuf = doc.saveToBuffer('')
-  return outBuf.asUint8Array().buffer
+  const out = mupdfBytes(outBuf)
+  freeMupdf(iter, outBuf, doc)
+  return out
 })
 
 // ── Digital Signatures ────────────────────────────────────────────────────────
@@ -861,8 +895,7 @@ ipcMain.handle('forms:identify', async (_event, bytes: ArrayBuffer): Promise<Ide
     let parsed: {blocks?: Array<{lines?: Array<{spans?: Array<{text: string; bbox: number[]}>}>}>}
     try { parsed = JSON.parse(stext) } catch { continue }
 
-    const pageObj = doc.loadPage(pi)
-    const bounds = pageObj.getBounds()
+    const bounds = page.getBounds()
     const pageH = bounds[3] - bounds[1]
 
     for (const block of (parsed.blocks ?? [])) {
@@ -896,8 +929,10 @@ ipcMain.handle('forms:identify', async (_event, bytes: ArrayBuffer): Promise<Ide
         }
       }
     }
+    freeMupdf(page)
   }
 
+  freeMupdf(doc)
   return fields
 })
 
@@ -968,6 +1003,7 @@ ipcMain.handle('export:toDocx', async (_event, bytes: ArrayBuffer, _fileName: st
     }
     const wordDoc = new Document({ creator: 'Monstera PDF Editor', sections })
     const buf = await Packer.toBuffer(wordDoc)
+    freeMupdf(doc)
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
   }
 
@@ -1026,6 +1062,7 @@ ipcMain.handle('export:toDocx', async (_event, bytes: ArrayBuffer, _fileName: st
   })
 
   const buf = await Packer.toBuffer(wordDoc)
+  freeMupdf(doc)
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
 })
 
@@ -1059,7 +1096,7 @@ ipcMain.handle('export:toPptx', async (_event, bytes: ArrayBuffer, dpi = 150): P
     const mtx = mupdf.Matrix.scale(scale, scale)
     const pix = page.toPixmap(mtx, mupdf.ColorSpace.DeviceRGB, false)
     const b64 = Buffer.from(pix.asPNG()).toString('base64')
-    try { pix.destroy() } catch { /* noop */ }
+    freeMupdf(pix, page)
     const slide = pptx.addSlide()
     // Centre the page image within the (first-page) slide, preserving aspect ratio.
     const sizing = { type: 'contain' as const, w: wIn, h: hIn }
@@ -1068,6 +1105,7 @@ ipcMain.handle('export:toPptx', async (_event, bytes: ArrayBuffer, dpi = 150): P
 
   const out = await pptx.write({ outputType: 'nodebuffer' })
   const buf = out as Buffer
+  freeMupdf(p0, doc)
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
 })
 
@@ -1085,7 +1123,9 @@ ipcMain.handle('mupdf:extractAllText', async (_event, bytes: ArrayBuffer): Promi
       try { text = page.toStructuredText().asText() } catch {}
     }
     pages.push({ pageNum: i + 1, text })
+    freeMupdf(page)
   }
+  freeMupdf(doc)
   return pages
 })
 
@@ -1119,6 +1159,7 @@ ipcMain.handle('mupdf:checkAccessibility', async (_event, bytes: ArrayBuffer): P
       hasImages = true
       issues.push({ issue: `Page ${i + 1} appears to be image-only (no selectable text). Consider running OCR.`, severity: 'warning', page: i + 1 })
     }
+    freeMupdf(page)
   }
 
   if (totalChars < 50 && numPages > 0) {
@@ -1137,6 +1178,7 @@ ipcMain.handle('mupdf:checkAccessibility', async (_event, bytes: ArrayBuffer): P
   }
 
   if (issues.length === 0) issues.push({ issue: 'No accessibility issues found.', severity: 'info' })
+  freeMupdf(doc)
   return issues
 })
 
@@ -1181,7 +1223,9 @@ ipcMain.handle('mupdf:generateBookmarks', async (_event, bytes: ArrayBuffer): Pr
         }
       }
     }
+    freeMupdf(page)
   }
+  freeMupdf(doc)
 
   // Deduplicate consecutive same-page same-title entries
   const seen = new Set<string>()
@@ -1204,7 +1248,9 @@ ipcMain.handle('mupdf:optimize', async (
   const buf = doc.saveToBuffer('garbage=compact,compress=yes,compress-images=yes')
   const result = buf.asUint8Array()
   const out = result.buffer.slice(result.byteOffset, result.byteOffset + result.byteLength)
-  return { bytes: out, origSize: bytes.byteLength, newSize: result.byteLength }
+  const newSize = result.byteLength
+  freeMupdf(buf, doc)
+  return { bytes: out, origSize: bytes.byteLength, newSize }
 })
 
 // ── Open PDF from URL ─────────────────────────────────────────────────────────
@@ -1371,9 +1417,11 @@ ipcMain.handle('export:toXlsx', async (_event, bytes: ArrayBuffer): Promise<Arra
       .map((l: string) => [l])
     const ws = XLSX.utils.aoa_to_sheet(rows.length > 0 ? rows : [['(no text)']])
     XLSX.utils.book_append_sheet(workbook, ws, `Page ${i + 1}`.slice(0, 31))
+    freeMupdf(page)
   }
 
   const buf: Buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+  freeMupdf(doc)
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
 })
 
@@ -1425,7 +1473,9 @@ ipcMain.handle('mupdf:findTextRects', async (
         x2: sx1, y2: pageH - sy0,
       })
     }
+    freeMupdf(page)
   }
+  freeMupdf(doc)
   return results
 })
 
@@ -1737,7 +1787,9 @@ ipcMain.handle('file:exportPageForEdit', async (
   const tmpPath = path.join(require('os').tmpdir(), `monstera-edit-page-${pageNum}-${Date.now()}.png`)
   fs.writeFileSync(tmpPath, pngData)
   await shell.openPath(tmpPath)
-  return { pngPath: tmpPath, width: Math.round(bounds[2] - bounds[0]), height: Math.round(bounds[3] - bounds[1]) }
+  const result = { pngPath: tmpPath, width: Math.round(bounds[2] - bounds[0]), height: Math.round(bounds[3] - bounds[1]) }
+  freeMupdf(pixmap, page, doc)
+  return result
 })
 
 ipcMain.handle('file:reimportEditedPage', async (
