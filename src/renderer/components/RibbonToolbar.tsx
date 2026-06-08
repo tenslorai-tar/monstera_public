@@ -258,7 +258,7 @@ export default function RibbonToolbar(props: Props) {
     const reader = new FileReader()
     reader.onload = ev => {
       const dataUrl = ev.target?.result as string
-      const img = new Image()
+      const img = new window.Image()  // window.Image: lucide's <Image> icon import shadows the global
       img.onload = () => {
         const ps = pageSizes[currentPage - 1]; if (!ps) return
         const maxW = ps.width * 0.4

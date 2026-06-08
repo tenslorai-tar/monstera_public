@@ -1,5 +1,9 @@
 import type { RecentFile } from '../hooks/useRecentFiles'
 import logoUrl from '../assets/monstera-logo.png'
+import {
+  FolderOpen, PenLine, FormInput, ScanText, Scissors, Lock, Upload,
+  FileText, TriangleAlert, X, ArrowRight,
+} from 'lucide-react'
 
 interface Props {
   recentFiles: RecentFile[]
@@ -9,6 +13,15 @@ interface Props {
   openError?: string
   onClearError?: () => void
 }
+
+const FEATURES = [
+  { icon: PenLine,   label: 'Annotate & mark up' },
+  { icon: FormInput, label: 'Fill & create forms' },
+  { icon: ScanText,  label: 'OCR scanned pages' },
+  { icon: Scissors,  label: 'Split & merge' },
+  { icon: Lock,      label: 'Encrypt & sign' },
+  { icon: Upload,    label: 'Export anywhere' },
+]
 
 export default function StartScreen({
   recentFiles, onOpen, onOpenRecent, onRemoveRecent, openError, onClearError,
@@ -21,26 +34,27 @@ export default function StartScreen({
         </div>
         <h1 className="start-title">Monstera</h1>
         <div className="start-subtitle">PDF EDITOR</div>
-        <p className="start-tagline">Professional PDF editing for everyone</p>
+        <p className="start-tagline">A modern, precise PDF editor — annotate, edit, sign and export.</p>
       </div>
 
       <button className="btn-primary start-open-btn" onClick={onOpen}>
-        📂 Open PDF…
+        <FolderOpen size={18} />
+        Open PDF…
         <span className="shortcut-hint">Ctrl+O</span>
       </button>
 
       {openError && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
-          background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.35)',
-          borderRadius: 8, padding: '10px 14px', maxWidth: 520, width: '100%',
+          background: 'var(--danger-dim)', border: '1px solid color-mix(in srgb, var(--danger) 40%, transparent)',
+          borderRadius: 10, padding: '10px 14px', maxWidth: 520, width: '100%',
         }}>
-          <span style={{ color: '#f87171', fontSize: 18 }}>⚠</span>
+          <TriangleAlert size={18} style={{ color: 'var(--danger)', flexShrink: 0 }} />
           <span style={{ flex: 1, fontSize: 13, color: 'var(--text-primary)' }}>{openError}</span>
           <button onClick={onClearError} style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            color: 'var(--text-muted)', fontSize: 14, padding: '0 2px',
-          }}>✕</button>
+            background: 'none', border: 'none', cursor: 'pointer', display: 'inline-flex',
+            color: 'var(--text-muted)', padding: '0 2px',
+          }}><X size={15} /></button>
         </div>
       )}
 
@@ -49,25 +63,9 @@ export default function StartScreen({
         display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10,
         maxWidth: 560, width: '100%',
       }}>
-        {[
-          { icon: '✏', label: 'Annotate & mark up' },
-          { icon: '📋', label: 'Fill & create forms' },
-          { icon: '🔍', label: 'OCR scanned pages' },
-          { icon: '✂', label: 'Split & merge' },
-          { icon: '🔒', label: 'Encrypt & sign' },
-          { icon: '↗', label: 'Export to images' },
-        ].map(({ icon, label }) => (
-          <div key={label} style={{
-            display: 'flex', alignItems: 'center', gap: 9,
-            padding: '10px 13px',
-            background: 'var(--bg-secondary)',
-            border: '1px solid var(--border)',
-            borderRadius: 8,
-            fontSize: 12.5, fontWeight: 500,
-            color: 'var(--text-secondary)',
-            transition: 'border-color 0.15s',
-          }}>
-            <span style={{ fontSize: 16 }}>{icon}</span>
+        {FEATURES.map(({ icon: Icon, label }) => (
+          <div key={label} className="start-feature-card">
+            <Icon size={17} style={{ color: 'var(--accent)', flexShrink: 0 }} />
             {label}
           </div>
         ))}
@@ -84,15 +82,16 @@ export default function StartScreen({
                   onClick={() => onOpenRecent(f.filePath)}
                   title={f.filePath}
                 >
-                  <span className="recent-icon">📄</span>
+                  <span className="recent-icon"><FileText size={17} /></span>
                   <span className="recent-name">{f.fileName}</span>
                   <span className="recent-path">{f.filePath}</span>
+                  <ArrowRight size={15} className="recent-go" />
                 </button>
                 <button
                   className="recent-remove-btn"
                   onClick={e => { e.stopPropagation(); onRemoveRecent(f.filePath) }}
                   title="Remove from recent list"
-                >✕</button>
+                ><X size={14} /></button>
               </li>
             ))}
           </ul>
