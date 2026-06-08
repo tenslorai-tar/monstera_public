@@ -9,7 +9,7 @@
     "dev": "concurrently -k \"npm run dev:vite\" \"npm run dev:electron\"",
     "dev:vite": "vite",
     "dev:electron": "npm run build:electron && wait-on http://localhost:5173 && electron .",
-    "build": "npm run build:vite && npm run build:electron && electron-builder",
+    "build": "npm run build:vite && npm run build:electron && node scripts/build.js",
     "build:vite": "vite build",
     "build:electron": "tsc -p tsconfig.electron.json",
     "preview": "vite preview",
@@ -56,8 +56,7 @@
           ]
         }
       ],
-      "icon": "assets/icons/icon.ico",
-      "publisherName": "Tenslor Inc."
+      "icon": "assets/icons/icon.ico"
     },
     "nsis": {
       "oneClick": false,
