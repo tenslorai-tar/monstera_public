@@ -105,6 +105,9 @@ export default function StartScreen({
           fontFamily: 'inherit',
         }}>F1</kbd> for keyboard shortcuts
       </div>
+      <div style={{ paddingTop: 6, paddingBottom: 4, fontSize: 11, color: 'var(--text-dim, var(--text-muted))' }}>
+        Monstera PDF Editor · © 2026 <strong style={{ fontWeight: 600 }}>Tenslor Inc.</strong>
+      </div>
     </div>
   )
 }

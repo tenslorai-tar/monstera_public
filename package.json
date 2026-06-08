@@ -1,9 +1,9 @@
 {
   "name": "monstera-pdf-editor",
   "version": "0.1.0",
-  "description": "Personal-use desktop PDF editor",
+  "description": "Monstera PDF Editor — a desktop PDF editor by Tenslor Inc.",
   "main": "dist-electron/main/main.js",
-  "author": "Personal Use",
+  "author": "Tenslor Inc.",
   "private": true,
   "scripts": {
     "dev": "concurrently -k \"npm run dev:vite\" \"npm run dev:electron\"",
@@ -17,8 +17,9 @@
     "setup-bins:force": "node scripts/download-bins.js --force"
   },
   "build": {
-    "appId": "com.personal.monstera-pdf-editor",
+    "appId": "com.tenslor.monstera-pdf-editor",
     "productName": "Monstera PDF Editor",
+    "copyright": "© 2026 Tenslor Inc.",
     "directories": {
       "output": "release"
     },
@@ -55,12 +56,15 @@
           ]
         }
       ],
-      "icon": "assets/icons/icon.ico"
+      "icon": "assets/icons/icon.ico",
+      "publisherName": "Tenslor Inc."
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true
+      "createDesktopShortcut": true,
+      "shortcutName": "Monstera PDF Editor",
+      "uninstallDisplayName": "Monstera PDF Editor (Tenslor Inc.)"
     }
   },
   "devDependencies": {
