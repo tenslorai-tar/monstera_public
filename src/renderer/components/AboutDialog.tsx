@@ -33,7 +33,7 @@ export default function AboutDialog({ onClose }: Props) {
             Version {APP_VERSION}
           </div>
           <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.5, margin: '12px 0 0', maxWidth: 320 }}>
-            A modern, precise desktop PDF editor — annotate, edit, sign, convert, and export.
+            A modern PDF editor — built for the way you work.
           </p>
 
           <div style={{ width: '100%', borderTop: '1px solid var(--border)', margin: '16px 0 12px' }} />
