@@ -169,8 +169,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   aiQuery: (
     apiKey: string,
     messages: Array<{ role: 'user' | 'assistant'; content: string }>,
-    systemPrompt: string
-  ): Promise<string> => ipcRenderer.invoke('ai:query', apiKey, messages, systemPrompt),
+    systemPrompt: string,
+    model?: string
+  ): Promise<string> => ipcRenderer.invoke('ai:query', apiKey, messages, systemPrompt, model),
 
   // Office import
   importDocx: (bytes: ArrayBuffer): Promise<ArrayBuffer> =>

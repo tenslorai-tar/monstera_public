@@ -1308,25 +1308,59 @@ ipcMain.handle('mupdf:optimize', async (
 
 // ── Open PDF from URL ─────────────────────────────────────────────────────────
 
+// Block private / loopback / link-local destinations (SSRF guard).
+function isBlockedAddress(ip: string): boolean {
+  return (
+    /^127\./.test(ip) || /^10\./.test(ip) || /^192\.168\./.test(ip) ||
+    /^169\.254\./.test(ip) || /^172\.(1[6-9]|2\d|3[01])\./.test(ip) ||
+    ip === '0.0.0.0' || ip === '::1' || ip === '::' ||
+    /^f[cd][0-9a-f]{2}:/i.test(ip) || /^fe80:/i.test(ip)
+  )
+}
+
 ipcMain.handle('file:openFromUrl', async (_event, url: string): Promise<ArrayBuffer> => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const https = require('https')
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const http = require('http')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const dns = require('dns').promises
+
   const urlObj = new URL(url)
+  if (urlObj.protocol !== 'http:' && urlObj.protocol !== 'https:') {
+    throw new Error('Only http(s) URLs can be opened.')
+  }
+
+  let resolved: string
+  try {
+    resolved = (await dns.lookup(urlObj.hostname)).address
+  } catch {
+    throw new Error(`Could not resolve host: ${urlObj.hostname}`)
+  }
+  if (isBlockedAddress(resolved)) {
+    throw new Error('Refusing to fetch a private or loopback address.')
+  }
+
   const client = urlObj.protocol === 'https:' ? https : http
+  const MAX_BYTES = 100 * 1024 * 1024
   return new Promise((resolve, reject) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const req = client.get(url, { headers: { 'User-Agent': 'Monstera PDF Editor/1.0' } }, (res: any) => {
-      if (res.statusCode !== 200) { reject(new Error(`HTTP ${res.statusCode}`)); return }
+    const req = client.get(url, { headers: { 'User-Agent': 'Monstera PDF Editor/1.0' }, timeout: 30_000 }, (res: any) => {
+      if (res.statusCode !== 200) { res.resume(); reject(new Error(`HTTP ${res.statusCode}`)); return }
       const chunks: Buffer[] = []
-      res.on('data', (c: Buffer) => chunks.push(c))
+      let total = 0
+      res.on('data', (c: Buffer) => {
+        total += c.length
+        if (total > MAX_BYTES) { req.destroy(new Error('Remote file exceeds the 100 MB limit.')); return }
+        chunks.push(c)
+      })
       res.on('end', () => {
         const buf = Buffer.concat(chunks)
         resolve(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength))
       })
       res.on('error', reject)
     })
+    req.on('timeout', () => req.destroy(new Error('Request timed out.')))
     req.on('error', reject)
   })
 })
@@ -1337,13 +1371,14 @@ ipcMain.handle('ai:query', async (
   _event,
   apiKey: string,
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
-  systemPrompt: string
+  systemPrompt: string,
+  model?: string
 ): Promise<string> => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const Anthropic = require('@anthropic-ai/sdk')
   const client = new (Anthropic.default ?? Anthropic)({ apiKey })
   const response = await client.messages.create({
-    model: 'claude-opus-4-8',
+    model: model || 'claude-opus-4-20250514',
     max_tokens: 4096,
     system: systemPrompt || undefined,
     messages,
@@ -1361,7 +1396,7 @@ ipcMain.handle('file:importDocx', async (_event, bytes: ArrayBuffer): Promise<Ar
   const result = await mammoth.convertToHtml({ buffer: Buffer.from(bytes) })
   const html: string = result.value
 
-  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
+  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:;">
   <style>
     body { font-family: Arial, sans-serif; font-size: 12px; margin: 30px 40px; line-height: 1.6; color: #111; }
     h1,h2,h3 { margin-top: 1em; margin-bottom: 0.4em; }
@@ -1730,7 +1765,7 @@ ipcMain.handle('convert:markdownToPdf', async (_event, markdownText: string): Pr
       .replace(/^(?!<[hlicpadu])/gm, '')
   }
   const body = mdToHtml(markdownText)
-  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
+  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:;">
     <style>
       body { font-family: Georgia, serif; font-size: 13px; margin: 40px 60px; line-height: 1.7; color: #111; }
       h1 { font-size: 2em; border-bottom: 2px solid #333; padding-bottom: 4px; margin-bottom: 16px; }
@@ -1766,7 +1801,7 @@ ipcMain.handle('email:toPdf', async (_e, filePath: string): Promise<ArrayBuffer>
     .filter(([, v]) => v)
     .map(([k, v]) => `<tr><td class="k">${k}</td><td>${esc(v)}</td></tr>`).join('')
   const bodyHtml = m.html || `<pre style="white-space:pre-wrap;font-family:inherit">${esc(m.text)}</pre>`
-  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:;"><style>
     body{font-family:Arial,sans-serif;font-size:12px;margin:32px 40px;color:#111}
     table.h{border-collapse:collapse;margin-bottom:14px;width:100%}
     table.h td{padding:2px 6px;vertical-align:top} td.k{font-weight:bold;color:#444;width:64px}
@@ -1797,7 +1832,7 @@ ipcMain.handle('convert:csvToPdf', async (_event, csvText: string): Promise<Arra
     return `<tr>${cells}</tr>`
   }).join('\n')
 
-  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
+  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:;">
     <style>
       body { font-family: Arial, sans-serif; font-size: 10px; margin: 20px; }
       table { border-collapse: collapse; width: 100%; }
@@ -1863,7 +1898,7 @@ ipcMain.handle('file:importDocxSmart', async (_e, filePath: string) => {
   const mammoth = require('mammoth')
   const result = await mammoth.convertToHtml({ path: filePath })
   const html: string = result.value
-  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;font-size:12px;margin:30px 40px;line-height:1.6;}h1,h2,h3{margin-top:1em;}table{border-collapse:collapse;width:100%;}td,th{border:1px solid #bbb;padding:4px 8px;}th{background:#e8eaf6;}</style></head><body>${html}</body></html>`
+  const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:;"><style>body{font-family:Arial,sans-serif;font-size:12px;margin:30px 40px;line-height:1.6;}h1,h2,h3{margin-top:1em;}table{border-collapse:collapse;width:100%;}td,th{border:1px solid #bbb;padding:4px 8px;}th{background:#e8eaf6;}</style></head><body>${html}</body></html>`
   const offscreen = new BrowserWindow({ show: false, width: 800, height: 1100, webPreferences: { nodeIntegration: false, contextIsolation: true } })
   await offscreen.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(fullHtml)}`)
   await new Promise<void>(r => setTimeout(r, 800))

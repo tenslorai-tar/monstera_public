@@ -17,6 +17,7 @@ export default function AiAssistantDialog({ onClose }: Props) {
   const [busy,        setBusy]        = useState(false)
   const [docText,     setDocText]     = useState<string | null>(null)
   const [apiKeyEdit,  setApiKeyEdit]  = useState(settings.anthropicApiKey)
+  const [modelEdit,   setModelEdit]   = useState(settings.aiModel)
   const [showKeyEdit, setShowKeyEdit] = useState(!settings.anthropicApiKey)
   const [error,       setError]       = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -53,7 +54,7 @@ export default function AiAssistantDialog({ onClose }: Props) {
 
     try {
       const ctx = await extractDocText()
-      const reply = await (window.electronAPI as any).aiQuery(key, updated, buildSystemPrompt(ctx))
+      const reply = await (window.electronAPI as any).aiQuery(key, updated, buildSystemPrompt(ctx), settings.aiModel)
       setMessages(m => [...m, { role: 'assistant', content: reply }])
     } catch (e: unknown) {
       setError(`API error: ${(e as Error).message}`)
@@ -71,7 +72,7 @@ export default function AiAssistantDialog({ onClose }: Props) {
   }
 
   const saveKey = () => {
-    updateSettings({ anthropicApiKey: apiKeyEdit.trim() })
+    updateSettings({ anthropicApiKey: apiKeyEdit.trim(), aiModel: modelEdit.trim() || 'claude-opus-4-20250514' })
     setShowKeyEdit(false)
     setError('')
   }
@@ -99,6 +100,12 @@ export default function AiAssistantDialog({ onClose }: Props) {
                 placeholder="sk-ant-..." />
               <button className="modal-btn-primary" style={{ fontSize: 12 }} onClick={saveKey}>Save</button>
             </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', margin: '8px 0 4px' }}>
+              Model <span style={{ opacity: 0.7 }}>(set the exact id your key supports, e.g. claude-opus-4-20250514, claude-3-5-sonnet-latest)</span>
+            </div>
+            <input type="text" className="modal-input" style={{ width: '100%', fontSize: 12 }}
+              value={modelEdit} onChange={e => setModelEdit(e.target.value)}
+              placeholder="claude-opus-4-20250514" />
           </div>
         )}
 

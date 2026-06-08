@@ -27,6 +27,7 @@ export interface AppSettings {
   highContrast: boolean             // stronger borders/text contrast
   // Tier 3
   anthropicApiKey: string
+  aiModel: string
   rtlText: boolean
   gdToken: string         // Google Drive OAuth token
   dropboxToken: string    // Dropbox access token
@@ -73,6 +74,7 @@ function defaults(): AppSettings {
     highContrast: false,
     // Tier 3
     anthropicApiKey: '',
+    aiModel: 'claude-opus-4-20250514',
     rtlText: false,
     gdToken: '',
     dropboxToken: '',
