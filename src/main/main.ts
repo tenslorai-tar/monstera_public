@@ -607,7 +607,7 @@ function ensureMupdfChild(): void {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     child.on('message', (msg: any) => {
       if (msg && msg.__ready !== undefined) {
-        if (msg.__ready) { mupdfChildReady = true }
+        if (msg.__ready) { mupdfChildReady = true; console.log('[mupdf] off-thread worker ready') }
         else {
           console.error('[mupdf] worker could not load WASM, using in-process fallback:', msg.error)
           mupdfWorkerDisabled = true
