@@ -479,7 +479,14 @@ ipcMain.handle('pdfium:textInRegion', async (
   bytes: ArrayBuffer,
   pageIndex: number,
   rect: { x1: number; y1: number; x2: number; y2: number },
-) => pdfium.getTextInRegion(Buffer.from(bytes), pageIndex, rect))
+) => {
+  const h = pdfium.getTextInRegion(Buffer.from(bytes), pageIndex, rect)
+  const { fontData, ...rest } = h
+  return {
+    ...rest,
+    fontData: fontData.buffer.slice(fontData.byteOffset, fontData.byteOffset + fontData.byteLength),
+  }
+})
 
 ipcMain.handle('pdfium:textObjectAt', async (
   _event,
@@ -530,6 +537,18 @@ ipcMain.handle('pdfium:editText', async (
   newText: string,
 ) => {
   const out = pdfium.editTextInRegion(Buffer.from(bytes), pageIndex, rect, newText)
+  return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength)
+})
+
+ipcMain.handle('pdfium:editTextAt', async (
+  _event,
+  bytes: ArrayBuffer,
+  pageIndex: number,
+  x: number,
+  y: number,
+  newText: string,
+) => {
+  const out = pdfium.editTextObjectAt(Buffer.from(bytes), pageIndex, x, y, newText)
   return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength)
 })
 

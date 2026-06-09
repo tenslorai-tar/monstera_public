@@ -29,13 +29,13 @@ declare global {
         bytes: ArrayBuffer,
         pageIndex: number,
         rect: { x1: number; y1: number; x2: number; y2: number },
-      ) => Promise<{ text: string; fontSize: number; found: boolean }>
+      ) => Promise<{ text: string; fontSize: number; found: boolean; color: string; matrix: number[]; fontData: ArrayBuffer; fontLoadable: boolean }>
       pdfiumTextObjectAt: (
         bytes: ArrayBuffer,
         pageIndex: number,
         x: number,
         y: number,
-      ) => Promise<{ found: boolean; text: string; fontSize: number; color: string; x1: number; y1: number; x2: number; y2: number; fontData: ArrayBuffer; fontLoadable: boolean }>
+      ) => Promise<{ found: boolean; text: string; fontSize: number; color: string; x1: number; y1: number; x2: number; y2: number; matrix: number[]; fontData: ArrayBuffer; fontLoadable: boolean }>
       pdfiumObjectAt: (
         bytes: ArrayBuffer, pageIndex: number, x: number, y: number,
       ) => Promise<{ found: boolean; index: number; type: number; color: string; x1: number; y1: number; x2: number; y2: number }>
@@ -57,6 +57,13 @@ declare global {
         bytes: ArrayBuffer,
         pageIndex: number,
         rect: { x1: number; y1: number; x2: number; y2: number },
+        newText: string,
+      ) => Promise<ArrayBuffer>
+      pdfiumEditTextAt: (
+        bytes: ArrayBuffer,
+        pageIndex: number,
+        x: number,
+        y: number,
         newText: string,
       ) => Promise<ArrayBuffer>
 

@@ -42,14 +42,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     bytes: ArrayBuffer,
     pageIndex: number,
     rect: { x1: number; y1: number; x2: number; y2: number },
-  ): Promise<{ text: string; fontSize: number; found: boolean }> =>
+  ): Promise<{ text: string; fontSize: number; found: boolean; color: string; matrix: number[]; fontData: ArrayBuffer; fontLoadable: boolean }> =>
     ipcRenderer.invoke('pdfium:textInRegion', bytes, pageIndex, rect),
   pdfiumTextObjectAt: (
     bytes: ArrayBuffer,
     pageIndex: number,
     x: number,
     y: number,
-  ): Promise<{ found: boolean; text: string; fontSize: number; color: string; x1: number; y1: number; x2: number; y2: number; fontData: ArrayBuffer; fontLoadable: boolean }> =>
+  ): Promise<{ found: boolean; text: string; fontSize: number; color: string; x1: number; y1: number; x2: number; y2: number; matrix: number[]; fontData: ArrayBuffer; fontLoadable: boolean }> =>
     ipcRenderer.invoke('pdfium:textObjectAt', bytes, pageIndex, x, y),
   pdfiumObjectAt: (
     bytes: ArrayBuffer, pageIndex: number, x: number, y: number,
@@ -80,6 +80,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     newText: string,
   ): Promise<ArrayBuffer> =>
     ipcRenderer.invoke('pdfium:editText', bytes, pageIndex, rect, newText),
+  pdfiumEditTextAt: (
+    bytes: ArrayBuffer,
+    pageIndex: number,
+    x: number,
+    y: number,
+    newText: string,
+  ): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('pdfium:editTextAt', bytes, pageIndex, x, y, newText),
 
   // Write
   writeFile: (filePath: string, bytes: ArrayBuffer): Promise<void> =>

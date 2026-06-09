@@ -1,4 +1,6 @@
-import { PDFDocument, PDFName, PDFNumber, PDFString, PDFBool, PDFArray } from 'pdf-lib'
+import { PDFDocument, PDFName, PDFNumber, PDFString, PDFBool, PDFArray, StandardFonts, rgb } from 'pdf-lib'
+import type { PDFFont } from 'pdf-lib'
+import fontkit from '@pdf-lib/fontkit'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import type {
   Annotation, HighlightAnn, InkAnn, ShapeAnn,
@@ -174,32 +176,55 @@ function writeTypewriter(doc: PDFDocument, a: TypewriterAnn) {
   })
 }
 
-function writeTextEdit(doc: PDFDocument, a: TextEditAnn) {
-  // TextEdit: white-fill rect covers original text, FreeText with new content on top.
-  // Overlay approach — MuPDF WASM has no text stream editing API.
-  registerAnnot(doc, a.pageNum - 1, {
-    Type: PDFName.of('Annot'),
-    Subtype: PDFName.of('Square'),
-    Rect: doc.context.obj([a.x, a.y, a.x + a.width, a.y + a.height]),
-    IC: doc.context.obj([1, 1, 1]),  // white interior fill
-    BS: doc.context.obj({ W: PDFNumber.of(0) }),
-    C: doc.context.obj([1, 1, 1]),
-    CA: PDFNumber.of(1),
-    NM: PDFString.of(NM_PREFIX + a.id + '-cover'),
-    F: PDFNumber.of(4),
-  })
-  registerAnnot(doc, a.pageNum - 1, {
-    Type: PDFName.of('Annot'),
-    Subtype: PDFName.of('FreeText'),
-    Rect: doc.context.obj([a.x, a.y, a.x + a.width, a.y + a.height]),
-    Contents: PDFString.of(a.text),
-    DA: PDFString.of(`/${daFont(a.font)} ${a.fontSize} Tf`),
-    BS: doc.context.obj({ W: PDFNumber.of(0) }),
-    C: mkC(doc, a.color),
-    CA: PDFNumber.of(a.opacity),
-    NM: PDFString.of(NM_PREFIX + a.id),
-    F: PDFNumber.of(4),
-  })
+// Drop characters a base-14 font's WinAnsi encoding can't represent, so the
+// fallback path never throws on smart quotes / dashes / non-Latin glyphs.
+function sanitizeForStandardFont(s: string): string {
+  return s
+    .replace(/[‘’‚‛]/g, "'")
+    .replace(/[“”„‟]/g, '"')
+    .replace(/[–—]/g, '-')
+    .replace(/…/g, '...')
+    .replace(/[^\x09\x0A\x0D\x20-\xFF]/g, '')
+}
+
+// TextEdit (cover-and-replace): paint a white rectangle over the original glyphs
+// in the page content, then draw the new text on top in the document's OWN
+// embedded font (fontDataB64) at the original baseline. Drawing into the content
+// stream — never rewriting existing objects — keeps every other font intact, so
+// editing one word can't reflow the rest of the page (the old PDFium failure).
+// Falls back to a base-14 match only when the original font can't be embedded.
+async function writeTextEdit(doc: PDFDocument, a: TextEditAnn, fontCache: Map<string, PDFFont>) {
+  const page = doc.getPage(a.pageNum - 1)
+  page.drawRectangle({ x: a.x, y: a.y, width: a.width, height: a.height, color: rgb(1, 1, 1) })
+  if (!a.text) return
+
+  const size = a.fontSize || 12
+  const baseX = a.baselineX ?? a.x
+  const baseY = a.baselineY ?? (a.y + size * 0.2)
+  const [r, g, b] = hexToRgb01(a.color)
+
+  let font: PDFFont | null = null
+  let text = a.text
+  if (a.fontDataB64) {
+    try {
+      let f = fontCache.get(a.fontDataB64)
+      if (!f) {
+        f = await doc.embedFont(base64ToBytes(a.fontDataB64), { subset: false })
+        fontCache.set(a.fontDataB64, f)
+      }
+      font = f
+    } catch { font = null }
+  }
+  if (!font) {
+    const std = daFont(a.font)
+    let f = fontCache.get('std:' + std)
+    if (!f) { f = await doc.embedFont(std as StandardFonts); fontCache.set('std:' + std, f) }
+    font = f
+    text = sanitizeForStandardFont(text)
+  }
+  try {
+    page.drawText(text, { x: baseX, y: baseY, size, font, color: rgb(r, g, b), lineHeight: size * 1.15 })
+  } catch { /* unencodable text — leave the white cover so the original stays hidden */ }
 }
 
 function writeStamp(doc: PDFDocument, a: StampAnn) {
@@ -370,6 +395,13 @@ function writeLink(doc: PDFDocument, a: LinkAnn) {
   })
 }
 
+function base64ToBytes(b64: string): Uint8Array {
+  const raw = atob(b64)
+  const bytes = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i)
+  return bytes
+}
+
 function dataUrlToBytes(dataUrl: string): { bytes: Uint8Array; mime: string } {
   const [header, b64] = dataUrl.split(',')
   const mime = header.replace('data:', '').replace(';base64', '')
@@ -384,6 +416,7 @@ export async function writeAnnotationsToPdf(
   annotations: Annotation[]
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true })
+  doc.registerFontkit(fontkit)
   clearAll(doc)
 
   // Placed images go into the content stream (not annotation array)
@@ -402,6 +435,15 @@ export async function writeAnnotationsToPdf(
       width: a.width,
       height: a.height,
     })
+  }
+
+  // Edit-text replacements are baked into the content stream too (cover + new
+  // text in the original font); fonts are embedded once and reused per program.
+  const textEditFontCache = new Map<string, PDFFont>()
+  for (const ann of annotations) {
+    if (ann.type !== 'text-edit') continue
+    if (ann.pageNum < 1 || ann.pageNum > doc.getPageCount()) continue
+    await writeTextEdit(doc, ann as TextEditAnn, textEditFontCache)
   }
 
   for (const ann of annotations) {
@@ -424,7 +466,7 @@ export async function writeAnnotationsToPdf(
       case 'typewriter':
         writeTypewriter(doc, ann as TypewriterAnn); break
       case 'text-edit':
-        writeTextEdit(doc, ann as TextEditAnn); break
+        break  // baked into the content stream above
       case 'callout':
         writeCallout(doc, ann as CalloutAnn); break
       case 'cloud':

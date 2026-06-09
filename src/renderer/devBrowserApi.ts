@@ -177,14 +177,15 @@ export function installBrowserApi() {
     pdfiumEnsureSession: async () => false,
     pdfiumCloseSession: async () => {},
     pdfiumRenderSession: async () => ({ stale: true }),
-    pdfiumTextInRegion: async () => ({ text: '', fontSize: 0, found: false }),
-    pdfiumTextObjectAt: async () => ({ found: false, text: '', fontSize: 0, color: '#000000', x1: 0, y1: 0, x2: 0, y2: 0, fontData: EMPTY, fontLoadable: false }),
+    pdfiumTextInRegion: async () => ({ text: '', fontSize: 0, found: false, color: '#000000', matrix: [1, 0, 0, 1, 0, 0], fontData: EMPTY, fontLoadable: false }),
+    pdfiumTextObjectAt: async () => ({ found: false, text: '', fontSize: 0, color: '#000000', x1: 0, y1: 0, x2: 0, y2: 0, matrix: [1, 0, 0, 1, 0, 0], fontData: EMPTY, fontLoadable: false }),
     pdfiumObjectAt: async () => ({ found: false, index: -1, type: 0, color: '', x1: 0, y1: 0, x2: 0, y2: 0 }),
     pdfiumTransformObject: echo,
     pdfiumSetObjectFill: echo,
     pdfiumDeleteObject: echo,
     pdfiumReplaceText: async () => ({ bytes: EMPTY, count: 0 }),
     pdfiumEditText: emptyBuf,
+    pdfiumEditTextAt: emptyBuf,
 
     // ── MuPDF (native WASM in main) — passthrough so save stays valid ──────────
     mupdfGetMetadata: async () => ({ title: '', author: '', subject: '', keywords: '', creator: '', producer: '', needsPassword: false, encryption: '' }),

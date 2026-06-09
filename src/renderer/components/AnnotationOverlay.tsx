@@ -4,7 +4,7 @@ import { usePdfStore } from '../store/usePdfStore'
 import { useSettingsStore } from '../store/useSettingsStore'
 import ContextMenu, { type ContextMenuEntry } from './ContextMenu'
 import { canvasToPdf, pdfToCanvas, newId } from '../utils/annotationUtils'
-import { loadPdfFont } from '../utils/pdfFonts'
+import { loadPdfFont, bytesToBase64 } from '../utils/pdfFonts'
 import type {
   Annotation, HighlightAnn, InkAnn,
   ShapeAnn, TextBoxAnn, StickyNoteAnn, StampAnn, RedactAnn,
@@ -27,7 +27,7 @@ type DrawPhase =
   | { k: 'textbox-edit'; x: number; y: number; w: number; h: number; text: string }
   | { k: 'typewriter-edit'; x: number; y: number; text: string }
   | { k: 'text-edit-size'; sx: number; sy: number; cx: number; cy: number }
-  | { k: 'text-edit-edit'; x: number; y: number; w: number; h: number; text: string; fontSize?: number; color?: string; bg?: string; fontFamily?: string }
+  | { k: 'text-edit-edit'; x: number; y: number; w: number; h: number; text: string; fontSize?: number; color?: string; bg?: string; fontFamily?: string; fontDataB64?: string; baselineX?: number; baselineY?: number; editPoint?: { x: number; y: number }; editRect?: { x1: number; y1: number; x2: number; y2: number } }
   | { k: 'callout-size'; sx: number; sy: number; cx: number; cy: number }
   | { k: 'callout-edit'; x: number; y: number; w: number; h: number; text: string; tipSvgX: number; tipSvgY: number }
   | { k: 'poly'; pts: Array<[number, number]>; curX: number; curY: number }
@@ -613,16 +613,22 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
                 const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
                 const obj = await window.electronAPI.pdfiumTextObjectAt(ab, pageNum - 1, px, py)
                 if (obj.found) {
-                  // Render the caret editor in the real page font when available.
+                  // Render the caret editor in the real page font when available,
+                  // and carry the font program + baseline so the saved replacement
+                  // keeps the original typeface and position.
                   let fontFamily: string | undefined
+                  let fontDataB64: string | undefined
                   if (obj.fontLoadable && obj.fontData.byteLength > 0) {
                     fontFamily = (await loadPdfFont(obj.fontData)) ?? undefined
+                    if (fontFamily) fontDataB64 = bytesToBase64(obj.fontData)
                   }
                   const [ox1, oy2] = toSvg(obj.x1, obj.y2) // top-left
                   const [ox2, oy1] = toSvg(obj.x2, obj.y1) // bottom-right
                   setDraw({ k: 'text-edit-edit', x: ox1, y: oy2,
                     w: Math.max(24, ox2 - ox1), h: Math.max(10, oy1 - oy2),
-                    text: obj.text, fontSize: obj.fontSize, color: obj.color, fontFamily })
+                    text: obj.text, fontSize: obj.fontSize, color: obj.color, fontFamily, fontDataB64,
+                    baselineX: obj.matrix[4], baselineY: obj.matrix[5],
+                    editPoint: { x: px, y: py } })  // → true in-place edit on commit
                   return
                 }
               }
@@ -660,8 +666,17 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
           const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
           const res = await window.electronAPI.pdfiumTextInRegion(ab, pageNum - 1, { x1: px1, y1: py1, x2: px2, y2: py2 })
           if (res.found) {
+            let fontFamily: string | undefined
+            let fontDataB64: string | undefined
+            if (res.fontLoadable && res.fontData.byteLength > 0) {
+              fontFamily = (await loadPdfFont(res.fontData)) ?? undefined
+              if (fontFamily) fontDataB64 = bytesToBase64(res.fontData)
+            }
             setDraw(d => (d.k === 'text-edit-edit' && d.text === dom.text)
-              ? { ...d, text: res.text, fontSize: res.fontSize || d.fontSize }
+              ? { ...d, text: res.text, fontSize: res.fontSize || d.fontSize,
+                  color: res.color || d.color, fontFamily, fontDataB64,
+                  baselineX: res.matrix[4], baselineY: res.matrix[5],
+                  editRect: { x1: px1, y1: py1, x2: px2, y2: py2 } }  // → true in-place edit on commit
               : d)
           }
         } catch { /* keep DOM prefill */ }
@@ -1078,18 +1093,41 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
     setDraw({ k: 'idle' })
     if (!trimmed) return
 
+    // Primary path: TRUE in-place edit via PDFium. FPDFText_SetText rewrites the
+    // clicked text object's string while reusing its own embedded font, size and
+    // colour, so the edited text keeps the original typeface exactly — and an
+    // incremental save leaves every other object (and its font) byte-for-byte
+    // intact (verified: scripts/prove-inplace-edit.mjs). This is the engine the
+    // tool relies on; the overlay below is only a fallback when it's unavailable.
+    if (d.editPoint || d.editRect) {
+      try {
+        const store = usePdfStore.getState()
+        const bytes = store.pdfBytes
+        if (bytes && await pdfiumReady()) {
+          const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+          const edited = d.editPoint
+            ? await window.electronAPI.pdfiumEditTextAt(ab, pageNum - 1, d.editPoint.x, d.editPoint.y, text)
+            : await window.electronAPI.pdfiumEditText(ab, pageNum - 1, d.editRect!, text)
+          await store.applyContentEdit(new Uint8Array(edited), pageNum)
+          return
+        }
+      } catch { /* fall through to the cover-and-replace overlay */ }
+    }
+
+    // Fallback (PDFium unavailable): cover-and-replace overlay, redrawn in the
+    // document's OWN embedded font (fontDataB64) at the original baseline, or a
+    // base-14 match when the font can't be embedded. Never rewrites existing
+    // page content, so it can't corrupt other fonts.
     const [x, y_top] = toPdf(d.x, d.y)
     const [, y_bot] = toPdf(d.x, d.y + d.h)
     const [x2] = toPdf(d.x + d.w, d.y)
-
-    // Cover-and-replace: lay the new text over the original in a matched font.
-    // This never rewrites the page content stream, so it cannot corrupt the
-    // document's other fonts — unlike PDFium true-in-place editing, which
-    // de-embeds fonts on save (a fragile PDFium limitation on many documents).
     addAnnotation({ id: newId(), type: 'text-edit', pageNum,
       color: d.color ?? toolColor, opacity: toolOpacity,
       x, y: y_bot, width: x2 - x, height: y_top - y_bot,
-      text, fontSize: d.fontSize ?? toolFontSize, createdAt: Date.now() } as TextEditAnn)
+      text, fontSize: d.fontSize ?? toolFontSize,
+      fontDataB64: d.fontDataB64, fontFamily: d.fontFamily,
+      baselineX: d.baselineX, baselineY: d.baselineY,
+      createdAt: Date.now() } as TextEditAnn)
   }
 
   const commitCallout = (text: string) => {
@@ -1355,7 +1393,8 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
             <div style={{
               width: '100%', height: '100%', padding: '0 2px',
               fontSize: a.fontSize * scale, color: a.color, opacity: a.opacity, lineHeight: 1.2,
-              fontFamily: 'serif', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              fontFamily: a.fontFamily ? `'${a.fontFamily}', serif` : 'serif',
+              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
               border: sel ? '1px dashed #4a9eff' : '1px solid transparent',
               boxSizing: 'border-box', background: 'white',
             }}>{a.text}</div>

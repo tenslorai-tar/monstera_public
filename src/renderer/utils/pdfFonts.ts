@@ -17,6 +17,17 @@ function keyFor(data: ArrayBuffer): string {
   return v.length + ':' + h.toString(16)
 }
 
+/** Encode a font program (or any bytes) as base64 for storage on an annotation. */
+export function bytesToBase64(data: ArrayBuffer): string {
+  const v = new Uint8Array(data)
+  let s = ''
+  const CHUNK = 0x8000
+  for (let i = 0; i < v.length; i += CHUNK) {
+    s += String.fromCharCode(...v.subarray(i, i + CHUNK))
+  }
+  return btoa(s)
+}
+
 /** Register the font and return its CSS family name, or null if it can't load. */
 export async function loadPdfFont(data: ArrayBuffer): Promise<string | null> {
   if (!data || data.byteLength === 0) return null

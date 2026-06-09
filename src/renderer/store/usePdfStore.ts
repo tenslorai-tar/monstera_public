@@ -528,8 +528,11 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
       }
       await window.electronAPI.writeFile(filePath, baked.slice(0).buffer)
       const hasNew = formFields.some(f => f.isNew)
-      const hasPlacedImages = annotations.some(a => a.type === 'placed-image')
-      if (hasNew || hasPlacedImages) await get().reloadWithBytes(baked)
+      // placed-image and text-edit bake into the content stream — reload so they
+      // render natively (and aren't re-baked on the next save) instead of staying
+      // as overlay annotations on top of the original bytes.
+      const hasBakedContent = annotations.some(a => a.type === 'placed-image' || a.type === 'text-edit')
+      if (hasNew || hasBakedContent) await get().reloadWithBytes(baked)
       else set({ isDirty: false })
     })()
     try { await saveInFlight } finally { saveInFlight = null }

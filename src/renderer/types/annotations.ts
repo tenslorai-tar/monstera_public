@@ -83,6 +83,15 @@ export interface TextEditAnn extends AnnBase {
   x: number; y: number; width: number; height: number
   text: string
   fontSize: number
+  // Original embedded font program (base64) so the replacement text is redrawn
+  // in the document's own font instead of a base-14 substitute. Absent when the
+  // font couldn't be extracted/embedded (then `font` base-14 fallback is used).
+  fontDataB64?: string
+  // Session-only CSS FontFace family for rendering the committed overlay on canvas.
+  fontFamily?: string
+  // Exact original glyph-origin baseline (PDF pts, y-up) from the text matrix,
+  // so the redrawn text sits where the original sat. Falls back to the box bottom.
+  baselineX?: number; baselineY?: number
 }
 
 export interface PlacedImageAnn extends AnnBase {

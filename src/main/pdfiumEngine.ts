@@ -35,6 +35,7 @@ type Lib = {
   GetFillColor: (obj: unknown, r: number[], g: number[], b: number[], a: number[]) => number
   GetFont: (obj: unknown) => unknown
   GetFontData: (font: unknown, buffer: Buffer | null, buflen: number, out: number[]) => number
+  GetMatrix: (obj: unknown, m: Record<string, number>) => number
   TextLoadPage: (page: unknown) => unknown
   TextClosePage: (tp: unknown) => void
   GetText: (obj: unknown, tp: unknown, buf: Buffer | null, len: number) => number
@@ -67,6 +68,7 @@ function load(): Lib {
   const m = koffi.load(dll)
   const WriteBlockProto = koffi.proto('int WriteBlock(void* pThis, void* pData, unsigned long size)')
   koffi.struct('FPDF_FILEWRITE', { version: 'int', WriteBlock: koffi.pointer(WriteBlockProto) })
+  koffi.struct('FS_MATRIX', { a: 'float', b: 'float', c: 'float', d: 'float', e: 'float', f: 'float' })
   lib = {
     LoadMemDocument: m.func('void* FPDF_LoadMemDocument(void* data, int size, const char* password)') as Lib['LoadMemDocument'],
     GetPageCount:    m.func('int FPDF_GetPageCount(void* doc)') as Lib['GetPageCount'],
@@ -81,6 +83,7 @@ function load(): Lib {
     GetFillColor:    m.func('int FPDFPageObj_GetFillColor(void* obj, _Out_ uint* r, _Out_ uint* g, _Out_ uint* b, _Out_ uint* a)') as Lib['GetFillColor'],
     GetFont:         m.func('void* FPDFTextObj_GetFont(void* obj)') as Lib['GetFont'],
     GetFontData:     m.func('int FPDFFont_GetFontData(void* font, void* buffer, size_t buflen, _Out_ size_t* out)') as Lib['GetFontData'],
+    GetMatrix:       m.func('int FPDFPageObj_GetMatrix(void* obj, _Out_ FS_MATRIX* matrix)') as Lib['GetMatrix'],
     TextLoadPage:    m.func('void* FPDFText_LoadPage(void* page)') as Lib['TextLoadPage'],
     TextClosePage:   m.func('void FPDFText_ClosePage(void* tp)') as Lib['TextClosePage'],
     GetText:         m.func('unsigned long FPDFTextObj_GetText(void* obj, void* tp, _Out_ void* buf, unsigned long len)') as Lib['GetText'],
@@ -142,24 +145,47 @@ function findMatches(L: Lib, page: unknown, tp: unknown, rect: EditRect): Match[
   return matches
 }
 
-/** Read the exact text + font size PDFium will replace inside `rect`. */
+export interface RegionTextHit {
+  found: boolean
+  text: string
+  fontSize: number
+  color: string
+  matrix: number[]
+  fontData: Buffer
+  fontLoadable: boolean
+}
+
+/**
+ * Read the exact text + font size PDFium will replace inside `rect`, plus the
+ * original font program / fill colour / baseline of the first object so the
+ * cover-and-replace overlay can redraw in the document's own font.
+ */
 export function getTextInRegion(
   bytes: Buffer, pageIndex: number, rect: EditRect,
-): { text: string; fontSize: number; found: boolean } {
+): RegionTextHit {
   const L = load()
+  const none: RegionTextHit = { found: false, text: '', fontSize: 0, color: '#000000', matrix: [1, 0, 0, 1, 0, 0], fontData: Buffer.alloc(0), fontLoadable: false }
   const doc = L.LoadMemDocument(bytes, bytes.length, null)
   if (!doc) throw new Error('PDFium could not open the document')
   try {
     const page = L.LoadPage(doc, pageIndex)
     const tp = L.TextLoadPage(page)
     const matches = findMatches(L, page, tp, rect)
+    if (matches.length === 0) { L.TextClosePage(tp); L.ClosePage(page); return none }
+    const first = matches[0].obj
+    const font = extractFont(L, first)
+    const matrix = readMatrix(L, first)
+    const rr = [0], gg = [0], bb = [0], aa = [0]; L.GetFillColor(first, rr, gg, bb, aa)
+    const hex = (v: number) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')
     L.TextClosePage(tp)
     L.ClosePage(page)
-    if (matches.length === 0) return { text: '', fontSize: 0, found: false }
     return {
+      found: true,
       text: matches.map(m => m.cur).join(' ').replace(/\s+/g, ' ').trim(),
       fontSize: matches[0].fontSize,
-      found: true,
+      color: `#${hex(rr[0])}${hex(gg[0])}${hex(bb[0])}`,
+      matrix,
+      fontData: font.data, fontLoadable: font.loadable,
     }
   } finally {
     L.CloseDocument(doc)
@@ -172,11 +198,24 @@ export interface TextObjectHit {
   fontSize: number
   color: string
   x1: number; y1: number; x2: number; y2: number
+  // Text-space → page-space matrix [a,b,c,d,e,f]; (e,f) is the glyph-origin
+  // baseline, which the cover-and-replace overlay uses to place the new text
+  // exactly where the original sat (the bbox alone can't give the baseline).
+  matrix: number[]
   fontData: Buffer
   fontLoadable: boolean
 }
 
 const FONT_CAP = 4 * 1024 * 1024
+
+// Read a page object's transform matrix; identity if PDFium can't supply one.
+function readMatrix(L: Lib, obj: unknown): number[] {
+  const m: Record<string, number> = {}
+  try {
+    if (L.GetMatrix(obj, m)) return [m.a ?? 1, m.b ?? 0, m.c ?? 0, m.d ?? 1, m.e ?? 0, m.f ?? 0]
+  } catch { /* fall through to identity */ }
+  return [1, 0, 0, 1, 0, 0]
+}
 
 // Extract the embedded font program for a text object so the caret editor can
 // render in the exact page font. Only sfnt/woff fonts are browser-loadable.
@@ -210,7 +249,7 @@ export function getTextObjectAt(
   bytes: Buffer, pageIndex: number, x: number, y: number,
 ): TextObjectHit {
   const L = load()
-  const none: TextObjectHit = { found: false, text: '', fontSize: 0, color: '#000000', x1: 0, y1: 0, x2: 0, y2: 0, fontData: Buffer.alloc(0), fontLoadable: false }
+  const none: TextObjectHit = { found: false, text: '', fontSize: 0, color: '#000000', x1: 0, y1: 0, x2: 0, y2: 0, matrix: [1, 0, 0, 1, 0, 0], fontData: Buffer.alloc(0), fontLoadable: false }
   const doc = L.LoadMemDocument(bytes, bytes.length, null)
   if (!doc) return none
   try {
@@ -239,6 +278,7 @@ export function getTextObjectAt(
     const rr = [0], gg = [0], bbl = [0], aa = [0]; L.GetFillColor(best, rr, gg, bbl, aa)
     const hex = (v: number) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')
     const font = extractFont(L, best)
+    const matrix = readMatrix(L, best)
     L.TextClosePage(tp)
     L.ClosePage(page)
     return {
@@ -247,6 +287,7 @@ export function getTextObjectAt(
       fontSize: fs[0],
       color: `#${hex(rr[0])}${hex(gg[0])}${hex(bbl[0])}`,
       x1: bb[0], y1: bb[1], x2: bb[2], y2: bb[3],
+      matrix,
       fontData: font.data, fontLoadable: font.loadable,
     }
   } finally {
@@ -293,6 +334,46 @@ export function editTextInRegion(
     L.ClosePage(page)
     if (!ok) throw new Error('PDFium failed to save the document')
     return Buffer.concat(chunks)
+  } finally {
+    L.CloseDocument(doc)
+  }
+}
+
+/**
+ * Edit the single text object at point (x, y) in place, keeping its original
+ * font/size/colour (FPDFText_SetText reuses the object's own font). Unlike
+ * editTextInRegion this never removes neighbouring objects — it's the click-to-
+ * edit path, where only the clicked run should change. Incremental save keeps
+ * every other object (and its embedded font) byte-for-byte intact.
+ */
+export function editTextObjectAt(
+  bytes: Buffer, pageIndex: number, x: number, y: number, newText: string,
+): Buffer {
+  const L = load()
+  const doc = L.LoadMemDocument(bytes, bytes.length, null)
+  if (!doc) throw new Error('PDFium could not open the document')
+  try {
+    const page = L.LoadPage(doc, pageIndex)
+    if (!page) throw new Error('PDFium could not load the page')
+    const n = L.CountObjects(page)
+    let best: unknown = null
+    let bestArea = Infinity
+    for (let i = 0; i < n; i++) {
+      const obj = L.GetObject(page, i)
+      if (L.GetType(obj) !== PDFOBJ_TEXT) continue
+      const l = [0], b = [0], r = [0], t = [0]
+      L.GetBounds(obj, l, b, r, t)
+      if (x >= l[0] - 2 && x <= r[0] + 2 && y >= b[0] - 1 && y <= t[0] + 1) {
+        const area = (r[0] - l[0]) * (t[0] - b[0])
+        if (area < bestArea) { best = obj; bestArea = area }
+      }
+    }
+    if (!best) throw new Error('No editable text found at that point')
+    if (!L.SetText(best, Buffer.from(newText + ' ', 'utf16le'))) throw new Error('PDFium failed to set text')
+    L.GenerateContent(page)
+    const out = saveDoc(L, doc)
+    L.ClosePage(page)
+    return out
   } finally {
     L.CloseDocument(doc)
   }
