@@ -83,6 +83,12 @@ function load(): Lib {
   const WriteBlockProto = koffi.proto('int WriteBlock(void* pThis, void* pData, unsigned long size)')
   koffi.struct('FPDF_FILEWRITE', { version: 'int', WriteBlock: koffi.pointer(WriteBlockProto) })
   koffi.struct('FS_MATRIX', { a: 'float', b: 'float', c: 'float', d: 'float', e: 'float', f: 'float' })
+  koffi.struct('FPDF_LIBRARY_CONFIG', {
+    version: 'int',
+    m_pUserFontPaths: koffi.pointer(koffi.pointer('char')), // const char** — NULL-terminated dir list
+    m_pIsolate: 'void *',
+    m_v8EmbedderSlot: 'uint32_t',
+  })
   lib = {
     LoadMemDocument: m.func('void* FPDF_LoadMemDocument(void* data, int size, const char* password)') as Lib['LoadMemDocument'],
     GetPageCount:    m.func('int FPDF_GetPageCount(void* doc)') as Lib['GetPageCount'],
@@ -118,9 +124,36 @@ function load(): Lib {
     BitmapDestroy:   m.func('void FPDFBitmap_Destroy(void* bmp)') as Lib['BitmapDestroy'],
     WriteBlockProto,
   }
-  const FPDF_InitLibrary = m.func('void FPDF_InitLibrary()') as () => void
-  if (!initialised) { FPDF_InitLibrary(); initialised = true }
+  if (!initialised) { initPdfium(m); initialised = true }
   return lib
+}
+
+// Initialise PDFium. We prefer FPDF_InitLibraryWithConfig with the OS font
+// directory in m_pUserFontPaths so PDFium has the full set of installed fonts to
+// substitute from for NON-embedded fonts. Embedded fonts are reused directly and
+// are unaffected either way. If building/calling the config path fails for any
+// reason, we fall back to the plain FPDF_InitLibrary so initialisation — and thus
+// the whole engine — can never regress. (The config call, if it throws, throws
+// during koffi argument marshalling, i.e. BEFORE any native init runs, so the
+// fallback can't double-initialise.)
+function initPdfium(m: ReturnType<typeof koffi.load>): void {
+  try {
+    const fontDir = process.platform === 'win32'
+      ? path.join(process.env.WINDIR || 'C:\\Windows', 'Fonts')
+      : ''
+    if (fontDir && fs.existsSync(fontDir)) {
+      const InitWithConfig = m.func('void FPDF_InitLibraryWithConfig(FPDF_LIBRARY_CONFIG* config)') as (cfg: unknown) => void
+      InitWithConfig({
+        version: 2,
+        m_pUserFontPaths: [fontDir, null], // NULL-terminated
+        m_pIsolate: null,
+        m_v8EmbedderSlot: 0,
+      })
+      return
+    }
+  } catch { /* fall back to the plain init below */ }
+  const FPDF_InitLibrary = m.func('void FPDF_InitLibrary()') as () => void
+  FPDF_InitLibrary()
 }
 
 export function isAvailable(): boolean {
