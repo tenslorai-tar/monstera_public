@@ -191,6 +191,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setWindowTitle: (title: string): Promise<void> =>
     ipcRenderer.invoke('window:setTitle', title),
 
+  setDirty: (dirty: boolean): Promise<void> =>
+    ipcRenderer.invoke('window:setDirty', dirty),
+  confirmAppClose: (): Promise<void> =>
+    ipcRenderer.invoke('window:confirmClose'),
+
   printWindow: (): Promise<void> =>
     ipcRenderer.invoke('window:print'),
 

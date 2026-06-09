@@ -9,6 +9,10 @@ import * as mupdfOps from './mupdfOps'
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
 let mainWin: BrowserWindow | null = null
+// Mirror of the renderer's unsaved state, so closing the whole window (the OS X
+// button) can prompt to save just like Close Document does.
+let docDirty = false
+let appCloseConfirmed = false
 
 // ── Resilience: never let an unhandled error hard-crash the whole app ──────────
 process.on('uncaughtException', (err) => {
@@ -300,6 +304,14 @@ function createWindow(): void {
     mainWin.loadFile(path.join(__dirname, '../../dist/index.html'))
   }
 
+  // Intercept the window's X button: if there are unsaved changes, defer the
+  // close and let the renderer run the save prompt, then close for real.
+  mainWin.on('close', (e) => {
+    if (appCloseConfirmed || !docDirty) return
+    e.preventDefault()
+    mainWin?.webContents.send('menu:action', 'app-close-request')
+  })
+
   mainWin.on('closed', () => { mainWin = null })
 
   Menu.setApplicationMenu(buildAppMenu(mainWin))
@@ -325,6 +337,16 @@ app.on('will-quit', () => {
 // ── Window title ──────────────────────────────────────────────────────────────
 ipcMain.handle('window:setTitle', (_event, title: string) => {
   mainWin?.setTitle(title)
+})
+
+// Renderer mirrors its unsaved state here so the window-close handler knows
+// whether to prompt; and confirms when it's safe to actually close.
+ipcMain.handle('window:setDirty', (_event, dirty: boolean) => {
+  docDirty = !!dirty
+})
+ipcMain.handle('window:confirmClose', () => {
+  appCloseConfirmed = true
+  mainWin?.close()
 })
 
 // ── Print ─────────────────────────────────────────────────────────────────────

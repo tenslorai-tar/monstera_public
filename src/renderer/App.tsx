@@ -112,6 +112,22 @@ export default function App() {
     usePdfStore.getState().closePdf()
   }, [])
 
+  // Quitting the whole app (the OS window X). Main defers the close and asks us
+  // to run the same save prompt; we tell it when it's safe to actually close.
+  const handleAppClose = useCallback(async () => {
+    const s = usePdfStore.getState()
+    if (s.numPages > 0 && s.isDirty) {
+      const choice = await window.electronAPI.confirmUnsaved(s.fileName)
+      if (choice === 'cancel') return                 // stay open
+      if (choice === 'save') {
+        if (s.filePath) await s.save()
+        else await s.saveAs()
+        if (usePdfStore.getState().isDirty) return    // Save As cancelled → stay open
+      }
+    }
+    window.electronAPI.confirmAppClose().catch(() => {})
+  }, [])
+
   const [splitOpen,         setSplitOpen]         = useState(false)
   const [metadataOpen,      setMetadataOpen]       = useState(false)
   const [securityOpen,      setSecurityOpen]       = useState(false)
@@ -278,6 +294,8 @@ export default function App() {
       ? `${isDirty ? '● ' : ''}${fileName} — Monstera PDF Editor`
       : 'Monstera PDF Editor'
     window.electronAPI.setWindowTitle(title).catch(() => {})
+    // Mirror unsaved state to main so the window-close (X) can prompt to save.
+    window.electronAPI.setDirty(isDirty).catch(() => {})
   }, [fileName, isDirty])
 
   // ── Action dispatch (shared by the native menu and the ⌘K command palette) ──
@@ -289,6 +307,7 @@ export default function App() {
       switch (action) {
         case 'open':         openFile(); break
         case 'close':        requestClose(); break
+        case 'app-close-request': handleAppClose(); break
         case 'save':         if (s.isDirty) s.save(); break
         case 'saveAs':       s.saveAs(); break
         case 'undo':         s.undo(); break

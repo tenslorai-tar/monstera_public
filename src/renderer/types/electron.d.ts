@@ -112,6 +112,8 @@ declare global {
       openAnyFile: (filters: Array<{ name: string; extensions: string[] }>) => Promise<string | null>
 
       setWindowTitle: (title: string) => Promise<void>
+      setDirty: (dirty: boolean) => Promise<void>
+      confirmAppClose: () => Promise<void>
       printWindow: () => Promise<void>
       confirmUnsaved: (fileName: string) => Promise<'save' | 'discard' | 'cancel'>
 
