@@ -5,7 +5,7 @@ import type { LinkAnn } from '../types/annotations'
 
 export default function LinksPanel() {
   const annotations  = usePdfStore(s => s.annotations)
-  const scrollToPage = usePdfStore(s => s.scrollToPage)
+  const scrollToPage = usePdfStore(s => s.jumpToPage)
   const deleteAnnotation  = usePdfStore(s => s.deleteAnnotation)
   const updateAnnotation  = usePdfStore(s => s.updateAnnotation)
 

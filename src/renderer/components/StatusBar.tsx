@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Lock } from 'lucide-react'
+import { Lock, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Undo2, Redo2 } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { useSettingsStore } from '../store/useSettingsStore'
 import type { ZoomMode } from '../store/usePdfStore'
@@ -20,7 +20,11 @@ export default function StatusBar() {
   const selectedPages     = usePdfStore(s => s.selectedPages)
   const setScale          = usePdfStore(s => s.setScale)
   const setZoomMode       = usePdfStore(s => s.setZoomMode)
-  const scrollToPage      = usePdfStore(s => s.scrollToPage)
+  const jumpToPage        = usePdfStore(s => s.jumpToPage)
+  const goBack            = usePdfStore(s => s.goBack)
+  const goForward         = usePdfStore(s => s.goForward)
+  const navBack           = usePdfStore(s => s.navBack)
+  const navForward        = usePdfStore(s => s.navForward)
 
   const [pageInput,   setPageInput]   = useState('')
   const [editingPage, setEditingPage] = useState(false)
@@ -50,9 +54,12 @@ export default function StatusBar() {
 
   const commitPage = () => {
     const n = parseInt(pageInput, 10)
-    if (!isNaN(n) && n >= 1 && n <= numPages) scrollToPage(n)
+    if (!isNaN(n) && n >= 1 && n <= numPages) jumpToPage(n)
     setEditingPage(false)
   }
+
+  const atFirst = currentPage <= 1
+  const atLast  = currentPage >= numPages
 
   return (
     <div className="status-bar">
@@ -93,6 +100,12 @@ export default function StatusBar() {
 
         {hasPdf && (
           <div className="status-zoom">
+            <div className="status-nav-group">
+              <button className="status-zoom-btn" onClick={() => jumpToPage(1)} disabled={atFirst}
+                title="First page"><ChevronFirst size={14} /></button>
+              <button className="status-zoom-btn" onClick={() => jumpToPage(currentPage - 1)} disabled={atFirst}
+                title="Previous page"><ChevronLeft size={14} /></button>
+            </div>
             {editingPage ? (
               <input className="status-page-input" type="number" min={1} max={numPages} autoFocus
                 value={pageInput} onChange={e => setPageInput(e.target.value)} onBlur={commitPage}
@@ -103,6 +116,17 @@ export default function StatusBar() {
                 {currentPage} / {numPages}
               </span>
             )}
+            <div className="status-nav-group">
+              <button className="status-zoom-btn" onClick={() => jumpToPage(currentPage + 1)} disabled={atLast}
+                title="Next page"><ChevronRight size={14} /></button>
+              <button className="status-zoom-btn" onClick={() => jumpToPage(numPages)} disabled={atLast}
+                title="Last page"><ChevronLast size={14} /></button>
+              <span className="status-zoom-sep" />
+              <button className="status-zoom-btn" onClick={goBack} disabled={navBack.length === 0}
+                title="Previous view (Alt+Left)"><Undo2 size={13} /></button>
+              <button className="status-zoom-btn" onClick={goForward} disabled={navForward.length === 0}
+                title="Next view (Alt+Right)"><Redo2 size={13} /></button>
+            </div>
             <span className="status-zoom-sep" />
             <button className="status-zoom-btn" onClick={zoomOut} title="Zoom out (Ctrl+−)">−</button>
             <select className="status-zoom-select" value={zoomVal} onChange={handleZoomSelect} title="Zoom level">

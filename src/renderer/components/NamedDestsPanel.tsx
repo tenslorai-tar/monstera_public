@@ -4,7 +4,7 @@ import { usePdfStore } from '../store/usePdfStore'
 
 export default function NamedDestsPanel() {
   const namedDests = usePdfStore(s => s.namedDests)
-  const scrollToPage = usePdfStore(s => s.scrollToPage)
+  const scrollToPage = usePdfStore(s => s.jumpToPage)
   const [filter, setFilter] = useState('')
 
   const visible = filter.trim()

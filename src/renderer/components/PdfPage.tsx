@@ -10,6 +10,7 @@ import ObjectEditOverlay from './ObjectEditOverlay'
 import FormOverlay from './FormOverlay'
 import OcrTextLayer from './OcrTextLayer'
 import RulerOverlay from './RulerOverlay'
+import LinkLayer from './LinkLayer'
 
 interface Props {
   pageNum: number
@@ -196,6 +197,11 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
             pageNum={pageNum}
             scale={scale}
             pageW={pageW}
+            pageH={pageH}
+          />
+          <LinkLayer
+            pageNum={pageNum}
+            scale={scale}
             pageH={pageH}
           />
           {(settings.showRulers || settings.showGrid) && (

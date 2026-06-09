@@ -1523,20 +1523,19 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       const a = ann as LinkAnn
       const [svgX1, svgY1] = toSvg(Math.min(a.x1, a.x2), Math.max(a.y1, a.y2))
       const [svgX2, svgY2] = toSvg(Math.max(a.x1, a.x2), Math.min(a.y1, a.y2))
-      const label = a.href ? (a.href.length > 28 ? a.href.slice(0, 25) + '…' : a.href)
-        : a.destPage != null ? `Page ${a.destPage}` : 'Link'
+      // Navigation + hover happen in the dedicated LinkLayer (above the text
+      // layer). Here we only draw editing chrome — a faint dashed outline when
+      // the Link tool is active or this link is selected. We never paint a fill
+      // or a text label, which would cover the underlying document text.
+      const showOutline = sel || activeTool === 'link'
       return (
         <g key={a.id} onClick={e => handleAnnotClick(a, e)} style={annStyle(a)}>
           <rect x={svgX1} y={svgY1} width={svgX2 - svgX1} height={svgY2 - svgY1}
-            fill={a.color} fillOpacity={sel ? 0.25 : 0.12}
-            stroke={a.color} strokeWidth={sel ? 2 : 1.5} strokeOpacity={0.8}
-            strokeDasharray={sel ? '6,3' : undefined} />
-          {svgY2 - svgY1 > 14 && svgX2 - svgX1 > 30 && (
-            <text x={svgX1 + 4} y={svgY1 + 12} fontSize={10} fill={a.color} fillOpacity={0.9}
-              fontFamily="monospace" pointerEvents="none">
-              {label}
-            </text>
-          )}
+            fill="transparent"
+            stroke={showOutline ? (sel ? '#4a9eff' : '#0066ff') : 'none'}
+            strokeWidth={sel ? 2 : 1} strokeOpacity={0.7}
+            strokeDasharray={showOutline ? '4,3' : undefined}
+            pointerEvents="all" />
         </g>
       )
     }

@@ -24,7 +24,8 @@ const SECTIONS = [
     title: 'Navigation',
     rows: [
       ['PageUp / PageDown', 'Previous / next page'],
-      ['Alt+← / Alt+→',    'Previous / next page'],
+      ['Alt+↑ / Alt+↓',    'Previous / next page'],
+      ['Alt+← / Alt+→',    'Previous / next view (back / forward)'],
       ['Home',             'First page'],
       ['End',              'Last page'],
     ],

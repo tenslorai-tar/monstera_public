@@ -493,6 +493,10 @@ export async function readAnnotationsFromPdf(
   numPages: number
 ): Promise<Annotation[]> {
   const result: Annotation[] = []
+  // Named-destination map (the /Names name tree, e.g. Word's "_Toc…" anchors).
+  // Used to turn a link's named destination into a page number. Fetched once.
+  let allDests: Record<string, unknown[]> = {}
+  try { allDests = (await pdfDoc.getDestinations()) as Record<string, unknown[]> } catch { /* none */ }
   for (let pageNum = 1; pageNum <= numPages; pageNum++) {
     const page = await pdfDoc.getPage(pageNum)
     const anns = await page.getAnnotations({ intent: 'display' })
@@ -617,6 +621,35 @@ export async function readAnnotationsFromPdf(
             const [x1, y1, x2, y2] = a.rect as number[]
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const url: string | undefined = (a as any).url || (a as any).unsafeUrl || undefined
+            // Internal GoTo links (e.g. a table-of-contents entry) carry a `dest`
+            // instead of a URL. Resolve it to a 1-indexed page so clicking the
+            // link can navigate within the document.
+            let destPage: number | undefined
+            if (!url) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const dest = (a as any).dest
+              try {
+                let explicit: unknown[] | null = null
+                if (typeof dest === 'string') {
+                  // Named destination: resolve via the document's destination map
+                  // (handles the /Names name tree), falling back to the singular API.
+                  const fromMap = allDests[dest]
+                  if (Array.isArray(fromMap)) explicit = fromMap
+                  else {
+                    const resolved = await pdfDoc.getDestination(dest)
+                    if (Array.isArray(resolved)) explicit = resolved
+                  }
+                } else if (Array.isArray(dest)) {
+                  explicit = dest
+                }
+                if (explicit && explicit[0] && typeof explicit[0] === 'object') {
+                  const pageIdx = await pdfDoc.getPageIndex(
+                    explicit[0] as Parameters<typeof pdfDoc.getPageIndex>[0]
+                  )
+                  destPage = pageIdx + 1
+                }
+              } catch { /* unresolvable destination */ }
+            }
             result.push({
               ...base,
               type: 'link',
@@ -624,6 +657,7 @@ export async function readAnnotationsFromPdf(
               opacity: 0.3,
               x1, y1, x2, y2,
               href: url,
+              destPage,
             } as LinkAnn)
             break
           }

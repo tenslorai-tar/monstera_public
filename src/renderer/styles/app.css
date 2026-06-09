@@ -486,6 +486,13 @@
   transition: background 0.1s, border-color 0.1s;
 }
 .status-zoom-btn:hover { background: var(--bg-hover); border-color: var(--accent); }
+.status-zoom-btn:disabled { opacity: 0.35; cursor: default; }
+.status-zoom-btn:disabled:hover { background: var(--bg-toolbar); border-color: var(--border); }
+.status-nav-group { display: flex; align-items: center; gap: 2px; }
+
+/* Hyperlink hit-areas (LinkLayer) — invisible until hovered, then a soft highlight */
+.pdf-link-hit { background: transparent; border-radius: 2px; transition: background 0.08s; }
+.pdf-link-hit:hover { background: rgba(0, 110, 255, 0.18); outline: 1px solid rgba(0, 110, 255, 0.45); }
 .status-zoom-select {
   height: 20px;
   padding: 0 4px;

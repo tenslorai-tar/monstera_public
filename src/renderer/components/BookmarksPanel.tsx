@@ -7,7 +7,7 @@ export default function BookmarksPanel() {
   const bookmarks       = usePdfStore(s => s.bookmarks)
   const currentPage     = usePdfStore(s => s.currentPage)
   const numPages        = usePdfStore(s => s.numPages)
-  const scrollToPage    = usePdfStore(s => s.scrollToPage)
+  const scrollToPage    = usePdfStore(s => s.jumpToPage)
   const addBookmark     = usePdfStore(s => s.addBookmark)
   const deleteBookmark  = usePdfStore(s => s.deleteBookmark)
   const renameBookmark  = usePdfStore(s => s.renameBookmark)

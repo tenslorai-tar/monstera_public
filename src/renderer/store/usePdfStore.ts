@@ -147,6 +147,13 @@ interface PdfStore {
   scrollToPage: (pageNum: number) => void
   setScrollToPage: (fn: (pageNum: number) => void) => void
 
+  // ── Navigation history (previous/next view, like Acrobat's green arrows) ─────
+  navBack: number[]
+  navForward: number[]
+  jumpToPage: (pageNum: number) => void
+  goBack: () => void
+  goForward: () => void
+
   // ── Annotations ─────────────────────────────────────────────────────────────
   annotations: Annotation[]
   activeTool: AnnotationTool | null
@@ -299,6 +306,35 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   scrollToPage: () => {},
   setScrollToPage: (fn) => set({ scrollToPage: fn }),
 
+  // ── Navigation history ───────────────────────────────────────────────────
+  navBack: [],
+  navForward: [],
+  jumpToPage: (pageNum) => {
+    const { numPages, currentPage, scrollToPage, navBack } = get()
+    if (numPages === 0) return
+    const target = Math.max(1, Math.min(numPages, Math.round(pageNum)))
+    if (target === currentPage) { scrollToPage(target); return }
+    // Record where we were so Back returns there; dedupe consecutive origins.
+    const last = navBack[navBack.length - 1]
+    const nextBack = (last === currentPage ? navBack : [...navBack, currentPage]).slice(-50)
+    set({ navBack: nextBack, navForward: [] })
+    scrollToPage(target)
+  },
+  goBack: () => {
+    const { navBack, currentPage, scrollToPage } = get()
+    if (navBack.length === 0) return
+    const target = navBack[navBack.length - 1]
+    set({ navBack: navBack.slice(0, -1), navForward: [currentPage, ...get().navForward].slice(0, 50) })
+    scrollToPage(target)
+  },
+  goForward: () => {
+    const { navForward, currentPage, scrollToPage } = get()
+    if (navForward.length === 0) return
+    const target = navForward[0]
+    set({ navForward: navForward.slice(1), navBack: [...get().navBack, currentPage].slice(-50) })
+    scrollToPage(target)
+  },
+
   // ── Annotation defaults ──────────────────────────────────────────────────
   annotations: [],
   activeTool: null,
@@ -361,7 +397,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     set({
       pdfDoc, pdfBytes: uint8, numPages, filePath, fileName, pageSizes, annotations, formFields,
       isDirty: false, undoStack: [], redoStack: [], selectedPages: new Set(),
-      scale, currentPage: 1,
+      scale, currentPage: 1, navBack: [], navForward: [],
       searchOpen: false, searchQuery: '', searchMatches: [], activeMatchIndex: -1,
       selectedAnnotationId: null, openStickyNoteId: null, activeTool: null,
       formMode: false, formCreationTool: null, encryptionSettings: null,
@@ -419,6 +455,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
       pdfDoc, pdfBytes: bytes, numPages, pageSizes, annotations, formFields,
       filePath, fileName, scale: newScale, zoomMode, sidebarOpen, annotationsPanelOpen, formsPanelOpen,
       currentPage: Math.min(currentPage, numPages),
+      navBack: [], navForward: [],
       selectedPages: new Set(),
       searchOpen: false, searchQuery: '', searchMatches: [], activeMatchIndex: -1,
       selectedAnnotationId: null, openStickyNoteId: null,
@@ -932,7 +969,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     set({
       pdfDoc: null, pdfBytes: null, numPages: 0, filePath: '', fileName: '',
       pageSizes: [], isDirty: false, undoStack: [], redoStack: [],
-      selectedPages: new Set(), currentPage: 1,
+      selectedPages: new Set(), currentPage: 1, navBack: [], navForward: [],
       searchOpen: false, searchQuery: '', searchMatches: [], activeMatchIndex: -1,
       annotations: [], activeTool: null, selectedAnnotationId: null, openStickyNoteId: null,
       formFields: [], formMode: false, formCreationTool: null, formsPanelOpen: false,

@@ -111,10 +111,18 @@ export function useKeyboardShortcuts({ onOpen, onSettings, onShortcuts, onPrint 
           e.preventDefault()
           store.scrollToPage(store.numPages)
           break
-        case 'ArrowLeft': case 'ArrowUp':
+        case 'ArrowLeft':
+          // Alt+Left = previous view (navigation history, like a browser Back)
+          if (e.altKey) { e.preventDefault(); store.goBack() }
+          break
+        case 'ArrowRight':
+          // Alt+Right = next view
+          if (e.altKey) { e.preventDefault(); store.goForward() }
+          break
+        case 'ArrowUp':
           if (e.altKey) { e.preventDefault(); store.scrollToPage(Math.max(1, store.currentPage - 1)) }
           break
-        case 'ArrowRight': case 'ArrowDown':
+        case 'ArrowDown':
           if (e.altKey) { e.preventDefault(); store.scrollToPage(Math.min(store.numPages, store.currentPage + 1)) }
           break
       }
