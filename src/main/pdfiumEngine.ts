@@ -13,9 +13,23 @@ import koffi from 'koffi'
 const PDFOBJ_TEXT = 1
 
 export function getPdfiumPath(): string {
-  // Native DLLs can't load from inside app.asar, so also try the unpacked path.
-  const base = path.join(__dirname, '../../assets/bin/pdfium.dll')
-  for (const c of [base, base.replace('app.asar', 'app.asar.unpacked')]) {
+  // koffi.load() calls the OS loader (LoadLibrary/dlopen) directly. Unlike
+  // Electron's patched fs and child_process, that loader is NOT asar-aware, so it
+  // CANNOT load a DLL from a path inside app.asar — even though fs.existsSync
+  // happily resolves that in-asar path for an unpacked file via Electron's shim.
+  // We must therefore hand it a real on-disk path and never an app.asar path.
+  const sep = path.sep
+  const rel = path.join(__dirname, '../../assets/bin/pdfium.dll')
+  const candidates = [
+    // Packaged: extraResources copy — guaranteed a real file outside the archive.
+    process.resourcesPath ? path.join(process.resourcesPath, 'app', 'assets', 'bin', 'pdfium.dll') : '',
+    // Packaged: the asarUnpack location (real file on disk).
+    rel.replace(`app.asar${sep}`, `app.asar.unpacked${sep}`),
+    // Dev: assets/bin sits beside the source, no asar involved.
+    rel,
+  ]
+  for (const c of candidates) {
+    if (!c || c.includes(`app.asar${sep}`)) continue  // never hand an in-asar path to the loader
     if (fs.existsSync(c)) return c
   }
   return ''
