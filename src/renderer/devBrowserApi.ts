@@ -150,6 +150,8 @@ export function installBrowserApi() {
 
     // ── Window / misc ──────────────────────────────────────────────────────────
     setWindowTitle: async (title: string) => { document.title = title },
+    setDirty: async (_dirty: boolean) => {},
+    confirmAppClose: async () => {},
     printWindow: async () => { window.print() },
     confirmUnsaved: async (fileName: string) => {
       // Browser only has a 2-button confirm; the packaged app shows a native

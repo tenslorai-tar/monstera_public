@@ -295,7 +295,7 @@ export default function App() {
       : 'Monstera PDF Editor'
     window.electronAPI.setWindowTitle(title).catch(() => {})
     // Mirror unsaved state to main so the window-close (X) can prompt to save.
-    window.electronAPI.setDirty(isDirty).catch(() => {})
+    window.electronAPI.setDirty?.(isDirty)?.catch(() => {})
   }, [fileName, isDirty])
 
   // ── Action dispatch (shared by the native menu and the ⌘K command palette) ──
