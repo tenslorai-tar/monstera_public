@@ -287,7 +287,7 @@ export function editTextInRegion(
       koffi.pointer(L.WriteBlockProto),
     )
     const fw = { version: 1, WriteBlock: cb }
-    const ok = L.SaveAsCopy(doc, fw, 0)
+    const ok = L.SaveAsCopy(doc, fw, 1) // incremental: keep original objects/fonts intact
     koffi.unregister(cb)
     L.TextClosePage(tp)
     L.ClosePage(page)
@@ -430,7 +430,12 @@ function saveDoc(L: Lib, doc: unknown): Buffer {
     },
     koffi.pointer(L.WriteBlockProto),
   )
-  const ok = L.SaveAsCopy(doc, { version: 1, WriteBlock: cb }, 0)
+  // FPDF_INCREMENTAL (1): append an incremental update instead of rewriting the
+  // whole file. A full rewrite (flag 0) re-serialises every object and corrupts
+  // non-embedded font references, so the rest of the page reflows into a fallback
+  // serif font after an edit. Incremental save leaves the original objects (and
+  // their fonts) byte-for-byte intact.
+  const ok = L.SaveAsCopy(doc, { version: 1, WriteBlock: cb }, 1)
   koffi.unregister(cb)
   if (!ok) throw new Error('PDFium failed to save the document')
   return Buffer.concat(chunks)
