@@ -24,6 +24,16 @@ function daFont(font?: string): string {
   return (font === 'Times-Roman' || font === 'Courier') ? font : 'Helvetica'
 }
 
+// Pick the base-14 variant (regular/bold/italic/bold-italic) of a family so a
+// cover-and-replace text edit can match the original weight/slant when baked.
+function stdFontVariant(family?: string, bold?: boolean, italic?: boolean): string {
+  if (daFont(family) === 'Times-Roman')
+    return bold && italic ? 'Times-BoldItalic' : bold ? 'Times-Bold' : italic ? 'Times-Italic' : 'Times-Roman'
+  if (daFont(family) === 'Courier')
+    return bold && italic ? 'Courier-BoldOblique' : bold ? 'Courier-Bold' : italic ? 'Courier-Oblique' : 'Courier'
+  return bold && italic ? 'Helvetica-BoldOblique' : bold ? 'Helvetica-Bold' : italic ? 'Helvetica-Oblique' : 'Helvetica'
+}
+
 function ensureAnnots(doc: PDFDocument, idx: number): PDFArray {
   const page = doc.getPage(idx)
   const key = PDFName.of('Annots')
@@ -216,7 +226,7 @@ async function writeTextEdit(doc: PDFDocument, a: TextEditAnn, fontCache: Map<st
     } catch { font = null }
   }
   if (!font) {
-    const std = daFont(a.font)
+    const std = stdFontVariant(a.font, a.bold, a.italic)
     let f = fontCache.get('std:' + std)
     if (!f) { f = await doc.embedFont(std as StandardFonts); fontCache.set('std:' + std, f) }
     font = f

@@ -11,6 +11,7 @@ import fs from 'fs'
 import koffi from 'koffi'
 
 const PDFOBJ_TEXT = 1
+const PDFOBJ_FORM = 5  // FPDF_PAGEOBJ_FORM — a nested content group (Form XObject)
 
 export function getPdfiumPath(): string {
   // koffi.load() calls the OS loader (LoadLibrary/dlopen) directly. Unlike
@@ -43,12 +44,15 @@ type Lib = {
   CloseDocument: (doc: unknown) => void
   CountObjects: (page: unknown) => number
   GetObject: (page: unknown, index: number) => unknown
+  FormCountObjects: (form: unknown) => number
+  FormGetObject: (form: unknown, index: number) => unknown
   GetType: (obj: unknown) => number
   GetBounds: (obj: unknown, l: number[], b: number[], r: number[], t: number[]) => number
   GetFontSize: (obj: unknown, size: number[]) => number
   GetFillColor: (obj: unknown, r: number[], g: number[], b: number[], a: number[]) => number
   GetFont: (obj: unknown) => unknown
   GetFontData: (font: unknown, buffer: Buffer | null, buflen: number, out: number[]) => number
+  GetBaseFontName: (font: unknown, buffer: Buffer | null, buflen: number) => number
   GetMatrix: (obj: unknown, m: Record<string, number>) => number
   TextLoadPage: (page: unknown) => unknown
   TextClosePage: (tp: unknown) => void
@@ -97,12 +101,15 @@ function load(): Lib {
     CloseDocument:   m.func('void FPDF_CloseDocument(void* doc)') as Lib['CloseDocument'],
     CountObjects:    m.func('int FPDFPage_CountObjects(void* page)') as Lib['CountObjects'],
     GetObject:       m.func('void* FPDFPage_GetObject(void* page, int index)') as Lib['GetObject'],
+    FormCountObjects: m.func('int FPDFFormObj_CountObjects(void* form)') as Lib['FormCountObjects'],
+    FormGetObject:   m.func('void* FPDFFormObj_GetObject(void* form, unsigned long index)') as Lib['FormGetObject'],
     GetType:         m.func('int FPDFPageObj_GetType(void* obj)') as Lib['GetType'],
     GetBounds:       m.func('int FPDFPageObj_GetBounds(void* obj, _Out_ float* l, _Out_ float* b, _Out_ float* r, _Out_ float* t)') as Lib['GetBounds'],
     GetFontSize:     m.func('int FPDFTextObj_GetFontSize(void* obj, _Out_ float* size)') as Lib['GetFontSize'],
     GetFillColor:    m.func('int FPDFPageObj_GetFillColor(void* obj, _Out_ uint* r, _Out_ uint* g, _Out_ uint* b, _Out_ uint* a)') as Lib['GetFillColor'],
     GetFont:         m.func('void* FPDFTextObj_GetFont(void* obj)') as Lib['GetFont'],
     GetFontData:     m.func('int FPDFFont_GetFontData(void* font, void* buffer, size_t buflen, _Out_ size_t* out)') as Lib['GetFontData'],
+    GetBaseFontName: m.func('unsigned long FPDFFont_GetBaseFontName(void* font, _Out_ char* buffer, unsigned long buflen)') as Lib['GetBaseFontName'],
     GetMatrix:       m.func('int FPDFPageObj_GetMatrix(void* obj, _Out_ FS_MATRIX* matrix)') as Lib['GetMatrix'],
     TextLoadPage:    m.func('void* FPDFText_LoadPage(void* page)') as Lib['TextLoadPage'],
     TextClosePage:   m.func('void FPDFText_ClosePage(void* tp)') as Lib['TextClosePage'],
@@ -163,29 +170,86 @@ export function isAvailable(): boolean {
 
 export interface EditRect { x1: number; y1: number; x2: number; y2: number }
 
-interface Match { obj: unknown; l: number; b: number; t: number; cur: string; fontSize: number }
+interface Match { obj: unknown; l: number; b: number; t: number; cur: string; fontSize: number; nested: boolean; pm: Mat }
+
+// ── Nested-object traversal ──────────────────────────────────────────────────
+// PDFium's editor APIs (CountObjects/GetObject) only enumerate TOP-LEVEL page
+// objects. Text wrapped in a Form XObject — how Office/InDesign routinely emit
+// tables — is therefore invisible to click-to-edit, so the tool silently drops to
+// the cover-and-replace fallback (and a generic font). Descending into form
+// groups, with each glyph box mapped back into page space, lets that text be
+// edited truly in place with its own font preserved.
+
+type Mat = [number, number, number, number, number, number]
+const IDENTITY: Mat = [1, 0, 0, 1, 0, 0]
+
+function applyPt(m: Mat, x: number, y: number): [number, number] {
+  return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]
+}
+
+// Compose so a point in the child's space maps to page space: page = parent(form(p)).
+function composeMat(parent: Mat, form: Mat): Mat {
+  return [
+    parent[0] * form[0] + parent[2] * form[1],
+    parent[1] * form[0] + parent[3] * form[1],
+    parent[0] * form[2] + parent[2] * form[3],
+    parent[1] * form[2] + parent[3] * form[3],
+    parent[0] * form[4] + parent[2] * form[5] + parent[4],
+    parent[1] * form[4] + parent[3] * form[5] + parent[5],
+  ]
+}
+
+// nested = true when the object lives inside a Form XObject. pm is the accumulated
+// page-space transform of its container, used to map the glyph baseline to page
+// space (PDFium can find — but not save edits to — text inside a form, so nested
+// hits are handled by cover-and-replace in the document's real font).
+interface TextNode { obj: unknown; l: number; b: number; r: number; t: number; nested: boolean; pm: Mat }
+
+// Gather every text object on a page, descending into Form XObjects, with each
+// object's bounds mapped into PAGE space (top-level text uses the identity matrix,
+// so it's unchanged from the original flat scan).
+function collectTextNodes(L: Lib, container: unknown, isPage: boolean, parent: Mat, out: TextNode[], depth = 0): void {
+  if (depth > 12) return // guard against pathological nesting
+  const count = isPage ? L.CountObjects(container) : L.FormCountObjects(container)
+  for (let i = 0; i < count; i++) {
+    const obj = isPage ? L.GetObject(container, i) : L.FormGetObject(container, i)
+    const type = L.GetType(obj)
+    if (type === PDFOBJ_TEXT) {
+      const l = [0], b = [0], r = [0], t = [0]
+      if (!L.GetBounds(obj, l, b, r, t)) continue
+      const c1 = applyPt(parent, l[0], b[0]), c2 = applyPt(parent, r[0], b[0])
+      const c3 = applyPt(parent, r[0], t[0]), c4 = applyPt(parent, l[0], t[0])
+      out.push({
+        obj,
+        l: Math.min(c1[0], c2[0], c3[0], c4[0]), r: Math.max(c1[0], c2[0], c3[0], c4[0]),
+        b: Math.min(c1[1], c2[1], c3[1], c4[1]), t: Math.max(c1[1], c2[1], c3[1], c4[1]),
+        nested: depth > 0, pm: parent,
+      })
+    } else if (type === PDFOBJ_FORM) {
+      const fm = readMatrix(L, obj) as Mat
+      collectTextNodes(L, obj, false, composeMat(parent, fm), out, depth + 1)
+    }
+  }
+}
 
 // Text objects intersecting `rect`, ordered in reading order. Shared by editing
 // and prefill so what the user sees is exactly what gets replaced.
 function findMatches(L: Lib, page: unknown, tp: unknown, rect: EditRect): Match[] {
   const minX = Math.min(rect.x1, rect.x2), maxX = Math.max(rect.x1, rect.x2)
   const minY = Math.min(rect.y1, rect.y2), maxY = Math.max(rect.y1, rect.y2)
-  const n = L.CountObjects(page)
+  const nodes: TextNode[] = []
+  collectTextNodes(L, page, true, IDENTITY, nodes)
   const matches: Match[] = []
-  for (let i = 0; i < n; i++) {
-    const obj = L.GetObject(page, i)
-    if (L.GetType(obj) !== PDFOBJ_TEXT) continue
-    const l = [0], b = [0], r = [0], t = [0]
-    L.GetBounds(obj, l, b, r, t)
-    const ox = Math.min(r[0], maxX) - Math.max(l[0], minX)
-    const oy = Math.min(t[0], maxY) - Math.max(b[0], minY)
-    if (ox > 0.5 && oy > (t[0] - b[0]) * 0.25) {
-      const len = L.GetText(obj, tp, null, 0)
+  for (const nd of nodes) {
+    const ox = Math.min(nd.r, maxX) - Math.max(nd.l, minX)
+    const oy = Math.min(nd.t, maxY) - Math.max(nd.b, minY)
+    if (ox > 0.5 && oy > (nd.t - nd.b) * 0.25) {
+      const len = L.GetText(nd.obj, tp, null, 0)
       const buf = Buffer.alloc(len)
-      L.GetText(obj, tp, buf, len)
-      const fs = [0]; L.GetFontSize(obj, fs)
+      L.GetText(nd.obj, tp, buf, len)
+      const fs = [0]; L.GetFontSize(nd.obj, fs)
       const cur = buf.toString('utf16le').replace(/ /g, '').replace(/ +$/, '')
-      matches.push({ obj, l: l[0], b: b[0], t: t[0], cur, fontSize: fs[0] })
+      matches.push({ obj: nd.obj, l: nd.l, b: nd.b, t: nd.t, cur, fontSize: fs[0], nested: nd.nested, pm: nd.pm })
     }
   }
   matches.sort((a, c) => (Math.abs(a.b - c.b) > 3 ? c.t - a.t : a.l - c.l))
@@ -200,6 +264,8 @@ export interface RegionTextHit {
   matrix: number[]
   fontData: Buffer
   fontLoadable: boolean
+  nested: boolean
+  fontName: string
 }
 
 /**
@@ -211,7 +277,7 @@ export function getTextInRegion(
   bytes: Buffer, pageIndex: number, rect: EditRect,
 ): RegionTextHit {
   const L = load()
-  const none: RegionTextHit = { found: false, text: '', fontSize: 0, color: '#000000', matrix: [1, 0, 0, 1, 0, 0], fontData: Buffer.alloc(0), fontLoadable: false }
+  const none: RegionTextHit = { found: false, text: '', fontSize: 0, color: '#000000', matrix: [1, 0, 0, 1, 0, 0], fontData: Buffer.alloc(0), fontLoadable: false, nested: false, fontName: '' }
   const doc = L.LoadMemDocument(bytes, bytes.length, null)
   if (!doc) throw new Error('PDFium could not open the document')
   try {
@@ -221,7 +287,9 @@ export function getTextInRegion(
     if (matches.length === 0) { L.TextClosePage(tp); L.ClosePage(page); return none }
     const first = matches[0].obj
     const font = extractFont(L, first)
-    const matrix = readMatrix(L, first)
+    // Compose the object's own matrix with its container transform so the baseline
+    // (matrix[4],[5]) is in PAGE space even for text nested in a form group.
+    const matrix = composeMat(matches[0].pm, readMatrix(L, first) as Mat)
     const rr = [0], gg = [0], bb = [0], aa = [0]; L.GetFillColor(first, rr, gg, bb, aa)
     const hex = (v: number) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')
     L.TextClosePage(tp)
@@ -233,6 +301,8 @@ export function getTextInRegion(
       color: `#${hex(rr[0])}${hex(gg[0])}${hex(bb[0])}`,
       matrix,
       fontData: font.data, fontLoadable: font.loadable,
+      nested: matches[0].nested,
+      fontName: font.name,
     }
   } finally {
     L.CloseDocument(doc)
@@ -251,6 +321,11 @@ export interface TextObjectHit {
   matrix: number[]
   fontData: Buffer
   fontLoadable: boolean
+  // True when the text lives inside a Form XObject. PDFium can't save edits made
+  // there, so the renderer redraws via cover-and-replace using fontData/matrix
+  // (the document's real font + page-space baseline) instead of true in-place.
+  nested: boolean
+  fontName: string  // PostScript base name, e.g. "Aptos Narrow,Bold"
 }
 
 const FONT_CAP = 4 * 1024 * 1024
@@ -266,24 +341,32 @@ function readMatrix(L: Lib, obj: unknown): number[] {
 
 // Extract the embedded font program for a text object so the caret editor can
 // render in the exact page font. Only sfnt/woff fonts are browser-loadable.
-function extractFont(L: Lib, obj: unknown): { data: Buffer; loadable: boolean } {
+// Also returns the PostScript base name (e.g. "Aptos Narrow,Bold") so the renderer
+// can substitute an installed system font when the embedded one can't be reused.
+function extractFont(L: Lib, obj: unknown): { data: Buffer; loadable: boolean; name: string } {
   try {
     const font = L.GetFont(obj)
-    if (!font) return { data: Buffer.alloc(0), loadable: false }
+    if (!font) return { data: Buffer.alloc(0), loadable: false, name: '' }
+    let name = ''
+    try {
+      const nb = Buffer.alloc(128)
+      const nl = L.GetBaseFontName(font, nb, 128)
+      if (nl > 0) name = nb.toString('utf8', 0, Math.min(nb.length, Math.max(0, nl - 1))).replace(/\0+$/, '')
+    } catch { /* name optional */ }
     const sz = [0]
     L.GetFontData(font, null, 0, sz)
     const size = sz[0]
-    if (!size || size > FONT_CAP) return { data: Buffer.alloc(0), loadable: false }
+    if (!size || size > FONT_CAP) return { data: Buffer.alloc(0), loadable: false, name }
     const buf = Buffer.alloc(size)
     const got = [0]
-    if (!L.GetFontData(font, buf, size, got) || got[0] < 4) return { data: Buffer.alloc(0), loadable: false }
+    if (!L.GetFontData(font, buf, size, got) || got[0] < 4) return { data: Buffer.alloc(0), loadable: false, name }
     const magic = buf.readUInt32BE(0)
     const loadable = magic === 0x00010000 || magic === 0x4f54544f /* OTTO */
       || magic === 0x74727565 /* true */ || magic === 0x74746366 /* ttcf */
       || magic === 0x774f4646 /* wOFF */ || magic === 0x774f4632 /* wOF2 */
-    return { data: buf, loadable }
+    return { data: buf, loadable, name }
   } catch {
-    return { data: Buffer.alloc(0), loadable: false }
+    return { data: Buffer.alloc(0), loadable: false, name: '' }
   }
 }
 
@@ -296,28 +379,26 @@ export function getTextObjectAt(
   bytes: Buffer, pageIndex: number, x: number, y: number,
 ): TextObjectHit {
   const L = load()
-  const none: TextObjectHit = { found: false, text: '', fontSize: 0, color: '#000000', x1: 0, y1: 0, x2: 0, y2: 0, matrix: [1, 0, 0, 1, 0, 0], fontData: Buffer.alloc(0), fontLoadable: false }
+  const none: TextObjectHit = { found: false, text: '', fontSize: 0, color: '#000000', x1: 0, y1: 0, x2: 0, y2: 0, matrix: [1, 0, 0, 1, 0, 0], fontData: Buffer.alloc(0), fontLoadable: false, nested: false, fontName: '' }
   const doc = L.LoadMemDocument(bytes, bytes.length, null)
   if (!doc) return none
   try {
     const page = L.LoadPage(doc, pageIndex)
     const tp = L.TextLoadPage(page)
-    const n = L.CountObjects(page)
+    const nodes: TextNode[] = []
+    collectTextNodes(L, page, true, IDENTITY, nodes)
     let best: unknown = null
+    let bestNode: TextNode | null = null
     let bb = [0, 0, 0, 0]
     let bestArea = Infinity
-    for (let i = 0; i < n; i++) {
-      const obj = L.GetObject(page, i)
-      if (L.GetType(obj) !== PDFOBJ_TEXT) continue
-      const l = [0], b = [0], r = [0], t = [0]
-      L.GetBounds(obj, l, b, r, t)
+    for (const nd of nodes) {
       // small tolerance so clicks just outside the glyph box still land
-      if (x >= l[0] - 2 && x <= r[0] + 2 && y >= b[0] - 1 && y <= t[0] + 1) {
-        const area = (r[0] - l[0]) * (t[0] - b[0])
-        if (area < bestArea) { best = obj; bb = [l[0], b[0], r[0], t[0]]; bestArea = area }
+      if (x >= nd.l - 2 && x <= nd.r + 2 && y >= nd.b - 1 && y <= nd.t + 1) {
+        const area = (nd.r - nd.l) * (nd.t - nd.b)
+        if (area < bestArea) { best = nd.obj; bestNode = nd; bb = [nd.l, nd.b, nd.r, nd.t]; bestArea = area }
       }
     }
-    if (!best) { L.TextClosePage(tp); L.ClosePage(page); return none }
+    if (!best || !bestNode) { L.TextClosePage(tp); L.ClosePage(page); return none }
     const len = L.GetText(best, tp, null, 0)
     const buf = Buffer.alloc(len)
     L.GetText(best, tp, buf, len)
@@ -325,7 +406,7 @@ export function getTextObjectAt(
     const rr = [0], gg = [0], bbl = [0], aa = [0]; L.GetFillColor(best, rr, gg, bbl, aa)
     const hex = (v: number) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')
     const font = extractFont(L, best)
-    const matrix = readMatrix(L, best)
+    const matrix = composeMat(bestNode.pm, readMatrix(L, best) as Mat)
     L.TextClosePage(tp)
     L.ClosePage(page)
     return {
@@ -336,6 +417,8 @@ export function getTextObjectAt(
       x1: bb[0], y1: bb[1], x2: bb[2], y2: bb[3],
       matrix,
       fontData: font.data, fontLoadable: font.loadable,
+      nested: bestNode.nested,
+      fontName: font.name,
     }
   } finally {
     L.CloseDocument(doc)
@@ -402,17 +485,14 @@ export function editTextObjectAt(
   try {
     const page = L.LoadPage(doc, pageIndex)
     if (!page) throw new Error('PDFium could not load the page')
-    const n = L.CountObjects(page)
+    const nodes: TextNode[] = []
+    collectTextNodes(L, page, true, IDENTITY, nodes)
     let best: unknown = null
     let bestArea = Infinity
-    for (let i = 0; i < n; i++) {
-      const obj = L.GetObject(page, i)
-      if (L.GetType(obj) !== PDFOBJ_TEXT) continue
-      const l = [0], b = [0], r = [0], t = [0]
-      L.GetBounds(obj, l, b, r, t)
-      if (x >= l[0] - 2 && x <= r[0] + 2 && y >= b[0] - 1 && y <= t[0] + 1) {
-        const area = (r[0] - l[0]) * (t[0] - b[0])
-        if (area < bestArea) { best = obj; bestArea = area }
+    for (const nd of nodes) {
+      if (x >= nd.l - 2 && x <= nd.r + 2 && y >= nd.b - 1 && y <= nd.t + 1) {
+        const area = (nd.r - nd.l) * (nd.t - nd.b)
+        if (area < bestArea) { best = nd.obj; bestArea = area }
       }
     }
     if (!best) throw new Error('No editable text found at that point')

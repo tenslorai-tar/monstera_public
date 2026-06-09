@@ -29,13 +29,16 @@ declare global {
         bytes: ArrayBuffer,
         pageIndex: number,
         rect: { x1: number; y1: number; x2: number; y2: number },
-      ) => Promise<{ text: string; fontSize: number; found: boolean; color: string; matrix: number[]; fontData: ArrayBuffer; fontLoadable: boolean }>
+      ) => Promise<{ text: string; fontSize: number; found: boolean; color: string; matrix: number[]; fontData: ArrayBuffer; fontLoadable: boolean; nested: boolean; fontName: string }>
       pdfiumTextObjectAt: (
         bytes: ArrayBuffer,
         pageIndex: number,
         x: number,
         y: number,
-      ) => Promise<{ found: boolean; text: string; fontSize: number; color: string; x1: number; y1: number; x2: number; y2: number; matrix: number[]; fontData: ArrayBuffer; fontLoadable: boolean }>
+      ) => Promise<{ found: boolean; text: string; fontSize: number; color: string; x1: number; y1: number; x2: number; y2: number; matrix: number[]; fontData: ArrayBuffer; fontLoadable: boolean; nested: boolean; fontName: string }>
+      resolveSystemFont: (
+        name: string, bold: boolean, italic: boolean,
+      ) => Promise<{ family: string; data: ArrayBuffer } | null>
       pdfiumObjectAt: (
         bytes: ArrayBuffer, pageIndex: number, x: number, y: number,
       ) => Promise<{ found: boolean; index: number; type: number; color: string; x1: number; y1: number; x2: number; y2: number }>

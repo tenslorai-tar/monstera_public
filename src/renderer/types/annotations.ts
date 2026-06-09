@@ -92,6 +92,13 @@ export interface TextEditAnn extends AnnBase {
   // Exact original glyph-origin baseline (PDF pts, y-up) from the text matrix,
   // so the redrawn text sits where the original sat. Falls back to the box bottom.
   baselineX?: number; baselineY?: number
+  // Cover-and-replace fallback styling, sampled from the PDF.js text layer so the
+  // replacement matches the original typeface/weight/slant instead of a generic
+  // serif. cssFamily is the full computed font-family (reuses PDF.js's loaded
+  // face on screen); bold/italic drive the base-14 variant chosen when baking.
+  cssFamily?: string
+  bold?: boolean
+  italic?: boolean
 }
 
 export interface PlacedImageAnn extends AnnBase {

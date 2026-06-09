@@ -27,7 +27,7 @@ type DrawPhase =
   | { k: 'textbox-edit'; x: number; y: number; w: number; h: number; text: string }
   | { k: 'typewriter-edit'; x: number; y: number; text: string }
   | { k: 'text-edit-size'; sx: number; sy: number; cx: number; cy: number }
-  | { k: 'text-edit-edit'; x: number; y: number; w: number; h: number; text: string; fontSize?: number; color?: string; bg?: string; fontFamily?: string; fontDataB64?: string; baselineX?: number; baselineY?: number; editPoint?: { x: number; y: number }; editRect?: { x1: number; y1: number; x2: number; y2: number } }
+  | { k: 'text-edit-edit'; x: number; y: number; w: number; h: number; text: string; fontSize?: number; color?: string; bg?: string; fontFamily?: string; fontDataB64?: string; baselineX?: number; baselineY?: number; editPoint?: { x: number; y: number }; editRect?: { x1: number; y1: number; x2: number; y2: number }; sample?: FontSample }
   | { k: 'callout-size'; sx: number; sy: number; cx: number; cy: number }
   | { k: 'callout-edit'; x: number; y: number; w: number; h: number; text: string; tipSvgX: number; tipSvgY: number }
   | { k: 'poly'; pts: Array<[number, number]>; curX: number; curY: number }
@@ -76,6 +76,40 @@ function cssFont(font?: string): string {
   if (font === 'Times-Roman') return 'serif'
   if (font === 'Courier') return 'monospace'
   return 'sans-serif'
+}
+
+export interface FontSample {
+  cssFamily: string                                   // computed font-family list (reuse PDF.js face)
+  fontName: 'Helvetica' | 'Times-Roman' | 'Courier'   // base-14 family for baking
+  bold: boolean
+  italic: boolean
+}
+
+// Sample the typeface of a rendered PDF.js text-layer span so the cover-and-
+// replace fallback can redraw in a matching font (not a generic serif). PDF.js
+// bakes weight/slant into its loaded face, so the computed weight is usually 400
+// even for bold text — we confirm boldness by width, since bold glyphs are wider.
+function classifyFont(cs: CSSStyleDeclaration, text: string, widthPx: number, sizePx: number): FontSample {
+  const fam = cs.fontFamily || 'sans-serif'
+  const lower = fam.toLowerCase()
+  const generic: 'serif' | 'sans-serif' | 'monospace' =
+    lower.includes('monospace') ? 'monospace'
+      : lower.includes('sans-serif') || lower.includes('sans') ? 'sans-serif'
+        : lower.includes('serif') ? 'serif' : 'sans-serif'
+  const fontName = generic === 'serif' ? 'Times-Roman' : generic === 'monospace' ? 'Courier' : 'Helvetica'
+  const italic = /italic|oblique/.test(cs.fontStyle)
+  let bold = parseInt(cs.fontWeight, 10) >= 600 || cs.fontWeight === 'bold'
+  if (!bold && text.trim() && widthPx > 0 && sizePx > 0) {
+    try {
+      const ctx = document.createElement('canvas').getContext('2d')
+      if (ctx) {
+        ctx.font = `400 ${sizePx}px ${generic}`; const wn = ctx.measureText(text).width
+        ctx.font = `700 ${sizePx}px ${generic}`; const wb = ctx.measureText(text).width
+        if (wb > wn + 0.5) bold = Math.abs(widthPx - wb) < Math.abs(widthPx - wn)
+      }
+    } catch { /* keep the style-weight result */ }
+  }
+  return { cssFamily: fam, fontName, bold, italic }
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -255,7 +289,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   // dragged region (from the PDF.js text layer) so the edit box is pre-filled
   // with the existing words instead of forcing the user to retype from scratch.
   const readRegionText = (sx: number, sy: number, ex: number, ey: number):
-    { text: string; fontSize?: number; color?: string; bg?: string } => {
+    { text: string; fontSize?: number; color?: string; bg?: string; sample?: FontSample } => {
     const svg = svgRef.current
     const wrapper = svg?.closest('.pdf-page-wrapper')
     const layer = wrapper?.querySelector<HTMLElement>('.text-layer')
@@ -300,6 +334,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       text,
       fontSize: fontPx > 0 ? Math.round((fontPx / scale) * 10) / 10 : undefined,
       color: pxToHex(cs.color),
+      sample: classifyFont(cs, hits[0].el.textContent ?? '', hits[0].r.width, fontPx),
     }
   }
 
@@ -307,7 +342,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   // replace fallback for the Edit Text tool when PDFium is unavailable (or finds
   // no object), so clicking text always opens an editor instead of doing nothing.
   const readTextSpanAt = (sx: number, sy: number):
-    { text: string; x: number; y: number; w: number; h: number; fontSize?: number; color?: string } | null => {
+    { text: string; x: number; y: number; w: number; h: number; fontSize?: number; color?: string; sample?: FontSample } | null => {
     const svg = svgRef.current
     const layer = svg?.closest('.pdf-page-wrapper')?.querySelector<HTMLElement>('.text-layer')
     const svgRect = svg?.getBoundingClientRect()
@@ -336,7 +371,37 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       h: best.r.height,
       fontSize: fontPx > 0 ? Math.round((fontPx / scale) * 10) / 10 : undefined,
       color: pxToHex(cs.color),
+      sample: classifyFont(cs, best.el.textContent ?? '', best.r.width, fontPx),
     }
+  }
+
+  // Choose the font for a cover-and-replace edit. Prefer an INSTALLED system font
+  // matching the original (complete glyph set → renders on screen by family name
+  // and embeds cleanly into the saved PDF); fall back to the embedded program
+  // (which may be an unusable subset), then to the DOM sample.
+  const resolveEditFont = async (
+    fontName: string,
+    embedded: ArrayBuffer | null,
+    domSample?: FontSample,
+  ): Promise<{ fontFamily?: string; fontDataB64?: string; sample?: FontSample }> => {
+    const bold = /bold|black|heavy|semibold/i.test(fontName) || !!domSample?.bold
+    const italic = /italic|oblique/i.test(fontName) || !!domSample?.italic
+    try {
+      const sys = fontName ? await window.electronAPI.resolveSystemFont(fontName, bold, italic) : null
+      if (sys) {
+        const generic = domSample?.fontName === 'Times-Roman' ? 'serif'
+          : domSample?.fontName === 'Courier' ? 'monospace' : 'sans-serif'
+        return {
+          fontDataB64: bytesToBase64(sys.data),
+          sample: { cssFamily: `'${sys.family}', ${generic}`, fontName: domSample?.fontName ?? 'Helvetica', bold, italic },
+        }
+      }
+    } catch { /* fall through to the embedded font */ }
+    if (embedded && embedded.byteLength > 0) {
+      const fontFamily = (await loadPdfFont(embedded)) ?? undefined
+      if (fontFamily) return { fontFamily, fontDataB64: bytesToBase64(embedded), sample: domSample }
+    }
+    return { sample: domSample }
   }
 
   // ── Poly tool: click to add points, dblclick to finish ──────────────────
@@ -613,12 +678,17 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
                 const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
                 const obj = await window.electronAPI.pdfiumTextObjectAt(ab, pageNum - 1, px, py)
                 if (obj.found) {
-                  // Render the caret editor in the real page font when available,
-                  // and carry the font program + baseline so the saved replacement
-                  // keeps the original typeface and position.
                   let fontFamily: string | undefined
                   let fontDataB64: string | undefined
-                  if (obj.fontLoadable && obj.fontData.byteLength > 0) {
+                  let sample = obj.nested ? readTextSpanAt(sx, sy)?.sample : undefined
+                  if (obj.nested) {
+                    // Form-nested text can't be saved in place, and its embedded font
+                    // is usually a SUBSET that can't render newly typed glyphs. Swap in
+                    // the closest INSTALLED font (complete, so it renders + embeds) —
+                    // e.g. "Aptos Narrow,Bold" → system "Arial Narrow Bold".
+                    const eff = await resolveEditFont(obj.fontName, obj.fontLoadable ? obj.fontData : null, sample)
+                    fontFamily = eff.fontFamily; fontDataB64 = eff.fontDataB64; sample = eff.sample ?? sample
+                  } else if (obj.fontLoadable && obj.fontData.byteLength > 0) {
                     fontFamily = (await loadPdfFont(obj.fontData)) ?? undefined
                     if (fontFamily) fontDataB64 = bytesToBase64(obj.fontData)
                   }
@@ -627,8 +697,8 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
                   setDraw({ k: 'text-edit-edit', x: ox1, y: oy2,
                     w: Math.max(24, ox2 - ox1), h: Math.max(10, oy1 - oy2),
                     text: obj.text, fontSize: obj.fontSize, color: obj.color, fontFamily, fontDataB64,
-                    baselineX: obj.matrix[4], baselineY: obj.matrix[5],
-                    editPoint: { x: px, y: py } })  // → true in-place edit on commit
+                    baselineX: obj.matrix[4], baselineY: obj.matrix[5], sample,
+                    ...(obj.nested ? {} : { editPoint: { x: px, y: py } }) })
                   return
                 }
               }
@@ -640,7 +710,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
           if (span) {
             setDraw({ k: 'text-edit-edit', x: span.x, y: span.y,
               w: Math.max(24, span.w), h: Math.max(10, span.h),
-              text: span.text, fontSize: span.fontSize, color: span.color })
+              text: span.text, fontSize: span.fontSize, color: span.color, sample: span.sample })
           } else {
             setDraw({ k: 'idle' })
           }
@@ -653,7 +723,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       // Immediate prefill from the PDF.js text layer (instant box)
       const dom = readRegionText(sx, sy, ex, ey)
       setDraw({ k: 'text-edit-edit', x: bx, y: by, w: bw, h: bh,
-        text: dom.text, fontSize: dom.fontSize, color: dom.color })
+        text: dom.text, fontSize: dom.fontSize, color: dom.color, sample: dom.sample })
       // Upgrade the prefill to exactly the text PDFium will replace, so what the
       // user edits == what gets written back (no partial-line data loss).
       const [px1, py2] = toPdf(bx, by)
@@ -668,7 +738,11 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
           if (res.found) {
             let fontFamily: string | undefined
             let fontDataB64: string | undefined
-            if (res.fontLoadable && res.fontData.byteLength > 0) {
+            let sampleOverride: FontSample | undefined
+            if (res.nested) {
+              const eff = await resolveEditFont(res.fontName, res.fontLoadable ? res.fontData : null, dom.sample)
+              fontFamily = eff.fontFamily; fontDataB64 = eff.fontDataB64; sampleOverride = eff.sample
+            } else if (res.fontLoadable && res.fontData.byteLength > 0) {
               fontFamily = (await loadPdfFont(res.fontData)) ?? undefined
               if (fontFamily) fontDataB64 = bytesToBase64(res.fontData)
             }
@@ -676,7 +750,9 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
               ? { ...d, text: res.text, fontSize: res.fontSize || d.fontSize,
                   color: res.color || d.color, fontFamily, fontDataB64,
                   baselineX: res.matrix[4], baselineY: res.matrix[5],
-                  editRect: { x1: px1, y1: py1, x2: px2, y2: py2 } }  // → true in-place edit on commit
+                  ...(sampleOverride ? { sample: sampleOverride } : {}),
+                  // top-level → true in-place; nested form text → cover-and-replace
+                  ...(res.nested ? {} : { editRect: { x1: px1, y1: py1, x2: px2, y2: py2 } }) }
               : d)
           }
         } catch { /* keep DOM prefill */ }
@@ -1127,6 +1203,8 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       text, fontSize: d.fontSize ?? toolFontSize,
       fontDataB64: d.fontDataB64, fontFamily: d.fontFamily,
       baselineX: d.baselineX, baselineY: d.baselineY,
+      font: d.sample?.fontName, cssFamily: d.sample?.cssFamily,
+      bold: d.sample?.bold, italic: d.sample?.italic,
       createdAt: Date.now() } as TextEditAnn)
   }
 
@@ -1393,7 +1471,9 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
             <div style={{
               width: '100%', height: '100%', padding: '0 2px',
               fontSize: a.fontSize * scale, color: a.color, opacity: a.opacity, lineHeight: 1.2,
-              fontFamily: a.fontFamily ? `'${a.fontFamily}', serif` : 'serif',
+              fontFamily: a.fontFamily ? `'${a.fontFamily}', ${cssFont(a.font)}`
+                : a.cssFamily ? a.cssFamily : cssFont(a.font),
+              fontWeight: a.bold ? 700 : 400, fontStyle: a.italic ? 'italic' : 'normal',
               whiteSpace: 'pre-wrap', wordBreak: 'break-word',
               border: sel ? '1px dashed #4a9eff' : '1px solid transparent',
               boxSizing: 'border-box', background: 'white',
@@ -1729,13 +1809,15 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
     const col = draw.color ?? toolColor
     // Caret-in-place mode: editor rendered in the real page font, tight border.
     const inPlace = !!draw.fontFamily
-    const fam = draw.fontFamily ? `'${draw.fontFamily}', serif` : 'serif'
+    const fam = draw.fontFamily ? `'${draw.fontFamily}', ${draw.sample?.cssFamily ?? 'serif'}`
+      : draw.sample?.cssFamily ?? 'serif'
     return (
       <g>
         <foreignObject x={x} y={y} width={w} height={Math.max(h, fs * scale + 8)} style={{ pointerEvents: 'all' }}>
           <textarea style={{ width: '100%', height: '100%', background: 'white', color: col,
             border: inPlace ? '1px solid #4a9eff' : '2px solid #ff8800', outline: 'none', resize: 'none',
             fontFamily: fam, fontSize: fs * scale, lineHeight: inPlace ? 1.0 : 1.2,
+            fontWeight: draw.sample?.bold ? 700 : 400, fontStyle: draw.sample?.italic ? 'italic' : 'normal',
             padding: '0 1px', boxSizing: 'border-box', overflow: 'hidden' }}
             autoFocus value={draw.text}
             onFocus={e => e.currentTarget.select()}

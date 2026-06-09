@@ -3,6 +3,7 @@ import path from 'path'
 import fs from 'fs'
 import * as nativeBins from './nativeBins'
 import * as pdfium from './pdfiumEngine'
+import { resolveSystemFont } from './systemFonts'
 import * as spell from './spell'
 import * as mupdfOps from './mupdfOps'
 
@@ -501,6 +502,14 @@ ipcMain.handle('pdfium:textObjectAt', async (
     ...rest,
     fontData: fontData.buffer.slice(fontData.byteOffset, fontData.byteOffset + fontData.byteLength),
   }
+})
+
+// Resolve the closest installed system font for an edited run, so cover-and-replace
+// can render/embed a complete font instead of an unusable embedded subset.
+ipcMain.handle('fonts:resolve', async (_e, name: string, bold: boolean, italic: boolean) => {
+  const r = resolveSystemFont(name, bold, italic)
+  if (!r) return null
+  return { family: r.family, data: r.data.buffer.slice(r.data.byteOffset, r.data.byteOffset + r.data.byteLength) }
 })
 
 // ── Object editing ───────────────────────────────────────────────────────────
