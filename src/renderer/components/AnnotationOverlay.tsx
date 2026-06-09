@@ -1082,29 +1082,10 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
     const [, y_bot] = toPdf(d.x, d.y + d.h)
     const [x2] = toPdf(d.x + d.w, d.y)
 
-    // Preferred path: true in-place edit of the original PDF text via PDFium.
-    try {
-      if (await pdfiumReady()) {
-        const store = usePdfStore.getState()
-        // No overlay annotations/forms → edit raw bytes and apply incrementally
-        // (preserves zoom/scroll, no full reload). Otherwise bake first.
-        const hasOverlays = store.annotations.length > 0 || store.formFields.length > 0
-        const src = hasOverlays ? await store.getBakedBytes() : store.pdfBytes
-        if (src) {
-          const ab = src.buffer.slice(src.byteOffset, src.byteOffset + src.byteLength) as ArrayBuffer
-          const out = await window.electronAPI.pdfiumEditText(
-            ab, pageNum - 1, { x1: x, y1: y_bot, x2, y2: y_top }, text,
-          )
-          if (out && out.byteLength > 0) {
-            if (hasOverlays) await store.applyEdit(new Uint8Array(out))
-            else await store.applyContentEdit(new Uint8Array(out), pageNum)
-            return
-          }
-        }
-      }
-    } catch { /* engine unavailable or no text found — fall back to overlay */ }
-
-    // Fallback: cover the region and paint the replacement (font-matched overlay).
+    // Cover-and-replace: lay the new text over the original in a matched font.
+    // This never rewrites the page content stream, so it cannot corrupt the
+    // document's other fonts — unlike PDFium true-in-place editing, which
+    // de-embeds fonts on save (a fragile PDFium limitation on many documents).
     addAnnotation({ id: newId(), type: 'text-edit', pageNum,
       color: d.color ?? toolColor, opacity: toolOpacity,
       x, y: y_bot, width: x2 - x, height: y_top - y_bot,
