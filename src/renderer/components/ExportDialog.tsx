@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
 import StatusText from './StatusText'
-import { Upload, Image as ImageIcon, FileText, FileType, Table, MessageSquare, Download, FileJson, Ruler, Link, Presentation, CheckCircle2, Sparkles, Download as DownloadIcon } from 'lucide-react'
+import { Upload, Image as ImageIcon, FileText, FileType, Table, MessageSquare, Download, FileJson, Ruler, Link, Presentation, CheckCircle2, Sparkles, Download as DownloadIcon, ShieldCheck, AlertTriangle, XCircle, Wrench } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 
 interface Props { onClose: () => void }
 
-type ExportTab = 'images' | 'text' | 'docx' | 'xlsx' | 'annotations'
+type ExportTab = 'images' | 'text' | 'docx' | 'xlsx' | 'pdfa' | 'annotations'
 type ImageFormat = 'png' | 'jpeg' | 'webp'
 type DocxMode = 'rich' | 'layout' | 'text'
 
@@ -27,6 +27,8 @@ export default function ExportDialog({ onClose }: Props) {
   const [docxMode, setDocxMode] = useState<DocxMode>('layout')
   const [richStatus, setRichStatus] = useState<{ python: string; version: string; installed: boolean } | null>(null)
   const [installing, setInstalling] = useState(false)
+  const [pdfaReport, setPdfaReport] = useState<Array<{ level: string; message: string }> | null>(null)
+  const pdfaBytesRef = useRef<ArrayBuffer | null>(null)
   const cancelRef = useRef(false)
 
   useEffect(() => {
@@ -235,6 +237,36 @@ export default function ExportDialog({ onClose }: Props) {
     setBusy(false)
   }
 
+  // ── PDF/A-2b conversion ────────────────────────────────────────────────────
+
+  const runPdfaConvert = async () => {
+    setBusy(true)
+    setStatus('Converting to PDF/A-2b…')
+    setPdfaReport(null)
+    pdfaBytesRef.current = null
+    try {
+      const bytes = await usePdfStore.getState().getBakedBytes()
+      const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+      const r = await window.electronAPI.pdfaConvert(ab)
+      pdfaBytesRef.current = r.bytes
+      setPdfaReport(r.report)
+      setStatus(r.ok ? '✓ Ready — review the checks below, then save.' : 'Converted with remaining issues — see the report.')
+    } catch (e: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      setStatus(`Error: ${e?.message ?? 'PDF/A conversion failed'}`)
+    }
+    setBusy(false)
+  }
+
+  const savePdfa = async () => {
+    if (!pdfaBytesRef.current) return
+    try {
+      const p = await window.electronAPI.saveFileDialog(`${baseName}_pdfa.pdf`)
+      if (p) { await window.electronAPI.writeFile(p, pdfaBytesRef.current); setStatus('✓ PDF/A-2b file saved.') }
+    } catch (e: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      setStatus(`Error: ${e?.message ?? 'save failed'}`)
+    }
+  }
+
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 480 }}>
@@ -242,7 +274,7 @@ export default function ExportDialog({ onClose }: Props) {
 
         {/* tabs */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
-          {(['images', 'text', 'docx', 'xlsx', 'annotations'] as ExportTab[]).map(t => (
+          {(['images', 'text', 'docx', 'xlsx', 'pdfa', 'annotations'] as ExportTab[]).map(t => (
             <button key={t}
               onClick={() => setTab(t)}
               style={{
@@ -256,6 +288,7 @@ export default function ExportDialog({ onClose }: Props) {
                 : t === 'text' ? <><FileText size={14} /> Text (.txt)</>
                 : t === 'docx' ? <><FileType size={14} /> Word (.docx)</>
                 : t === 'xlsx' ? <><Table size={14} /> Excel (.xlsx)</>
+                : t === 'pdfa' ? <><ShieldCheck size={14} /> PDF/A</>
                 : <><MessageSquare size={14} /> Annotations</>}
             </button>
           ))}
@@ -413,6 +446,37 @@ export default function ExportDialog({ onClose }: Props) {
           </div>
         )}
 
+        {/* ── PDF/A tab ────────────────────────────────────── */}
+        {tab === 'pdfa' && (
+          <div>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10, lineHeight: 1.5 }}>
+              Saves an archival <strong>PDF/A-2b</strong> copy: PDF/A identification (XMP), an sRGB output
+              intent, synced metadata, and forbidden content (JavaScript, attachments) removed.
+              Issues that can't be fixed automatically — like fonts that were never embedded —
+              are reported so you know exactly where the file stands.
+            </p>
+            {pdfaReport && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflowY: 'auto',
+                border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', marginBottom: 4 }}>
+                {pdfaReport.map((r, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, lineHeight: 1.45,
+                    color: r.level === 'blocker' ? 'var(--danger)'
+                      : r.level === 'warning' ? 'var(--warning)'
+                      : 'var(--text-secondary)' }}>
+                    <span style={{ marginTop: 1, flexShrink: 0 }}>
+                      {r.level === 'ok' ? <CheckCircle2 size={14} color="var(--success)" />
+                        : r.level === 'fixed' ? <Wrench size={14} color="var(--accent)" />
+                        : r.level === 'warning' ? <AlertTriangle size={14} />
+                        : <XCircle size={14} />}
+                    </span>
+                    {r.message}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── Annotations tab ──────────────────────────────── */}
         {tab === 'annotations' && (
           <div>
@@ -515,6 +579,18 @@ export default function ExportDialog({ onClose }: Props) {
             <button className="modal-btn-primary" onClick={exportXlsx} disabled={busy}>
               {busy ? 'Exporting…' : <><Download size={15} /> Export to Excel</>}
             </button>
+          )}
+          {tab === 'pdfa' && (
+            <>
+              <button className={pdfaReport ? 'modal-btn-secondary' : 'modal-btn-primary'}
+                onClick={runPdfaConvert} disabled={busy || !pdfBytes}>
+                {busy ? 'Converting…' : <><ShieldCheck size={15} /> {pdfaReport ? 'Re-check' : 'Convert & Check'}</>}
+              </button>
+              <button className="modal-btn-primary" onClick={savePdfa}
+                disabled={busy || !pdfaReport || !pdfaBytesRef.current}>
+                <Download size={15} /> Save PDF/A…
+              </button>
+            </>
           )}
           {tab === 'annotations' && null}
         </div>

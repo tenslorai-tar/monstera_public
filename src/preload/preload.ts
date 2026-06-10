@@ -111,6 +111,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     newText: string,
   ): Promise<{ bytes: ArrayBuffer; lineCount: number }> =>
     ipcRenderer.invoke('pdfium:replaceParagraph', bytes, pageIndex, x, y, newText),
+  pdfaConvert: (
+    bytes: ArrayBuffer,
+  ): Promise<{ bytes: ArrayBuffer; report: Array<{ level: string; message: string }>; ok: boolean }> =>
+    ipcRenderer.invoke('pdfa:convert', bytes),
 
   // Write
   writeFile: (filePath: string, bytes: ArrayBuffer): Promise<void> =>

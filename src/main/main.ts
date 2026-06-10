@@ -6,6 +6,7 @@ import * as pdfium from './pdfiumEngine'
 import { resolveSystemFont } from './systemFonts'
 import * as spell from './spell'
 import * as mupdfOps from './mupdfOps'
+import { convertToPdfA } from './pdfaExport'
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
@@ -702,6 +703,11 @@ ipcMain.handle('pdfium:replaceParagraph', async (
   } catch { /* reflow falls back to the document font */ }
   const r = pdfium.replaceParagraphAt(buf, pageIndex, x, y, newText, substitute)
   return { bytes: toAb(r.bytes), lineCount: r.lineCount }
+})
+
+ipcMain.handle('pdfa:convert', async (_e, bytes: ArrayBuffer) => {
+  const r = await convertToPdfA(Buffer.from(bytes))
+  return { bytes: toAb(r.bytes), report: r.report, ok: r.ok }
 })
 
 // ── File write ───────────────────────────────────────────────────────────────

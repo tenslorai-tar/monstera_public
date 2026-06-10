@@ -85,6 +85,9 @@ declare global {
         y: number,
         newText: string,
       ) => Promise<{ bytes: ArrayBuffer; lineCount: number }>
+      pdfaConvert: (
+        bytes: ArrayBuffer,
+      ) => Promise<{ bytes: ArrayBuffer; report: Array<{ level: string; message: string }>; ok: boolean }>
 
       writeFile: (filePath: string, bytes: ArrayBuffer) => Promise<void>
       writeBytesToDir: (
