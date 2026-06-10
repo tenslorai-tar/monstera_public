@@ -389,12 +389,13 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
     try {
       const sys = fontName ? await window.electronAPI.resolveSystemFont(fontName, bold, italic) : null
       if (sys) {
-        const generic = domSample?.fontName === 'Times-Roman' ? 'serif'
-          : domSample?.fontName === 'Courier' ? 'monospace' : 'sans-serif'
-        return {
-          fontDataB64: bytesToBase64(sys.data),
-          sample: { cssFamily: `'${sys.family}', ${generic}`, fontName: domSample?.fontName ?? 'Helvetica', bold, italic },
-        }
+        // Render the substitute by loading its actual BYTES as a FontFace — not by
+        // the installed family name, which a per-user-installed font (LocalAppData)
+        // may not expose to Chromium. The bytes also embed cleanly when saved.
+        // Base64 first so the buffer is read before FontFace can claim it.
+        const fontDataB64 = bytesToBase64(sys.data)
+        const fontFamily = (await loadPdfFont(sys.data)) ?? undefined
+        return { fontFamily, fontDataB64, sample: domSample }
       }
     } catch { /* fall through to the embedded font */ }
     if (embedded && embedded.byteLength > 0) {
@@ -1473,7 +1474,10 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
               fontSize: a.fontSize * scale, color: a.color, opacity: a.opacity, lineHeight: 1.2,
               fontFamily: a.fontFamily ? `'${a.fontFamily}', ${cssFont(a.font)}`
                 : a.cssFamily ? a.cssFamily : cssFont(a.font),
-              fontWeight: a.bold ? 700 : 400, fontStyle: a.italic ? 'italic' : 'normal',
+              // A loaded face / PDF.js face already encodes its weight & slant — only
+              // synthesize bold/italic for a bare generic, else we double-bold.
+              fontWeight: (a.fontFamily || a.cssFamily) ? undefined : (a.bold ? 700 : 400),
+              fontStyle: (a.fontFamily || a.cssFamily) ? undefined : (a.italic ? 'italic' : 'normal'),
               whiteSpace: 'pre-wrap', wordBreak: 'break-word',
               border: sel ? '1px dashed #4a9eff' : '1px solid transparent',
               boxSizing: 'border-box', background: 'white',
@@ -1817,7 +1821,8 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
           <textarea style={{ width: '100%', height: '100%', background: 'white', color: col,
             border: inPlace ? '1px solid #4a9eff' : '2px solid #ff8800', outline: 'none', resize: 'none',
             fontFamily: fam, fontSize: fs * scale, lineHeight: inPlace ? 1.0 : 1.2,
-            fontWeight: draw.sample?.bold ? 700 : 400, fontStyle: draw.sample?.italic ? 'italic' : 'normal',
+            fontWeight: (draw.fontFamily || draw.sample?.cssFamily) ? undefined : (draw.sample?.bold ? 700 : 400),
+            fontStyle: (draw.fontFamily || draw.sample?.cssFamily) ? undefined : (draw.sample?.italic ? 'italic' : 'normal'),
             padding: '0 1px', boxSizing: 'border-box', overflow: 'hidden' }}
             autoFocus value={draw.text}
             onFocus={e => e.currentTarget.select()}

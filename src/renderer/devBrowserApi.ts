@@ -167,6 +167,9 @@ export function installBrowserApi() {
       ;(window as unknown as Record<string, unknown>).__menu = (a: string) => menuCb?.(a)
     },
     removeMenuActionListener: () => { menuCb = null },
+    onOpenFile: () => {},
+    removeOpenFileListener: () => {},
+    getPendingOpenPath: async () => null,
     openFromUrl: async (url: string) => {
       try { return await (await fetch(url)).arrayBuffer() } catch { return EMPTY }
     },

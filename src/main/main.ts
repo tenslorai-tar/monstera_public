@@ -39,6 +39,41 @@ app.on('web-contents-created', (_event, contents) => {
   })
 })
 
+// ── Single instance + OS file-open (folder double-click / "Open with Monstera") ─
+// Windows hands the chosen file to the app as a launch argument. Find the .pdf.
+function pdfArgFrom(argv: string[]): string | null {
+  for (let i = 1; i < argv.length; i++) {
+    const a = argv[i]
+    if (!a || a.startsWith('-') || !/\.pdf$/i.test(a)) continue
+    try { if (fs.existsSync(a)) return path.resolve(a) } catch { /* ignore */ }
+  }
+  return null
+}
+// Path captured at launch, handed to the renderer once it asks (avoids a race
+// with the React listener not being registered yet).
+let pendingOpenPath: string | null = null
+function deliverOpenPath(p: string): void {
+  if (!mainWin || mainWin.isDestroyed()) { pendingOpenPath = p; return }
+  if (mainWin.isMinimized()) mainWin.restore()
+  mainWin.focus()
+  mainWin.webContents.send('file:open-path', p)
+}
+
+// Keep a single running instance: a second double-click reuses this window.
+const gotInstanceLock = app.requestSingleInstanceLock()
+if (!gotInstanceLock) {
+  app.quit()
+} else {
+  pendingOpenPath = pdfArgFrom(process.argv)
+  app.on('second-instance', (_e, argv) => {
+    const p = pdfArgFrom(argv)
+    if (p) deliverOpenPath(p)
+    else if (mainWin) { if (mainWin.isMinimized()) mainWin.restore(); mainWin.focus() }
+  })
+}
+// The renderer pulls the launch path once mounted, then OS pushes use file:open-path.
+ipcMain.handle('app:getPendingOpenPath', () => { const p = pendingOpenPath; pendingOpenPath = null; return p })
+
 function buildAppMenu(win: BrowserWindow): Menu {
   const send = (action: string) => () => {
     if (!win.isDestroyed()) win.webContents.send('menu:action', action)

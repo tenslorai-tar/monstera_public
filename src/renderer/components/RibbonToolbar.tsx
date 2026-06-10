@@ -5,7 +5,7 @@ import type { AnnotationTool, StampName, PlacedImageAnn } from '../types/annotat
 import type { FormCreationTool } from '../types/forms'
 import { newId } from '../utils/annotationUtils'
 import logoUrl from '../assets/monstera-logo.png'
-import { Accessibility, ArrowDownUp, ArrowUpRight, Barcode, Bookmark, Bot, BoxSelect, Brush, Calculator, Calendar, Camera, ChevronDown, ChevronUp, Circle, CircleDot, ClipboardList, Cloud, Columns2, Combine, Copy, CopyPlus, Crop, Droplets, Eraser, EyeOff, FileCode, FileOutput, FilePlus2, FileSignature, FileText, FolderOpen, FormInput, GitCompare, Globe, Grid3x3, Hash, Hexagon, Highlighter, Image, ImagePlus, Images, Import, Info, Keyboard, Languages, Layers, Link, List, Lock, Mail, MessageSquare, MessageSquareMore, Minimize2, Moon, MousePointer2, MousePointerClick, Palette, PanelLeft, PanelRight, PanelTop, Pen, PencilRuler, Pentagon, QrCode, Redo2, RefreshCw, Replace, RotateCcw, RotateCw, Ruler, Save, SaveAll, ScanLine, ScanSearch, ScanText, Scissors, Search, SearchX, Settings, Shapes, ShieldCheck, Signature, Slash, Sparkles, SpellCheck, Spline, Square, SquareCheckBig, SquarePen, Stamp, StickyNote, Strikethrough, Table, Telescope, TextCursorInput, Trash2, TriangleAlert, Type, Underline, Undo2, Unlock, Upload, Wand2, Webcam, Sun, CircleHelp, Home, Files, SearchCheck, Wrench } from 'lucide-react'
+import { Accessibility, ArrowDownUp, ArrowUpRight, Barcode, BookOpen, Bookmark, Bot, BoxSelect, Brush, Calculator, Calendar, Camera, ChevronDown, ChevronUp, Circle, CircleDot, ClipboardList, Cloud, Columns2, Combine, Copy, CopyPlus, Crop, Droplets, Eraser, EyeOff, FileCode, FileOutput, FilePlus2, FileSignature, FileText, FolderOpen, FormInput, GitCompare, Globe, Grid3x3, Hash, Hexagon, Highlighter, Image, ImagePlus, Images, Import, Info, Keyboard, Languages, Layers, Link, List, Lock, Mail, MessageSquare, MessageSquareMore, Minimize2, Moon, MousePointer2, MousePointerClick, Palette, PanelLeft, PanelRight, PanelTop, Pen, PencilRuler, Pentagon, QrCode, Redo2, RefreshCw, Replace, RotateCcw, RotateCw, Ruler, Save, SaveAll, ScanLine, ScanSearch, ScanText, Scissors, Search, SearchX, Settings, Shapes, ShieldCheck, Signature, Slash, Sparkles, SpellCheck, Spline, Square, SquareCheckBig, SquarePen, Stamp, StickyNote, Strikethrough, Table, Telescope, TextCursorInput, Trash2, TriangleAlert, Type, Underline, Undo2, Unlock, Upload, Wand2, Webcam, Sun, CircleHelp, Home, Files, SearchCheck, Wrench } from 'lucide-react'
 import TabsBar from './TabsBar'
 
 type RibbonTab = 'home' | 'comment' | 'edit' | 'organize' | 'forms' | 'review' | 'protect' | 'tools'
@@ -80,6 +80,7 @@ interface Props {
   onDeskew: () => void
   onMultiPageStamp: () => void
   onSplitView: () => void
+  onSideBySide: () => void
   onBarcode: () => void
   onScan: () => void
   onSanitize: () => void
@@ -174,7 +175,7 @@ export default function RibbonToolbar(props: Props) {
     onAiAssistant, onOfficeImport,
     onMarkdownToPdf, onCsvToPdf, onEditExternal, onOcrRegion, onDeskew,
     onWebcam,
-    onMultiPageStamp, onSplitView, onBarcode, onScan, onSanitize, onEmailImport, onReadBarcode, onExtractImages,
+    onMultiPageStamp, onSplitView, onSideBySide, onBarcode, onScan, onSanitize, onEmailImport, onReadBarcode, onExtractImages,
   } = props
 
   const resetFormFields = usePdfStore(s => s.resetFormFields)
@@ -307,7 +308,8 @@ export default function RibbonToolbar(props: Props) {
               <SBtn icon={<MessageSquare size={15} />} label="Comments" active={annotationsPanelOpen} onClick={toggleAnnotationsPanel} title="Annotations panel (F6)" />
               <SBtn icon={<FormInput size={15} />} label="Fields" active={formsPanelOpen} onClick={toggleFormsPanel} title="Form fields panel (F7)" />
             </div>
-            <LBtn icon={<Columns2 size={20} />} label="Split View" onClick={onSplitView} disabled={!hasPdf} title="Show two pages side by side" />
+            <LBtn icon={<Columns2 size={20} />} label="Split View" onClick={onSplitView} disabled={!hasPdf} title="Show two pages of this document side by side" />
+            <LBtn icon={<BookOpen size={20} />} label="Side by Side" onClick={onSideBySide} disabled={!hasPdf} title="Compare two open documents side by side" />
           </Group>
 
           <Group label="Combine">

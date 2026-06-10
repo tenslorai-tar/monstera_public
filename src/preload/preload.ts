@@ -228,6 +228,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('menu:action')
   },
 
+  // A PDF path handed over by the OS (double-click / "Open with"), forwarded by main.
+  onOpenFile: (callback: (filePath: string) => void): void => {
+    ipcRenderer.on('file:open-path', (_event, filePath: string) => callback(filePath))
+  },
+  removeOpenFileListener: (): void => {
+    ipcRenderer.removeAllListeners('file:open-path')
+  },
+  // The .pdf path this app was launched with, if any (folder double-click).
+  getPendingOpenPath: (): Promise<string | null> =>
+    ipcRenderer.invoke('app:getPendingOpenPath'),
+
   // ── Native binary management ─────────────────────────────────────────────────
 
   binsGetStatus: (): Promise<{

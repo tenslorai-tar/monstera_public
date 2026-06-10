@@ -61,6 +61,7 @@ import TocGeneratorDialog from './components/TocGeneratorDialog'
 import OcrRegionDialog from './components/OcrRegionDialog'
 import DeskewDialog from './components/DeskewDialog'
 import SplitViewPanel from './components/SplitViewPanel'
+import SideBySidePanel from './components/SideBySidePanel'
 import { useTabsStore } from './store/useTabsStore'
 import * as docEnhance from './utils/documentEnhance'
 import { usePdfStore } from './store/usePdfStore'
@@ -182,6 +183,7 @@ export default function App() {
   const [ocrRegionOpen,        setOcrRegionOpen]        = useState(false)
   const [deskewOpen,           setDeskewOpen]           = useState(false)
   const [splitViewOpen,        setSplitViewOpen]        = useState(false)
+  const [sideBySideOpen,       setSideBySideOpen]       = useState(false)
 
   const [passwordPrompt,    setPasswordPrompt]     = useState<PasswordPromptState>(null)
   const [passwordError,     setPasswordError]      = useState('')
@@ -253,6 +255,35 @@ export default function App() {
     }
   }, [loadPdf, addRecentFile, settings.defaultZoom, setZoomMode, setScale])
 
+  // Open one or more PDFs at once (multi-select) — each is loaded into its own tab.
+  const openMany = useCallback(async () => {
+    let paths: string[] = []
+    try { paths = await window.electronAPI.openMultipleFiles() } catch { paths = [] }
+    for (const p of paths) {
+      // sequential so each open snapshots the previous tab before switching
+      // eslint-disable-next-line no-await-in-loop
+      await openFile(p)
+    }
+  }, [openFile])
+
+  // Open a file handed over by the OS — double-click in a folder, or "Open with
+  // Monstera". The main process forwards the path on launch and for already-running
+  // instances (single-instance lock).
+  useEffect(() => {
+    if (!window.electronAPI.onOpenFile) return
+    window.electronAPI.onOpenFile((filePath: string) => { if (filePath) openFile(filePath) })
+    return () => { window.electronAPI.removeOpenFileListener?.() }
+  }, [openFile])
+
+  // Pull the path this app was launched with (folder double-click) once, on mount.
+  useEffect(() => {
+    let cancelled = false
+    window.electronAPI.getPendingOpenPath?.()
+      .then(p => { if (p && !cancelled) openFile(p) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Autosave ─────────────────────────────────────────────────────────────────
 
   const autosaveRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -305,7 +336,7 @@ export default function App() {
       const rawSel = [...s.selectedPages]
       const sel = rawSel.length > 0 ? rawSel : (s.numPages > 0 ? [s.currentPage] : [])
       switch (action) {
-        case 'open':         openFile(); break
+        case 'open':         openMany(); break
         case 'close':        requestClose(); break
         case 'app-close-request': handleAppClose(); break
         case 'save':         if (s.isDirty) s.save(); break
@@ -400,7 +431,7 @@ export default function App() {
           }
           break
       }
-  }, [openFile, ops, settings.theme, updateSettings, requestClose]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [openFile, openMany, ops, settings.theme, updateSettings, requestClose]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Native menu actions ──────────────────────────────────────────────────────
 
@@ -416,7 +447,7 @@ export default function App() {
   // ── Keyboard shortcuts ───────────────────────────────────────────────────────
 
   useKeyboardShortcuts({
-    onOpen: openFile,
+    onOpen: openMany,
     onSettings: () => setSettingsOpen(true),
     onShortcuts: () => setShortcutsOpen(true),
     onPrint: () => window.electronAPI.printWindow().catch(() => {}),
@@ -454,7 +485,7 @@ export default function App() {
         </div>
       )}
       <RibbonToolbar
-        onOpen={openFile}
+        onOpen={openMany}
         onMerge={ops.mergePdfs}
         onSplit={() => setSplitOpen(true)}
         onMetadata={() => setMetadataOpen(true)}
@@ -572,6 +603,7 @@ export default function App() {
         onDeskew={() => setDeskewOpen(true)}
         onMultiPageStamp={() => setMultiPageStampOpen(true)}
         onSplitView={() => setSplitViewOpen(true)}
+        onSideBySide={() => setSideBySideOpen(true)}
       >
         {hasPdf ? (
           <div className="main-row">
@@ -584,7 +616,7 @@ export default function App() {
         ) : (
           <StartScreen
             recentFiles={recentFiles}
-            onOpen={openFile}
+            onOpen={openMany}
             onOpenRecent={path => openFile(path)}
             onRemoveRecent={removeRecentFile}
             openError={openError}
@@ -744,6 +776,7 @@ export default function App() {
       {ocrRegionOpen      && <OcrRegionDialog     onClose={() => setOcrRegionOpen(false)} />}
       {deskewOpen         && <DeskewDialog        onClose={() => setDeskewOpen(false)} />}
       {splitViewOpen      && <SplitViewPanel     onClose={() => setSplitViewOpen(false)} />}
+      {sideBySideOpen     && <SideBySidePanel    onClose={() => setSideBySideOpen(false)} />}
       {multiPageStampOpen && (() => {
         const sel = annotations.find(a => a.id === (usePdfStore.getState().selectedAnnotationId ?? ''))
         return sel ? <MultiPageStampDialog onClose={() => setMultiPageStampOpen(false)} sourceAnnotation={sel} /> : null

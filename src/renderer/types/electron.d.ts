@@ -132,6 +132,9 @@ declare global {
       secureDecryptSync: (stored: string) => string
       onMenuAction: (callback: (action: string) => void) => void
       removeMenuActionListener: () => void
+      onOpenFile: (callback: (filePath: string) => void) => void
+      removeOpenFileListener: () => void
+      getPendingOpenPath: () => Promise<string | null>
 
       aiQuery: (apiKey: string, messages: Array<{ role: 'user' | 'assistant'; content: string }>, systemPrompt: string) => Promise<string>
 
