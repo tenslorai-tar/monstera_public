@@ -129,6 +129,7 @@ declare global {
       setDirty: (dirty: boolean) => Promise<void>
       confirmAppClose: () => Promise<void>
       printWindow: () => Promise<void>
+      printPdf: (bytes: ArrayBuffer, opts: { pages?: number[]; dpi?: number }) => Promise<boolean>
       confirmUnsaved: (fileName: string) => Promise<'save' | 'discard' | 'cancel'>
 
       // OS-keychain-backed encryption for secrets at rest (synchronous).

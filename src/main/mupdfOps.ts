@@ -178,6 +178,34 @@ export async function synthesizeAppearances(bytes: ArrayBuffer): Promise<ArrayBu
   } finally { freeMupdf(doc) }
 }
 
+// Render pages to print-resolution PNGs. Used by the print pipeline: the app
+// prints these page images (real PDF rendering), never the on-screen DOM.
+export interface PrintPageImage { pageNum: number; png: ArrayBuffer; wPt: number; hPt: number }
+export async function renderPagesForPrint(
+  bytes: ArrayBuffer, pages: number[], dpi: number
+): Promise<PrintPageImage[]> {
+  const mupdf = await getMupdf()
+  const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
+  try {
+    const count = doc.countPages()
+    const scale = Math.min(Math.max(dpi, 72), 600) / 72
+    const list = pages.length > 0 ? pages : Array.from({ length: count }, (_, i) => i + 1)
+    const out: PrintPageImage[] = []
+    for (const pageNum of list) {
+      if (pageNum < 1 || pageNum > count) continue
+      const page = doc.loadPage(pageNum - 1)
+      const bounds = page.getBounds()
+      const pix = page.toPixmap(mupdf.Matrix.scale(scale, scale), mupdf.ColorSpace.DeviceRGB, false, true)
+      const png = pix.asPNG()
+      const buf = new Uint8Array(png.length)
+      buf.set(png)
+      out.push({ pageNum, png: buf.buffer, wPt: bounds[2] - bounds[0], hPt: bounds[3] - bounds[1] })
+      freeMupdf(pix, page)
+    }
+    return out
+  } finally { freeMupdf(doc) }
+}
+
 export async function getOutline(bytes: ArrayBuffer): Promise<BookmarkItem[]> {
   const mupdf = await getMupdf()
   const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')

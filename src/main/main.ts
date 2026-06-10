@@ -389,6 +389,63 @@ ipcMain.handle('window:confirmClose', () => {
 })
 
 // ── Print ─────────────────────────────────────────────────────────────────────
+// Real PDF printing: render the requested pages with MuPDF at print DPI, lay
+// them out at their exact physical size in a hidden window, and hand that to
+// the system print dialog. (The old implementation printed the app's DOM —
+// toolbars, theme background, and only the lazily-rendered pages.)
+ipcMain.handle('print:pdf', async (_event, bytes: ArrayBuffer, opts: {
+  pages?: number[]; dpi?: number;
+}) => {
+  const os = require('os') as typeof import('os')
+  const dpi = Math.min(Math.max(opts?.dpi ?? 300, 72), 600)
+  const images = await mupdfCall<mupdfOps.PrintPageImage[]>('renderPagesForPrint', [
+    bytes, opts?.pages ?? [], dpi,
+  ])
+  if (!images.length) return false
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'monstera-print-'))
+  try {
+    const pageDivs: string[] = []
+    for (const img of images) {
+      const file = path.join(tmpDir, `p${img.pageNum}.png`)
+      fs.writeFileSync(file, Buffer.from(img.png))
+      const wIn = img.wPt / 72, hIn = img.hPt / 72
+      pageDivs.push(
+        `<div class="pg"><img src="p${img.pageNum}.png" style="width:${wIn}in;height:${hIn}in"></div>`
+      )
+    }
+    const first = images[0]
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+      @page { size: ${first.wPt / 72}in ${first.hPt / 72}in; margin: 0; }
+      html, body { margin: 0; padding: 0; }
+      .pg { break-after: page; }
+      .pg:last-child { break-after: auto; }
+      img { display: block; }
+    </style></head><body>${pageDivs.join('')}</body></html>`
+    const htmlPath = path.join(tmpDir, 'print.html')
+    fs.writeFileSync(htmlPath, html)
+
+    const win = new BrowserWindow({
+      show: false, width: 900, height: 1200,
+      webPreferences: { nodeIntegration: false, contextIsolation: true },
+    })
+    try {
+      await win.loadFile(htmlPath)
+      // loadFile resolves on the load event (images decoded); small paint margin.
+      await new Promise<void>(r => setTimeout(r, 200))
+      const ok = await new Promise<boolean>(resolve => {
+        win.webContents.print({ silent: false, printBackground: true }, success => resolve(success))
+      })
+      return ok
+    } finally {
+      win.destroy()
+    }
+  } finally {
+    setTimeout(() => { try { fs.rmSync(tmpDir, { recursive: true, force: true }) } catch { /* ignore */ } }, 60_000)
+  }
+})
+
+// Legacy DOM print kept for the rare "print the UI" case (not used by Ctrl+P).
 ipcMain.handle('window:print', () => {
   if (!mainWin) return
   mainWin.webContents.print({ silent: false, printBackground: true }, () => {})

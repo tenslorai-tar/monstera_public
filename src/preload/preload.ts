@@ -218,6 +218,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   printWindow: (): Promise<void> =>
     ipcRenderer.invoke('window:print'),
 
+  printPdf: (bytes: ArrayBuffer, opts: { pages?: number[]; dpi?: number }): Promise<boolean> =>
+    ipcRenderer.invoke('print:pdf', bytes, opts),
+
   confirmUnsaved: (fileName: string): Promise<'save' | 'discard' | 'cancel'> =>
     ipcRenderer.invoke('dialog:confirmUnsaved', fileName),
 

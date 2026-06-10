@@ -8,6 +8,7 @@ import PdfViewer from './components/PdfViewer'
 import SearchPanel from './components/SearchPanel'
 import StartScreen from './components/StartScreen'
 import SplitDialog from './components/SplitDialog'
+import PrintDialog from './components/PrintDialog'
 import MetadataDialog from './components/MetadataDialog'
 import PasswordDialog from './components/PasswordDialog'
 import RedactConfirmDialog from './components/RedactConfirmDialog'
@@ -130,6 +131,7 @@ export default function App() {
   }, [])
 
   const [splitOpen,         setSplitOpen]         = useState(false)
+  const [printOpen,         setPrintOpen]          = useState(false)
   const [metadataOpen,      setMetadataOpen]       = useState(false)
   const [securityOpen,      setSecurityOpen]       = useState(false)
   const [redactConfirmOpen, setRedactConfirmOpen]  = useState(false)
@@ -350,7 +352,7 @@ export default function App() {
         case 'saveAs':       s.saveAs(); break
         case 'undo':         s.undo(); break
         case 'redo':         s.redo(); break
-        case 'print':        window.electronAPI.printWindow().catch(() => {}); break
+        case 'print':        if (s.numPages > 0) setPrintOpen(true); break
         case 'metadata':     setMetadataOpen(true); break
         case 'security':     setSecurityOpen(true); break
         case 'ocr':          setOcrOpen(true); break
@@ -457,7 +459,7 @@ export default function App() {
     onOpen: openMany,
     onSettings: () => setSettingsOpen(true),
     onShortcuts: () => setShortcutsOpen(true),
-    onPrint: () => window.electronAPI.printWindow().catch(() => {}),
+    onPrint: () => { if (usePdfStore.getState().numPages > 0) setPrintOpen(true) },
   })
 
   const hasPdf = numPages > 0
@@ -649,6 +651,7 @@ export default function App() {
           onClose={() => setSplitOpen(false)}
         />
       )}
+      {printOpen      && <PrintDialog      onClose={() => setPrintOpen(false)} />}
       {metadataOpen   && <MetadataDialog   onClose={() => setMetadataOpen(false)} />}
       {securityOpen   && <PasswordDialog   onClose={() => setSecurityOpen(false)} />}
       {ocrOpen        && <OcrDialog        onClose={() => setOcrOpen(false)} />}
