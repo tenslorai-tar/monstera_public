@@ -238,6 +238,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // The .pdf path this app was launched with, if any (folder double-click).
   getPendingOpenPath: (): Promise<string | null> =>
     ipcRenderer.invoke('app:getPendingOpenPath'),
+  // The app's build version (e.g. "0.1.3"), so the UI can show which build is running.
+  getAppVersion: (): Promise<string> =>
+    ipcRenderer.invoke('app:getVersion'),
 
   // ── Native binary management ─────────────────────────────────────────────────
 

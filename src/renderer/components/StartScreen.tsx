@@ -12,6 +12,7 @@ interface Props {
   onRemoveRecent: (filePath: string) => void
   openError?: string
   onClearError?: () => void
+  version?: string
 }
 
 const FEATURES = [
@@ -24,7 +25,7 @@ const FEATURES = [
 ]
 
 export default function StartScreen({
-  recentFiles, onOpen, onOpenRecent, onRemoveRecent, openError, onClearError,
+  recentFiles, onOpen, onOpenRecent, onRemoveRecent, openError, onClearError, version,
 }: Props) {
   return (
     <div className="start-screen">
@@ -33,7 +34,7 @@ export default function StartScreen({
           <img src={logoUrl} alt="Monstera" className="start-logo-img" draggable={false} />
         </div>
         <h1 className="start-title">Monstera</h1>
-        <div className="start-subtitle">PDF EDITOR</div>
+        <div className="start-subtitle">PDF EDITOR{version ? ` · v${version}` : ''}</div>
         <p className="start-tagline">A modern PDF editor — built for the way you work.</p>
       </div>
 

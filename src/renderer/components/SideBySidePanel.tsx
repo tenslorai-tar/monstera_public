@@ -34,11 +34,14 @@ function LazyDocPage({ doc, pageNum, scale, pageW, pageH, root }: {
     ;(async () => {
       const page = await doc.getPage(pageNum)
       if (cancelled) return
-      const vp = page.getViewport({ scale })
       const c = canvasRef.current
       if (!c) return
-      c.width = vp.width; c.height = vp.height
-      await page.render({ canvasContext: c.getContext('2d')!, viewport: vp }).promise
+      // Render at devicePixelRatio× into the backing store (CSS size stays 100% of
+      // the wrapper) so text is crisp on HiDPI displays.
+      const dpr = Math.min(Math.max(window.devicePixelRatio || 1, 1), 3)
+      const rvp = page.getViewport({ scale: scale * dpr })
+      c.width = rvp.width; c.height = rvp.height
+      await page.render({ canvasContext: c.getContext('2d')!, viewport: rvp }).promise
     })()
     return () => { cancelled = true }
   }, [inView, doc, pageNum, scale])

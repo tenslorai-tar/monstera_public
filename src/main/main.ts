@@ -74,6 +74,9 @@ if (!gotInstanceLock) {
 // The renderer pulls the launch path once mounted, then OS pushes use file:open-path.
 ipcMain.handle('app:getPendingOpenPath', () => { const p = pendingOpenPath; pendingOpenPath = null; return p })
 
+// App version (from package.json) so the UI can show users which build they run.
+ipcMain.handle('app:getVersion', () => app.getVersion())
+
 function buildAppMenu(win: BrowserWindow): Menu {
   const send = (action: string) => () => {
     if (!win.isDestroyed()) win.webContents.send('menu:action', action)

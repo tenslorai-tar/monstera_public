@@ -135,6 +135,7 @@ declare global {
       onOpenFile: (callback: (filePath: string) => void) => void
       removeOpenFileListener: () => void
       getPendingOpenPath: () => Promise<string | null>
+      getAppVersion: () => Promise<string>
 
       aiQuery: (apiKey: string, messages: Array<{ role: 'user' | 'assistant'; content: string }>, systemPrompt: string) => Promise<string>
 

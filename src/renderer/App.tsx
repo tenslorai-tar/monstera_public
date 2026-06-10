@@ -184,6 +184,7 @@ export default function App() {
   const [deskewOpen,           setDeskewOpen]           = useState(false)
   const [splitViewOpen,        setSplitViewOpen]        = useState(false)
   const [sideBySideOpen,       setSideBySideOpen]       = useState(false)
+  const [appVersion,           setAppVersion]           = useState('')
 
   const [passwordPrompt,    setPasswordPrompt]     = useState<PasswordPromptState>(null)
   const [passwordError,     setPasswordError]      = useState('')
@@ -284,6 +285,11 @@ export default function App() {
     return () => { cancelled = true }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Build version, shown in the title bar + start screen so users can confirm the build.
+  useEffect(() => {
+    window.electronAPI.getAppVersion?.().then(v => setAppVersion(v || '')).catch(() => {})
+  }, [])
+
   // ── Autosave ─────────────────────────────────────────────────────────────────
 
   const autosaveRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -321,13 +327,14 @@ export default function App() {
   // ── Window title sync ────────────────────────────────────────────────────────
 
   useEffect(() => {
+    const suffix = `Monstera PDF Editor${appVersion ? ` v${appVersion}` : ''}`
     const title = fileName
-      ? `${isDirty ? '● ' : ''}${fileName} — Monstera PDF Editor`
-      : 'Monstera PDF Editor'
+      ? `${isDirty ? '● ' : ''}${fileName} — ${suffix}`
+      : suffix
     window.electronAPI.setWindowTitle(title).catch(() => {})
     // Mirror unsaved state to main so the window-close (X) can prompt to save.
     window.electronAPI.setDirty?.(isDirty)?.catch(() => {})
-  }, [fileName, isDirty])
+  }, [fileName, isDirty, appVersion])
 
   // ── Action dispatch (shared by the native menu and the ⌘K command palette) ──
 
@@ -616,6 +623,7 @@ export default function App() {
         ) : (
           <StartScreen
             recentFiles={recentFiles}
+            version={appVersion}
             onOpen={openMany}
             onOpenRecent={path => openFile(path)}
             onRemoveRecent={removeRecentFile}

@@ -28,9 +28,13 @@ export default function SplitViewPanel({ onClose }: Props) {
     const doc  = await pdfjsLib.getDocument({ data: pdfBytes.slice() }).promise
     const page = await doc.getPage(pageNum)
     const vp   = page.getViewport({ scale })
-    canvas.width  = vp.width
-    canvas.height = vp.height
-    await page.render({ canvasContext: canvas.getContext('2d')!, viewport: vp }).promise
+    const dpr  = Math.min(Math.max(window.devicePixelRatio || 1, 1), 3)
+    const rvp  = page.getViewport({ scale: scale * dpr })
+    canvas.width  = rvp.width
+    canvas.height = rvp.height
+    canvas.style.width  = `${vp.width}px`
+    canvas.style.height = `${vp.height}px`
+    await page.render({ canvasContext: canvas.getContext('2d')!, viewport: rvp }).promise
   }
 
   useEffect(() => { renderPage(leftRef.current, leftPage) }, [leftPage, pdfBytes, scale])

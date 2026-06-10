@@ -170,6 +170,7 @@ export function installBrowserApi() {
     onOpenFile: () => {},
     removeOpenFileListener: () => {},
     getPendingOpenPath: async () => null,
+    getAppVersion: async () => 'dev',
     openFromUrl: async (url: string) => {
       try { return await (await fetch(url)).arrayBuffer() } catch { return EMPTY }
     },

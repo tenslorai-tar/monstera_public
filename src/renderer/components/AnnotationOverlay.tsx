@@ -112,6 +112,29 @@ function classifyFont(cs: CSSStyleDeclaration, text: string, widthPx: number, si
   return { cssFamily: fam, fontName, bold, italic }
 }
 
+// TEMP diagnostic: show which font path an Edit Text action took, as a small toast
+// (bottom-left) the user can screenshot, plus a console line. Remove once the
+// table-font issue is confirmed fixed.
+function editDbg(msg: string): void {
+  try {
+    // eslint-disable-next-line no-console
+    console.log('[EditText]', msg)
+    const id = 'mz-edit-dbg'
+    let el = document.getElementById(id) as (HTMLElement & { _t?: number }) | null
+    if (!el) {
+      el = document.createElement('div') as HTMLElement & { _t?: number }
+      el.id = id
+      el.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:2147483647;max-width:72vw;'
+        + 'background:rgba(10,10,10,0.92);color:#6dff6d;font:12px/1.45 monospace;padding:8px 10px;'
+        + 'border-radius:8px;white-space:pre-wrap;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,0.5)'
+      document.body.appendChild(el)
+    }
+    el.textContent = 'Edit Text debug:\n' + msg
+    if (el._t) clearTimeout(el._t)
+    el._t = window.setTimeout(() => el?.remove(), 14000)
+  } catch { /* ignore */ }
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 function StampShape({ color, stampName, w, h }: { color: string; stampName: string; w: number; h: number }) {
@@ -395,7 +418,15 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
         // Base64 first so the buffer is read before FontFace can claim it.
         const fontDataB64 = bytesToBase64(sys.data)
         const fontFamily = (await loadPdfFont(sys.data)) ?? undefined
-        return { fontFamily, fontDataB64, sample: domSample }
+        const generic = domSample?.fontName === 'Times-Roman' ? 'serif'
+          : domSample?.fontName === 'Courier' ? 'monospace' : 'sans-serif'
+        // If the FontFace failed to load, still try the installed family NAME (works
+        // where Chromium can see the font), then the PDF.js face, then generic.
+        const sample: FontSample = fontFamily
+          ? (domSample ?? { cssFamily: `'${sys.family}', ${generic}`, fontName: 'Helvetica', bold, italic })
+          : { cssFamily: `'${sys.family}', ${domSample?.cssFamily ?? generic}`,
+              fontName: domSample?.fontName ?? 'Helvetica', bold, italic }
+        return { fontFamily, fontDataB64, sample }
       }
     } catch { /* fall through to the embedded font */ }
     if (embedded && embedded.byteLength > 0) {
@@ -689,6 +720,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
                     // e.g. "Aptos Narrow,Bold" → system "Arial Narrow Bold".
                     const eff = await resolveEditFont(obj.fontName, obj.fontLoadable ? obj.fontData : null, sample)
                     fontFamily = eff.fontFamily; fontDataB64 = eff.fontDataB64; sample = eff.sample ?? sample
+                    editDbg(`CLICK nested  font="${obj.fontName}"\nface=${fontFamily ?? '(none — using sample)'}  bytes=${fontDataB64?.length ?? 0}\nsampleCss=${sample?.cssFamily ?? '-'}`)
                   } else if (obj.fontLoadable && obj.fontData.byteLength > 0) {
                     fontFamily = (await loadPdfFont(obj.fontData)) ?? undefined
                     if (fontFamily) fontDataB64 = bytesToBase64(obj.fontData)
@@ -708,6 +740,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
           // PDFium unavailable or no text object found → edit the text run under
           // the cursor via the PDF.js text layer (cover-and-replace on commit).
           const span = readTextSpanAt(sx, sy)
+          editDbg(`CLICK DOM fallback (PDFium unavailable or no hit)\nspan=${span ? 'yes' : 'no'}  sampleCss=${span?.sample?.cssFamily ?? '-'}`)
           if (span) {
             setDraw({ k: 'text-edit-edit', x: span.x, y: span.y,
               w: Math.max(24, span.w), h: Math.max(10, span.h),
@@ -743,6 +776,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
             if (res.nested) {
               const eff = await resolveEditFont(res.fontName, res.fontLoadable ? res.fontData : null, dom.sample)
               fontFamily = eff.fontFamily; fontDataB64 = eff.fontDataB64; sampleOverride = eff.sample
+              editDbg(`DRAG nested  font="${res.fontName}"\nface=${fontFamily ?? '(none — using sample)'}  bytes=${fontDataB64?.length ?? 0}\nsampleCss=${sampleOverride?.cssFamily ?? '-'}`)
             } else if (res.fontLoadable && res.fontData.byteLength > 0) {
               fontFamily = (await loadPdfFont(res.fontData)) ?? undefined
               if (fontFamily) fontDataB64 = bytesToBase64(res.fontData)

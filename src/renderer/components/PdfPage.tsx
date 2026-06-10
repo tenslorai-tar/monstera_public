@@ -92,6 +92,14 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
       const viewport = page.getViewport({ scale })
       const ctx = canvas.getContext('2d')!
 
+      // Crisp text on HiDPI displays: paint the backing store at devicePixelRatio×
+      // (capped) the logical size, but keep the canvas's CSS size at the logical
+      // page size so the text/annotation overlays still align 1:1. Without this the
+      // canvas was a soft 1:1-CSS-pixel bitmap upscaled by the browser.
+      const dpr = Math.min(Math.max(window.devicePixelRatio || 1, 1), 3)
+      canvas.style.width = `${viewport.width}px`
+      canvas.style.height = `${viewport.height}px`
+
       // Canvas pixels: PDFium (opt-in, higher fidelity) or PDF.js. The text layer
       // below is always PDF.js, so selection/search stays intact either way.
       let painted = false
@@ -99,7 +107,7 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
         try {
           const bytes = usePdfStore.getState().pdfBytes
           if (bytes) {
-            const img = await hdRenderPage(bytes, pageNum - 1, scale)
+            const img = await hdRenderPage(bytes, pageNum - 1, scale * dpr)
             if (cancelled || gen !== renderGenRef.current) return
             if (img && img.width > 0 && img.data.byteLength === img.width * img.height * 4) {
               canvas.width = img.width
@@ -112,13 +120,14 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
       }
 
       if (!painted) {
-        canvas.width = viewport.width
-        canvas.height = viewport.height
+        const rvp = page.getViewport({ scale: scale * dpr })
+        canvas.width = rvp.width
+        canvas.height = rvp.height
         const ocgConfig = getOcgConfig()
         // annotationMode: 0 = DISABLE — our overlay handles annotation rendering
         await page.render({
           canvasContext: ctx,
-          viewport,
+          viewport: rvp,
           annotationMode: 0,
           ...(ocgConfig ? { optionalContentConfigPromise: Promise.resolve(ocgConfig) } : {}),
         }).promise
