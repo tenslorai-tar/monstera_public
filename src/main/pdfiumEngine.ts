@@ -9,6 +9,7 @@
 import path from 'path'
 import fs from 'fs'
 import koffi from 'koffi'
+import fontkit from '@pdf-lib/fontkit'
 
 const PDFOBJ_TEXT = 1
 const PDFOBJ_FORM = 5  // FPDF_PAGEOBJ_FORM — a nested content group (Form XObject)
@@ -827,6 +828,30 @@ export function replaceAllText(
 
 const FPDF_FONT_TRUETYPE = 2
 
+// True only when the font file provably has a real glyph for every non-space
+// character — the gate that keeps reflow from ever writing .notdef boxes.
+function fontCovers(data: Buffer, text: string): boolean {
+  try {
+    let f = fontkit.create(data) as unknown as {
+      fonts?: Array<{ hasGlyphForCodePoint(cp: number): boolean }>
+      hasGlyphForCodePoint(cp: number): boolean
+    }
+    if (f.fonts && f.fonts.length) f = f.fonts[0] as typeof f
+    for (const ch of new Set(text.replace(/\s/g, ''))) {
+      if (!f.hasGlyphForCodePoint(ch.codePointAt(0)!)) return false
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+// Helvetica (standard font, WinAnsi encoding) can safely render Latin-1 plus
+// the few typographic marks WinAnsi carries (curly quotes, dashes, bullet, …).
+function isWinAnsiText(text: string): boolean {
+  return /^[\n\r\t\u0020-\u007E\u00A0-\u00FF\u2013\u2014\u2018\u2019\u201C\u201D\u2022\u2026\u20AC\u2122]*$/.test(text)
+}
+
 interface ParaRun {
   obj: unknown; l: number; b: number; r: number; t: number
   nested: boolean; text: string; fontSize: number; baseX: number; baseY: number
@@ -889,6 +914,35 @@ function groupIntoLines(runs: ParaRun[]): ParaLine[] {
   return lines
 }
 
+// A line that begins a list item starts a NEW paragraph — without this, a CV's
+// whole bullet list (consistent leading, same font) fuses into one giant block
+// and an edit replaces the entire section. Covers •/◦/dashes, Word's Symbol-font
+// bullets (PUA F0xx), the literal "o" sub-bullet, and numbered/lettered markers.
+function isListItemStart(ln: ParaLine): boolean {
+  return /^\s*([•◦▪‣·∙*]|[-]|[-–—]|o |\(?\d{1,3}[.)]\s|\(?[a-zA-Z][.)]\s)/.test(ln.text)
+}
+
+// A list item's marker glyph ("•", "o", "-") is its own text run sitting left
+// of the text. Keep it OUT of the paragraph: it stays on the page untouched,
+// the edit covers only the item's text, and the hanging indent survives reflow.
+function stripLeadingMarker(grp: ParaLine[]): void {
+  const ln = grp[0]
+  if (!ln || ln.runs.length < 2) return
+  const m = ln.runs[0]
+  if (!/^[•◦▪‣·∙oO*\-–]$/.test(m.text.trim())) return
+  if (ln.runs[1].l - m.r < Math.max(1, ln.fontSize * 0.2)) return
+  ln.runs = ln.runs.slice(1)
+  ln.l = Math.min(...ln.runs.map(r => r.l))
+  let text = ''
+  let prevRight: number | null = null
+  for (const r of ln.runs) {
+    if (prevRight !== null && r.l - prevRight > Math.max(0.5, ln.fontSize * 0.18) && text && !text.endsWith(' ')) text += ' '
+    text += r.text
+    prevRight = r.r
+  }
+  ln.text = text
+}
+
 // Grow the clicked line up/down into a paragraph: consistent leading, similar
 // font size (so headings don't fuse with body text), and horizontal overlap.
 function paragraphLinesAt(lines: ParaLine[], x: number, y: number): ParaLine[] {
@@ -901,23 +955,32 @@ function paragraphLinesAt(lines: ParaLine[], x: number, y: number): ParaLine[] {
     const ratio = above.fontSize / below.fontSize
     if (ratio < 0.77 || ratio > 1.3) return false
     const overlap = Math.min(above.r, below.r) - Math.max(above.l, below.l)
-    return overlap >= Math.min(above.r - above.l, below.r - below.l) * 0.3
+    if (overlap < Math.min(above.r - above.l, below.r - below.l) * 0.3) return false
+    // List-item boundaries: a marker line starts a paragraph, and a line that
+    // OUT-dents past the hanging indent does too (catches PUA bullets the
+    // marker regex can't know about).
+    if (isListItemStart(below)) return false
+    if (below.l < above.l - Math.max(4, fs * 0.8)) return false
+    return true
   }
   let start = idx, end = idx
   while (start > 0 && samePara(lines[start - 1], lines[start])) start--
   while (end < lines.length - 1 && samePara(lines[end], lines[end + 1])) end++
-  const grp = lines.slice(start, end + 1)
-  if (grp.length < 3) return grp
-  // Trim outward from the clicked line where the leading deviates from the
-  // paragraph's median — a larger gap means a paragraph break.
-  const gaps: number[] = []
-  for (let i = 0; i + 1 < grp.length; i++) gaps.push(grp[i].baseY - grp[i + 1].baseY)
-  const med = [...gaps].sort((a, b) => a - b)[Math.floor(gaps.length / 2)]
-  const ci = idx - start
-  let s = ci, e = ci
-  while (s > 0 && Math.abs((grp[s - 1].baseY - grp[s].baseY) - med) <= med * 0.4) s--
-  while (e < grp.length - 1 && Math.abs((grp[e].baseY - grp[e + 1].baseY) - med) <= med * 0.4) e++
-  return grp.slice(s, e + 1)
+  let grp = lines.slice(start, end + 1)
+  if (grp.length >= 3) {
+    // Trim outward from the clicked line where the leading deviates from the
+    // paragraph's median — a larger gap means a paragraph break.
+    const gaps: number[] = []
+    for (let i = 0; i + 1 < grp.length; i++) gaps.push(grp[i].baseY - grp[i + 1].baseY)
+    const med = [...gaps].sort((a, b) => a - b)[Math.floor(gaps.length / 2)]
+    const ci = idx - start
+    let s = ci, e = ci
+    while (s > 0 && Math.abs((grp[s - 1].baseY - grp[s].baseY) - med) <= med * 0.4) s--
+    while (e < grp.length - 1 && Math.abs((grp[e].baseY - grp[e + 1].baseY) - med) <= med * 0.4) e++
+    grp = grp.slice(s, e + 1)
+  }
+  stripLeadingMarker(grp)
+  return grp
 }
 
 function detectAlign(grp: ParaLine[]): 'left' | 'center' | 'right' {
@@ -1013,9 +1076,11 @@ export function getParagraphAt(bytes: Buffer, pageIndex: number, x: number, y: n
  * Replace the paragraph at (x, y) with `newText`, reflowing it: the original
  * runs are removed and the new text is greedy-wrapped to the paragraph's width
  * at its original leading, alignment, colour and font size. `substituteFont`
- * (a complete installed font file) is preferred over the document's embedded
- * font, which is usually a subset that lacks glyphs for newly typed characters;
- * without a substitute the original font handle is reused as-is.
+ * (a complete installed font file) and the document's embedded font program are
+ * both candidates — whichever PROVABLY covers every typed character wins, with
+ * the embedded font preferred for exact fidelity. A font that can't be glyph-
+ * verified is never used: re-inserting text through an unverified font is how
+ * an entire paragraph turns into .notdef boxes.
  */
 export function replaceParagraphAt(
   bytes: Buffer, pageIndex: number, x: number, y: number, newText: string,
@@ -1044,18 +1109,27 @@ export function replaceParagraphAt(
     const align = detectAlign(grp)
     const firstBaseY = grp[0].baseY
 
+    // Pick a font that PROVABLY has a glyph for every character being written.
+    // The embedded program wins (exact face) when it covers the text — Word
+    // subsets usually retain the document's own alphabet — otherwise the
+    // complete installed substitute, otherwise Helvetica for Latin text.
+    // NEVER fall back to the original font handle: for subsetted CID fonts
+    // FPDFText_SetText through it maps to .notdef and the paragraph renders
+    // as rows of boxes.
+    const embedded = extractFont(L, firstRun.obj)
+    const candidates: Buffer[] = []
+    if (embedded.loadable && fontCovers(embedded.data, newText)) candidates.push(embedded.data)
+    if (substituteFont && substituteFont.length > 4 && fontCovers(substituteFont, newText)) candidates.push(substituteFont)
     let loadedFont: unknown = null
-    if (substituteFont && substituteFont.length > 4) {
-      try { loadedFont = L.LoadFontData(doc, substituteFont, substituteFont.length, FPDF_FONT_TRUETYPE, 1) }
-      catch { loadedFont = null }
+    for (const c of candidates) {
+      try { loadedFont = L.LoadFontData(doc, c, c.length, FPDF_FONT_TRUETYPE, 1) } catch { loadedFont = null }
+      if (loadedFont) break
     }
-    let font = loadedFont
-    if (!font) font = L.GetFont(firstRun.obj)
-    if (!font) {
-      loadedFont = L.LoadStandardFont(doc, 'Helvetica')
-      font = loadedFont
+    if (!loadedFont && isWinAnsiText(newText)) {
+      try { loadedFont = L.LoadStandardFont(doc, 'Helvetica') } catch { loadedFont = null }
     }
-    if (!font) throw new Error('No usable font for paragraph reflow')
+    const font = loadedFont
+    if (!font) throw new Error('No installed or embedded font covers the edited text — falling back to overlay editing')
 
     const scratch = L.CreateTextObj(doc, font, fontSize)
     if (!scratch) throw new Error('PDFium could not create a text object')
