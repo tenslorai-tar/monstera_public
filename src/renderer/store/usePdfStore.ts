@@ -71,7 +71,24 @@ export type ZoomMode = 'custom' | 'fit-width' | 'fit-page'
 
 export const PAGE_GAP = 16
 const CANVAS_PADDING = 48
-const MAX_UNDO = 10
+// Undo is tiered: overlay-only steps (annotation/form changes) share the same
+// byte buffer by reference and are nearly free, so the stack can be deep.
+// Steps that changed the document bytes each retain a full buffer — cap how
+// many distinct buffers stay alive so huge scans can't pin gigabytes.
+const MAX_UNDO = 50
+const MAX_BYTE_SNAPSHOTS = 10
+
+// Trim a snapshot stack: at most MAX_UNDO entries, and only the newest
+// MAX_BYTE_SNAPSHOTS distinct byte buffers (older entries are dropped).
+function trimUndoStack(stack: EditSnapshot[]): EditSnapshot[] {
+  const out = stack.slice(-MAX_UNDO)
+  const seen = new Set<Uint8Array>()
+  for (let i = out.length - 1; i >= 0; i--) {
+    seen.add(out[i].bytes)
+    if (seen.size > MAX_BYTE_SNAPSHOTS) return out.slice(i + 1)
+  }
+  return out
+}
 
 function computeFitScale(
   mode: ZoomMode, pageSizes: PageSize[], containerWidth: number, containerHeight: number
@@ -483,7 +500,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     const { pdfBytes, annotations, formFields, undoStack } = get()
     if (!pdfBytes) return
     const snap: EditSnapshot = { bytes: pdfBytes, annotations, formFields }
-    set({ undoStack: [...undoStack.slice(-(MAX_UNDO - 1)), snap], redoStack: [] })
+    set({ undoStack: trimUndoStack([...undoStack, snap]), redoStack: [] })
   },
 
   applyEdit: async (newBytes) => {
@@ -519,12 +536,25 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     const prev = undoStack[undoStack.length - 1]
     const cur: EditSnapshot = { bytes: pdfBytes, annotations, formFields }
     const newUndo = undoStack.slice(0, -1)
+
+    // Fast path: the step only touched the overlay (same byte buffer) — no
+    // document re-parse, no text re-extraction, view state untouched.
+    if (prev.bytes === pdfBytes) {
+      set({
+        annotations: prev.annotations, formFields: prev.formFields,
+        undoStack: newUndo, redoStack: trimUndoStack([...redoStack, cur]),
+        isDirty: newUndo.length > 0,
+        selectedAnnotationId: null, openStickyNoteId: null,
+      })
+      return
+    }
+
     const { pdfDoc, numPages, pageSizes } = await buildPdfDoc(prev.bytes)
     clearTextCache()
     set({
       pdfDoc, pdfBytes: prev.bytes, numPages, pageSizes,
       annotations: prev.annotations, formFields: prev.formFields,
-      undoStack: newUndo, redoStack: [...redoStack.slice(-(MAX_UNDO - 1)), cur],
+      undoStack: newUndo, redoStack: trimUndoStack([...redoStack, cur]),
       isDirty: newUndo.length > 0,
       currentPage: Math.min(currentPage, numPages),
       selectedAnnotationId: null, openStickyNoteId: null,
@@ -538,12 +568,23 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     if (redoStack.length === 0 || !pdfBytes) return
     const next = redoStack[redoStack.length - 1]
     const cur: EditSnapshot = { bytes: pdfBytes, annotations, formFields }
+
+    if (next.bytes === pdfBytes) {
+      set({
+        annotations: next.annotations, formFields: next.formFields,
+        undoStack: trimUndoStack([...undoStack, cur]), redoStack: redoStack.slice(0, -1),
+        isDirty: true,
+        selectedAnnotationId: null, openStickyNoteId: null,
+      })
+      return
+    }
+
     const { pdfDoc, numPages, pageSizes } = await buildPdfDoc(next.bytes)
     clearTextCache()
     set({
       pdfDoc, pdfBytes: next.bytes, numPages, pageSizes,
       annotations: next.annotations, formFields: next.formFields,
-      undoStack: [...undoStack.slice(-(MAX_UNDO - 1)), cur], redoStack: redoStack.slice(0, -1),
+      undoStack: trimUndoStack([...undoStack, cur]), redoStack: redoStack.slice(0, -1),
       isDirty: true,
       currentPage: Math.min(currentPage, numPages),
       selectedAnnotationId: null, openStickyNoteId: null,
