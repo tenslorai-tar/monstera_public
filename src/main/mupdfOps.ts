@@ -142,6 +142,42 @@ export async function applyRedactions(bytes: ArrayBuffer, areas: RedactArea[]): 
   return out
 }
 
+// Synthesize appearance streams (/AP) for annotations that lack them. pdf-lib
+// writes bare annotation dictionaries; viewers are only *allowed* (not required)
+// to invent appearances for those, so several renderers show nothing. Running
+// pdf_update_page makes MuPDF generate spec-compliant appearance streams, after
+// which the markup renders identically everywhere.
+export async function synthesizeAppearances(bytes: ArrayBuffer): Promise<ArrayBuffer> {
+  const mupdf = await getMupdf()
+  const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
+  try {
+    const n = doc.countPages()
+    for (let i = 0; i < n; i++) {
+      const page = doc.loadPage(i)
+      try {
+        for (const a of page.getAnnotations()) {
+          try {
+            const type = a.getType()
+            if (type === 'Link' || type === 'Popup') continue
+            const ap = a.getObject().get('AP')
+            if (ap && !ap.isNull()) continue  // already has an appearance
+            // MuPDF only re-synthesizes annotations marked dirty; a no-op
+            // setFlags() sets that flag, then update() builds the /AP stream.
+            a.setFlags(a.getFlags())
+            a.update()
+          } catch { /* leave this annotation as-is */ }
+        }
+        page.update()
+      } catch { /* leave page as-is */ }
+      freeMupdf(page)
+    }
+    const buf = doc.saveToBuffer('')
+    const out = mupdfBytes(buf)
+    freeMupdf(buf)
+    return out
+  } finally { freeMupdf(doc) }
+}
+
 export async function getOutline(bytes: ArrayBuffer): Promise<BookmarkItem[]> {
   const mupdf = await getMupdf()
   const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')

@@ -202,6 +202,7 @@ export function installBrowserApi() {
     mupdfEncrypt: echo,
     mupdfRemovePassword: echo,
     mupdfApplyRedactions: echo,
+    mupdfSynthesizeAppearances: echo,
     mupdfGetOutline: emptyArr,
     mupdfWriteOutline: echo,
     mupdfExtractAllText: emptyArr,

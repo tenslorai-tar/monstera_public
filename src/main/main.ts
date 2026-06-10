@@ -785,6 +785,9 @@ ipcMain.handle('mupdf:removePassword', (_event, bytes: ArrayBuffer, password: st
 ipcMain.handle('mupdf:applyRedactions', (_event, bytes: ArrayBuffer, areas: mupdfOps.RedactArea[]) =>
   mupdfCall('applyRedactions', [bytes, areas]))
 
+ipcMain.handle('mupdf:synthesizeAppearances', (_event, bytes: ArrayBuffer) =>
+  mupdfCall('synthesizeAppearances', [bytes]))
+
 // ── Outline (Bookmarks) ───────────────────────────────────────────────────────
 
 ipcMain.handle('mupdf:getOutline', (_event, bytes: ArrayBuffer) =>

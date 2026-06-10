@@ -126,6 +126,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     pageNum: number; x1: number; y1: number; x2: number; y2: number; blurred?: boolean;
   }>): Promise<ArrayBuffer> => ipcRenderer.invoke('mupdf:applyRedactions', bytes, areas),
 
+  mupdfSynthesizeAppearances: (bytes: ArrayBuffer): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('mupdf:synthesizeAppearances', bytes),
+
   mupdfGetOutline: (bytes: ArrayBuffer): Promise<Array<{ id: string; title: string; pageNum: number }>> =>
     ipcRenderer.invoke('mupdf:getOutline', bytes),
 

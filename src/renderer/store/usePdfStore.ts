@@ -462,8 +462,16 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     const { pdfBytes, annotations, formFields } = get()
     if (!pdfBytes) throw new Error('No document loaded')
     let bytes = pdfBytes
+    const hasMarkup = annotations.some(a => a.type !== 'placed-image' && a.type !== 'text-edit')
     if (annotations.length > 0) bytes = await writeAnnotationsToPdf(bytes, annotations)
     if (formFields.length > 0) bytes = await writeFormToBytes(bytes, formFields)
+    // pdf-lib writes bare annotation dicts; let MuPDF synthesize the /AP
+    // appearance streams so the markup renders in every viewer.
+    if (hasMarkup) {
+      try {
+        bytes = new Uint8Array(await window.electronAPI.mupdfSynthesizeAppearances(bytes.slice().buffer as ArrayBuffer))
+      } catch { /* keep un-synthesized bytes rather than failing the save */ }
+    }
     return bytes
   },
 
@@ -549,11 +557,9 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     // launching a second concurrent write to the same file.
     if (saveInFlight) return saveInFlight
     saveInFlight = (async () => {
-      const { filePath, pdfBytes, annotations, formFields, encryptionSettings, bookmarks } = get()
+      const { filePath, pdfBytes, annotations, formFields, encryptionSettings, bookmarks, getBakedBytes } = get()
       if (!pdfBytes || !filePath) return
-      let baked = pdfBytes
-      if (annotations.length > 0) baked = await writeAnnotationsToPdf(baked, annotations)
-      if (formFields.length > 0) baked = await writeFormToBytes(baked, formFields)
+      let baked = await getBakedBytes()
       baked = new Uint8Array(await window.electronAPI.mupdfWriteOutline(baked.buffer as ArrayBuffer, bookmarks))
       if (encryptionSettings) {
         baked = new Uint8Array(await window.electronAPI.mupdfEncrypt(baked.buffer as ArrayBuffer, encryptionSettings))
@@ -571,13 +577,11 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   },
 
   saveAs: async () => {
-    const { fileName, pdfBytes, annotations, formFields, encryptionSettings, bookmarks } = get()
+    const { fileName, pdfBytes, annotations, formFields, encryptionSettings, bookmarks, getBakedBytes } = get()
     if (!pdfBytes) return
     const newPath = await window.electronAPI.saveFileDialog(fileName || 'document.pdf')
     if (!newPath) return
-    let baked = pdfBytes
-    if (annotations.length > 0) baked = await writeAnnotationsToPdf(baked, annotations)
-    if (formFields.length > 0) baked = await writeFormToBytes(baked, formFields)
+    let baked = await getBakedBytes()
     baked = new Uint8Array(await window.electronAPI.mupdfWriteOutline(baked.buffer as ArrayBuffer, bookmarks))
     if (encryptionSettings) {
       baked = new Uint8Array(await window.electronAPI.mupdfEncrypt(baked.buffer as ArrayBuffer, encryptionSettings))
@@ -805,7 +809,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
           color: '#000000', opacity: 1, createdAt: Date.now(),
         } as import('../types/annotations').PlacedImageAnn)
       }
-      pdfDoc.destroy().catch(() => {})
+      pdfDoc.loadingTask.destroy().catch(() => {})
     }
 
     // Permanently remove the content under EVERY marked area (solid and

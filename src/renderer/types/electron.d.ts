@@ -92,6 +92,7 @@ declare global {
         pageNum: number; x1: number; y1: number; x2: number; y2: number; blurred?: boolean;
       }>) => Promise<ArrayBuffer>
 
+      mupdfSynthesizeAppearances: (bytes: ArrayBuffer) => Promise<ArrayBuffer>
       mupdfGetOutline: (bytes: ArrayBuffer) => Promise<Array<{ id: string; title: string; pageNum: number }>>
       mupdfWriteOutline: (bytes: ArrayBuffer, bookmarks: Array<{ id: string; title: string; pageNum: number }>) => Promise<ArrayBuffer>
 
