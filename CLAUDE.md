@@ -13,10 +13,10 @@ and ignore code signing entirely. Target quality: comparable to PDF-XChange Edit
 |---|---|---|
 | Desktop shell | Electron | Window management, native OS integration, .exe packaging |
 | UI framework | React + Vite + TypeScript | All renderer-side UI and state |
-| PDF rendering | pdfjs-dist (PDF.js) | Render pages to canvas, text layer, search |
-| PDF editing | pdf-lib | Page operations, annotations, forms, metadata, encryption |
-| Heavy PDF ops | mupdf (WASM) | Operations PDF.js/pdf-lib cannot do (redaction, advanced rendering, etc.) |
-| OCR | tesseract.js | Optical character recognition on scanned pages |
+| PDF rendering | pdfjs-dist (PDF.js) v6 | Render pages to canvas, text layer, search. `render()` takes the `canvas` element (not `canvasContext`); worker wired via `src/renderer/utils/pdfjsWorker.ts` (`?url` import) |
+| PDF editing | pdf-lib (aliased to the maintained fork `@cantoo/pdf-lib`) | Page operations, annotations, forms, metadata. Import stays `from 'pdf-lib'` — the alias lives in package.json |
+| Heavy PDF ops | mupdf (WASM) v1.27 | Redaction, outline, appearance-stream synthesis, print rendering, etc. **Annotation rects are fitz space (y-down)** — flip PDF-space y before `setRect` |
+| OCR | tesseract.js v7 | OCR on scanned pages. Word boxes require `recognize(img, {}, { blocks: true })` and flattening the blocks tree |
 | Packaging | electron-builder | Produce Windows NSIS installer + portable .exe |
 
 > **Rule:** When a library cannot do something, propose swapping in a more capable
@@ -91,6 +91,7 @@ Monstera PDF Editor/
 - [x] Recent files list on start screen (localStorage, up to 10)
 - [x] PDF.js text layer (selectable + copyable text)
 - [x] Full-text search with highlighted matches and Prev/Next navigation (Ctrl+F)
+- [x] Search options: match case / whole word / regex; Unicode-normalized matching (accents, ligatures); exact-substring highlights via the CSS Custom Highlight API; cancellable background indexing with progress
 
 ### Phase 2 — Page Management ✅
 - [x] Delete page(s) — right-click context menu or Page Ops bar when multiple selected
@@ -154,7 +155,7 @@ Monstera PDF Editor/
 - [x] Flatten form to PDF (pdf-lib) — "⊞ Flatten" button bakes all values into page content
 - [x] Form field creation — draw new text fields, checkboxes, signature areas onto any page
 - [x] Forms panel — list all fields by page, click to jump, delete individual fields
-- [ ] Export form data (FDF / JSON)
+- [x] Export form data (JSON + XFDF) — Forms ribbon → Operations group
 
 **How to test each feature:**
 | Feature | Steps |
@@ -277,7 +278,7 @@ Monstera PDF Editor/
 - [x] App settings dialog (Ctrl+,) — default zoom, theme, OCR language, autosave interval, page number badges; stored in `localStorage`
 - [x] Autosave — configurable interval (1/2/5/10/30 min or off); silently overwrites file when dirty
 - [x] Keyboard shortcut reference panel (F1) — full two-column reference with all shortcuts
-- [x] Print support (Ctrl+P) — triggers Electron native print dialog via `webContents.print()`
+- [x] Print support (Ctrl+P) — real PDF printing: Print dialog (range / current / all, 150–600 DPI), pages rendered by MuPDF at print resolution and handed to the system print dialog (`print:pdf` IPC). Never prints the app DOM.
 - [x] Find & Replace — expand search bar with ▶ toggle; replace works on text annotations (textbox, typewriter, stickynote); original PDF stream replacement noted as requiring native MuPDF
 - [x] Robust error handling — corrupt/unreadable file shows inline error on start screen; password-protected files show password prompt with clear error feedback; all errors caught and displayed
 - [x] Window title sync — title bar shows `filename — Monstera PDF Editor` with ● dirty indicator
@@ -364,8 +365,8 @@ npm run build
 
 #### Blurred Redaction
 - [x] Toggle between solid-black redaction and blurred redaction using the ▪/〜 button next to REDACT
-- [x] Blurred mode: renders page region at 2.5× scale, applies CSS blur (10px), overlays result as placed-image annotation
-- [x] Solid mode: permanent content removal via MuPDF (existing behavior, truly secure)
+- [x] Blurred mode: captures a blurred snapshot of the region, then MuPDF **permanently removes the underlying content** (same true removal as solid mode); the blur image is overlaid as a cosmetic placed-image
+- [x] Solid mode: permanent content removal via MuPDF with a black box
 - [x] Both modes can be mixed in the same document; apply executes both in one pass
 
 **How to test:**
