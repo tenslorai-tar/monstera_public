@@ -183,6 +183,7 @@ export function installBrowserApi() {
     pdfiumRenderSession: async () => ({ stale: true }),
     pdfiumTextInRegion: async () => ({ text: '', fontSize: 0, found: false, color: '#000000', matrix: [1, 0, 0, 1, 0, 0], fontData: EMPTY, fontLoadable: false, nested: false, fontName: '' }),
     pdfiumTextObjectAt: async () => ({ found: false, text: '', fontSize: 0, color: '#000000', x1: 0, y1: 0, x2: 0, y2: 0, matrix: [1, 0, 0, 1, 0, 0], fontData: EMPTY, fontLoadable: false, nested: false, fontName: '' }),
+    pdfiumTextBoxes: async () => [],
     resolveSystemFont: async () => null,
     pdfiumObjectAt: async () => ({ found: false, index: -1, type: 0, color: '', x1: 0, y1: 0, x2: 0, y2: 0 }),
     pdfiumTransformObject: echo,

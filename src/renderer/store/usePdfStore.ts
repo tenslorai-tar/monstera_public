@@ -301,7 +301,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   undoStack: [], redoStack: [],
   selectedPages: new Set(),
   scale: 1.5, zoomMode: 'custom', containerWidth: 0, containerHeight: 0, currentPage: 1,
-  sidebarOpen: true,
+  sidebarOpen: false,
   searchOpen: false, searchQuery: '', searchMatches: [], activeMatchIndex: -1,
   scrollToPage: () => {},
   setScrollToPage: (fn) => set({ scrollToPage: fn }),

@@ -99,7 +99,8 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
       // 1× monitors (where plain devicePixelRatio scaling changes nothing). Capped by
       // both a max multiplier and a max backing dimension to bound canvas memory.
       const dpr = Math.max(window.devicePixelRatio || 1, 1)
-      let density = Math.min(dpr * 2, 3, 4096 / viewport.width, 4096 / viewport.height)
+      const quality = Math.min(Math.max(settings.renderQuality || 3, 1), 5)
+      let density = Math.min(Math.max(dpr, quality), 8192 / viewport.width, 8192 / viewport.height)
       density = Math.max(density, 1)
       canvas.style.width = `${viewport.width}px`
       canvas.style.height = `${viewport.height}px`
@@ -161,7 +162,7 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
     })()
 
     return () => { cancelled = true }
-  }, [inView, pdfDoc, pageNum, scale, layerRevision, settings.pdfiumRender]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [inView, pdfDoc, pageNum, scale, layerRevision, settings.pdfiumRender, settings.renderQuality]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const textDiv = textLayerRef.current

@@ -536,6 +536,29 @@ export function getPageTextRuns(
   }
 }
 
+// Bounds (PDF points, y-up) of every editable text object on a page, INCLUDING
+// text nested inside form XObjects (composed into page space) — so the Edit Text
+// tool can outline everything it can click, the way PDF-XChange does.
+export function getAllTextBoxes(
+  bytes: Buffer, pageIndex: number,
+): Array<{ x1: number; y1: number; x2: number; y2: number; nested: boolean }> {
+  const L = load()
+  const doc = L.LoadMemDocument(bytes, bytes.length, null)
+  if (!doc) return []
+  try {
+    const page = L.LoadPage(doc, pageIndex)
+    const nodes: TextNode[] = []
+    collectTextNodes(L, page, true, IDENTITY, nodes)
+    const boxes = nodes
+      .filter(nd => nd.r - nd.l > 0.5 && nd.t - nd.b > 0.5)
+      .map(nd => ({ x1: nd.l, y1: nd.b, x2: nd.r, y2: nd.t, nested: nd.nested }))
+    L.ClosePage(page)
+    return boxes
+  } finally {
+    L.CloseDocument(doc)
+  }
+}
+
 /**
  * Render page `pageIndex` to an RGBA bitmap at `scale` (CSS px = pt * scale),
  * matching PDF.js geometry. Returns tightly-packed RGBA so the renderer can

@@ -1,6 +1,6 @@
 {
   "name": "monstera-pdf-editor",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Monstera PDF Editor — a desktop PDF editor by Tenslor Inc.",
   "main": "dist-electron/main/main.js",
   "author": "Tenslor Inc.",
@@ -73,10 +73,12 @@
       "createDesktopShortcut": true,
       "shortcutName": "Monstera PDF Editor",
       "uninstallDisplayName": "Monstera PDF Editor (Tenslor Inc.)",
+      "artifactName": "Monstera PDF Editor Update Setup ${version}.${ext}",
       "license": "build/license.txt",
       "installerHeaderIcon": "assets/icons/icon.ico",
       "installerSidebar": "build/installerSidebar.bmp",
-      "installerHeader": "build/installerHeader.bmp"
+      "installerHeader": "build/installerHeader.bmp",
+      "include": "build/installer.nsh"
     }
   },
   "devDependencies": {

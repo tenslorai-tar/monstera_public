@@ -166,28 +166,6 @@ function TextEditRaster({ a, x, y, w, h, scale }: {
   return <image href={href} x={x} y={y} width={w} height={h} preserveAspectRatio="none" opacity={a.opacity} />
 }
 
-// TEMP diagnostic: show which font path an Edit Text action took, as a small toast
-// (bottom-left) the user can screenshot, plus a console line. Remove once the
-// table-font issue is confirmed fixed.
-function editDbg(msg: string): void {
-  try {
-    // eslint-disable-next-line no-console
-    console.log('[EditText]', msg)
-    const id = 'mz-edit-dbg'
-    let el = document.getElementById(id) as (HTMLElement & { _t?: number }) | null
-    if (!el) {
-      el = document.createElement('div') as HTMLElement & { _t?: number }
-      el.id = id
-      el.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:2147483647;max-width:72vw;'
-        + 'background:rgba(10,10,10,0.92);color:#6dff6d;font:12px/1.45 monospace;padding:8px 10px;'
-        + 'border-radius:8px;white-space:pre-wrap;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,0.5)'
-      document.body.appendChild(el)
-    }
-    el.textContent = 'Edit Text debug:\n' + msg
-    if (el._t) clearTimeout(el._t)
-    el._t = window.setTimeout(() => el?.remove(), 14000)
-  } catch { /* ignore */ }
-}
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -317,6 +295,9 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   const cancelEditRef = useRef(false)
   const [draw, setDraw] = useState<DrawPhase>({ k: 'idle' })
   const [imgDrag, setImgDrag] = useState<ImageDrag>({ k: 'idle' })
+  // Outlines of every editable text object on this page, shown while the Edit Text
+  // tool is active (PDF-XChange style) so the user can see what's clickable.
+  const [editBoxes, setEditBoxes] = useState<{ x1: number; y1: number; x2: number; y2: number; nested: boolean }[]>([])
   // Drag-to-move for a selected annotation (any type except placed-image, which
   // has its own move/resize handles). Uses window listeners so it works even in
   // text-select mode where the overlay SVG is otherwise pointer-events:none.
@@ -356,6 +337,24 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
 
   const toSvg = useCallback((pdfX: number, pdfY: number) =>
     pdfToCanvas(pdfX, pdfY, scale, pageH), [scale, pageH])
+
+  // Fetch editable-text outlines when the Edit Text tool turns on (cleared when
+  // off). Only in-view pages mount this overlay, so the work stays bounded.
+  useEffect(() => {
+    if (!isTextEditTool) { setEditBoxes([]); return }
+    let cancelled = false
+    ;(async () => {
+      try {
+        if (!(await pdfiumReady())) return
+        const bytes = usePdfStore.getState().pdfBytes
+        if (!bytes) return
+        const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+        const boxes = await window.electronAPI.pdfiumTextBoxes(ab, pageNum - 1)
+        if (!cancelled) setEditBoxes(boxes)
+      } catch { if (!cancelled) setEditBoxes([]) }
+    })()
+    return () => { cancelled = true }
+  }, [isTextEditTool, pageNum])
 
   const getSvgXY = (e: React.MouseEvent): [number, number] => {
     const rect = svgRef.current!.getBoundingClientRect()
@@ -788,7 +787,6 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
                     // backed by the matching installed font for missing glyphs + save.
                     const eff = await resolveEditFont(obj.fontName, obj.fontLoadable ? obj.fontData : null, sample)
                     fontFamily = eff.fontFamily; fontDataB64 = eff.fontDataB64; sample = eff.sample ?? sample
-                    editDbg(`CLICK nested  font="${obj.fontName}"  embedded=${obj.fontLoadable ? obj.fontData.byteLength + 'B' : 'no'}\nprimaryFace=${fontFamily ?? '(none)'}\nstack=${sample?.cssFamily ?? '-'}\nsaveEmbed=${fontDataB64 ? Math.round(fontDataB64.length * 0.75) + 'B' : 'base-14'}`)
                   } else if (obj.fontLoadable && obj.fontData.byteLength > 0) {
                     fontFamily = (await loadPdfFont(obj.fontData)) ?? undefined
                     if (fontFamily) fontDataB64 = bytesToBase64(obj.fontData)
@@ -808,7 +806,6 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
           // PDFium unavailable or no text object found → edit the text run under
           // the cursor via the PDF.js text layer (cover-and-replace on commit).
           const span = readTextSpanAt(sx, sy)
-          editDbg(`CLICK DOM fallback (PDFium unavailable or no hit)\nspan=${span ? 'yes' : 'no'}  sampleCss=${span?.sample?.cssFamily ?? '-'}`)
           if (span) {
             setDraw({ k: 'text-edit-edit', x: span.x, y: span.y,
               w: Math.max(24, span.w), h: Math.max(10, span.h),
@@ -844,7 +841,6 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
             if (res.nested) {
               const eff = await resolveEditFont(res.fontName, res.fontLoadable ? res.fontData : null, dom.sample)
               fontFamily = eff.fontFamily; fontDataB64 = eff.fontDataB64; sampleOverride = eff.sample
-              editDbg(`DRAG nested  font="${res.fontName}"  embedded=${res.fontLoadable ? res.fontData.byteLength + 'B' : 'no'}\nprimaryFace=${fontFamily ?? '(none)'}\nstack=${sampleOverride?.cssFamily ?? '-'}\nsaveEmbed=${fontDataB64 ? Math.round(fontDataB64.length * 0.75) + 'B' : 'base-14'}`)
             } else if (res.fontLoadable && res.fontData.byteLength > 0) {
               fontFamily = (await loadPdfFont(res.fontData)) ?? undefined
               if (fontFamily) fontDataB64 = bytesToBase64(res.fontData)
@@ -2059,6 +2055,14 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
         onDoubleClick={isPolyTool ? handlePolyDblClick : undefined}
         onContextMenu={handleSvgContextMenu}
       >
+        {isTextEditTool && editBoxes.map((b, i) => {
+          const [bx1, by2] = toSvg(b.x1, b.y2) // top-left
+          const [bx2, by1] = toSvg(b.x2, b.y1) // bottom-right
+          return <rect key={`etb-${i}`} x={bx1} y={by2}
+            width={Math.max(1, bx2 - bx1)} height={Math.max(1, by1 - by2)}
+            fill="none" stroke="#4a9eff" strokeWidth={1} strokeOpacity={0.45}
+            pointerEvents="none" rx={1} />
+        })}
         {pageAnnotations.map(renderAnn)}
         {renderSelectHitAreas()}
         {renderSelectionChrome()}

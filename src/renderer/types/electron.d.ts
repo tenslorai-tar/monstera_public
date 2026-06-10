@@ -36,6 +36,9 @@ declare global {
         x: number,
         y: number,
       ) => Promise<{ found: boolean; text: string; fontSize: number; color: string; x1: number; y1: number; x2: number; y2: number; matrix: number[]; fontData: ArrayBuffer; fontLoadable: boolean; nested: boolean; fontName: string }>
+      pdfiumTextBoxes: (
+        bytes: ArrayBuffer, pageIndex: number,
+      ) => Promise<Array<{ x1: number; y1: number; x2: number; y2: number; nested: boolean }>>
       resolveSystemFont: (
         name: string, bold: boolean, italic: boolean,
       ) => Promise<{ family: string; data: ArrayBuffer } | null>

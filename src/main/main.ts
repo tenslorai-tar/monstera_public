@@ -542,6 +542,11 @@ ipcMain.handle('pdfium:textObjectAt', async (
   }
 })
 
+ipcMain.handle('pdfium:textBoxes', async (_event, bytes: ArrayBuffer, pageIndex: number) => {
+  try { return pdfium.getAllTextBoxes(Buffer.from(bytes), pageIndex) }
+  catch { return [] }
+})
+
 // Resolve the closest installed system font for an edited run, so cover-and-replace
 // can render/embed a complete font instead of an unusable embedded subset.
 ipcMain.handle('fonts:resolve', async (_e, name: string, bold: boolean, italic: boolean) => {

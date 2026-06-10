@@ -51,6 +51,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     y: number,
   ): Promise<{ found: boolean; text: string; fontSize: number; color: string; x1: number; y1: number; x2: number; y2: number; matrix: number[]; fontData: ArrayBuffer; fontLoadable: boolean; nested: boolean; fontName: string }> =>
     ipcRenderer.invoke('pdfium:textObjectAt', bytes, pageIndex, x, y),
+  pdfiumTextBoxes: (
+    bytes: ArrayBuffer, pageIndex: number,
+  ): Promise<Array<{ x1: number; y1: number; x2: number; y2: number; nested: boolean }>> =>
+    ipcRenderer.invoke('pdfium:textBoxes', bytes, pageIndex),
   resolveSystemFont: (
     name: string, bold: boolean, italic: boolean,
   ): Promise<{ family: string; data: ArrayBuffer } | null> =>

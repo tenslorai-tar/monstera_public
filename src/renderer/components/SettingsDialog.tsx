@@ -158,6 +158,24 @@ export default function SettingsDialog({ onClose }: Props) {
           <span className="modal-hint">Currently: {zoomLabel(local.defaultZoom)}</span>
         </div>
 
+        {/* Page render quality (supersampling) */}
+        <div className="modal-field">
+          <label className="modal-label">Page sharpness</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input type="range" min={1} max={5} step={1}
+              value={local.renderQuality ?? 3}
+              onChange={e => setLocal(l => ({ ...l, renderQuality: parseInt(e.target.value) }))}
+              style={{ flex: 1 }} />
+            <span style={{ fontSize: 12, minWidth: 64 }}>
+              {(['Standard', 'Standard+', 'High', 'Very High', 'Ultra'] as const)[(local.renderQuality ?? 3) - 1]}
+            </span>
+          </div>
+          <span className="modal-hint">
+            Renders pages above screen resolution then downscales for crisper text. Higher = sharper
+            but uses more memory — drop it if scrolling feels heavy.
+          </span>
+        </div>
+
         {/* OCR language */}
         <div className="modal-field">
           <label className="modal-label">Default OCR language</label>

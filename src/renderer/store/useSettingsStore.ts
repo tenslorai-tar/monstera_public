@@ -15,6 +15,7 @@ export interface AppSettings {
   darkPageMode: boolean
   loupeEnabled: boolean
   pdfiumRender: boolean             // render pages with PDFium instead of PDF.js
+  renderQuality: number             // page supersample factor 1–5 (higher = sharper, more memory)
   measureUnit: string
   measureScale: number
   // UX / personalization
@@ -92,6 +93,7 @@ function defaults(): AppSettings {
     darkPageMode: false,
     loupeEnabled: false,
     pdfiumRender: false,
+    renderQuality: 3,
     measureUnit: 'pt',
     measureScale: 1.0,
     accentColor: '',
