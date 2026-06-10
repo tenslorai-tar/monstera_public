@@ -38,7 +38,7 @@ function freeMupdf(...objs: any[]): void {
 }
 
 export interface EncryptOpts { userPassword: string; ownerPassword: string; permissions: number }
-export interface RedactArea { pageNum: number; x1: number; y1: number; x2: number; y2: number }
+export interface RedactArea { pageNum: number; x1: number; y1: number; x2: number; y2: number; blurred?: boolean }
 export interface BookmarkItem { id: string; title: string; pageNum: number }
 export interface AccessibilityIssue { issue: string; severity: 'error' | 'warning' | 'info'; page?: number }
 
@@ -104,21 +104,35 @@ export async function applyRedactions(bytes: ArrayBuffer, areas: RedactArea[]): 
   const mupdf = await getMupdf()
   const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
 
-  // Group areas by page, create Redact annotations
+  // Group areas by page, create Redact annotations. Two passes per page:
+  // solid marks paint a black box; blurred marks remove the content with no
+  // box (the renderer overlays a blurred snapshot taken before removal).
   const pageNums = [...new Set(areas.map(a => a.pageNum))]
   for (const pageNum of pageNums) {
     const page = doc.loadPage(pageNum - 1)
-    for (const a of areas.filter(r => r.pageNum === pageNum)) {
-      const ann = page.createAnnotation('Redact')
-      ann.setRect([
-        Math.min(a.x1, a.x2), Math.min(a.y1, a.y2),
-        Math.max(a.x1, a.x2), Math.max(a.y1, a.y2),
-      ])
-      ann.setColor([0, 0, 0])
-      ann.update()
+    // Incoming areas are PDF user space (y up from the bottom edge); MuPDF
+    // annotation rects are fitz space (y down from the top edge) — flip.
+    const bounds = page.getBounds()
+    const yTop = bounds[3]
+    const onPage = areas.filter(r => r.pageNum === pageNum)
+    const passes = [
+      { list: onPage.filter(a => !a.blurred), blackBoxes: true },
+      { list: onPage.filter(a => a.blurred), blackBoxes: false },
+    ]
+    for (const pass of passes) {
+      if (pass.list.length === 0) continue
+      for (const a of pass.list) {
+        const ann = page.createAnnotation('Redact')
+        ann.setRect([
+          Math.min(a.x1, a.x2), yTop - Math.max(a.y1, a.y2),
+          Math.max(a.x1, a.x2), yTop - Math.min(a.y1, a.y2),
+        ])
+        ann.setColor([0, 0, 0])
+        ann.update()
+      }
+      // applyRedactions(blackBoxes, imageHandling)
+      page.applyRedactions(pass.blackBoxes, 0)
     }
-    // applyRedactions(blackBoxes, imageHandling)
-    page.applyRedactions(true, 0)
     freeMupdf(page)
   }
 

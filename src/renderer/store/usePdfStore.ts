@@ -744,16 +744,24 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   // ── Security actions ──────────────────────────────────────────────────────
   setEncryptionSettings: (s) => set({ encryptionSettings: s, isDirty: true }),
   applyRedactions: async () => {
-    const { annotations, getBakedBytes, applyEdit, addAnnotation, deleteAnnotation } = get()
+    const { annotations, formFields, pdfBytes, applyEdit } = get()
+    if (!pdfBytes) return
     const redactAnns = annotations.filter(a => a.type === 'redact') as import('../types/annotations').RedactAnn[]
     if (redactAnns.length === 0) return
-
-    const solidAnns   = redactAnns.filter(a => !a.blurred)
     const blurredAnns = redactAnns.filter(a => a.blurred)
 
-    let baked = await getBakedBytes()
+    // Bake every overlay EXCEPT the redaction marks themselves — MuPDF applies
+    // those for real below. Baking keeps the other annotations alive across the
+    // applyEdit() reload, which re-imports annotations from the new bytes.
+    let baked = pdfBytes
+    const keep = annotations.filter(a => a.type !== 'redact')
+    if (keep.length > 0) baked = await writeAnnotationsToPdf(baked, keep)
+    if (formFields.length > 0) baked = await writeFormToBytes(baked, formFields)
 
-    // Apply blurred redactions: render page via PDF.js, crop region, blur, overlay as placed-image
+    // Capture blurred previews BEFORE the content underneath is destroyed.
+    // The blur is cosmetic only: the actual content is removed by MuPDF just
+    // like a solid redaction, so nothing recoverable remains in the file.
+    const blurOverlays: import('../types/annotations').PlacedImageAnn[] = []
     if (blurredAnns.length > 0) {
       const pdfDoc = await pdfjsLib.getDocument({ data: baked.slice() }).promise
       const pageCache: Map<number, { canvas: HTMLCanvasElement; pageH: number; scale: number }> = new Map()
@@ -777,7 +785,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
         const sy = Math.round((pageH - y2) * scale)
         const cw = Math.round((x2 - x1) * scale)
         const ch = Math.round((y2 - y1) * scale)
-        if (cw < 2 || ch < 2) { deleteAnnotation(a.id); continue }
+        if (cw < 2 || ch < 2) continue
 
         const cropCanvas = document.createElement('canvas')
         cropCanvas.width = cw; cropCanvas.height = ch
@@ -790,25 +798,25 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
         bctx.filter = 'blur(10px)'
         bctx.drawImage(cropCanvas, 0, 0)
 
-        addAnnotation({
+        blurOverlays.push({
           id: `blurred-${a.id}`, pageNum: a.pageNum, type: 'placed-image',
           x: x1, y: y1, width: x2 - x1, height: y2 - y1,
           dataUrl: blurCanvas.toDataURL('image/png'),
           color: '#000000', opacity: 1, createdAt: Date.now(),
         } as import('../types/annotations').PlacedImageAnn)
-        deleteAnnotation(a.id)
       }
+      pdfDoc.destroy().catch(() => {})
     }
 
-    // Apply solid redactions permanently via MuPDF (true content removal)
-    if (solidAnns.length > 0) {
-      baked = await getBakedBytes()
-      const areas = solidAnns.map(a => ({
-        pageNum: a.pageNum, x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2,
-      }))
-      const result = await window.electronAPI.mupdfApplyRedactions(baked.buffer as ArrayBuffer, areas)
-      await applyEdit(new Uint8Array(result))
-      for (const a of solidAnns) deleteAnnotation(a.id)
+    // Permanently remove the content under EVERY marked area (solid and
+    // blurred) via MuPDF — solid marks get a black box, blurred ones don't.
+    const areas = redactAnns.map(a => ({
+      pageNum: a.pageNum, x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2, blurred: !!a.blurred,
+    }))
+    const result = await window.electronAPI.mupdfApplyRedactions(baked.slice().buffer as ArrayBuffer, areas)
+    await applyEdit(new Uint8Array(result))
+    if (blurOverlays.length > 0) {
+      set(s => ({ annotations: [...s.annotations, ...blurOverlays], isDirty: true }))
     }
   },
 

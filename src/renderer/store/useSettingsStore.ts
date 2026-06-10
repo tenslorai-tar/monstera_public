@@ -74,6 +74,8 @@ function load(): AppSettings {
         const val = rec[k]
         if (typeof val === 'string' && val) rec[k] = decSecret(val)
       }
+      // Migrate persisted settings that point at a retired model id.
+      if (parsed.aiModel === 'claude-opus-4-20250514') parsed.aiModel = 'claude-opus-4-8'
       return parsed
     }
   } catch {}
@@ -105,7 +107,7 @@ function defaults(): AppSettings {
     highContrast: false,
     // Tier 3
     anthropicApiKey: '',
-    aiModel: 'claude-opus-4-20250514',
+    aiModel: 'claude-opus-4-8',
     rtlText: false,
     gdToken: '',
     dropboxToken: '',

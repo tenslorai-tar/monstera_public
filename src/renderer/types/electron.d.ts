@@ -89,7 +89,7 @@ declare global {
       }) => Promise<ArrayBuffer>
       mupdfRemovePassword: (bytes: ArrayBuffer, password: string) => Promise<ArrayBuffer>
       mupdfApplyRedactions: (bytes: ArrayBuffer, areas: Array<{
-        pageNum: number; x1: number; y1: number; x2: number; y2: number;
+        pageNum: number; x1: number; y1: number; x2: number; y2: number; blurred?: boolean;
       }>) => Promise<ArrayBuffer>
 
       mupdfGetOutline: (bytes: ArrayBuffer) => Promise<Array<{ id: string; title: string; pageNum: number }>>

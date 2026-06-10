@@ -72,7 +72,7 @@ export default function AiAssistantDialog({ onClose }: Props) {
   }
 
   const saveKey = () => {
-    updateSettings({ anthropicApiKey: apiKeyEdit.trim(), aiModel: modelEdit.trim() || 'claude-opus-4-20250514' })
+    updateSettings({ anthropicApiKey: apiKeyEdit.trim(), aiModel: modelEdit.trim() || 'claude-opus-4-8' })
     setShowKeyEdit(false)
     setError('')
   }
