@@ -409,31 +409,46 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   ): Promise<{ fontFamily?: string; fontDataB64?: string; sample?: FontSample }> => {
     const bold = /bold|black|heavy|semibold/i.test(fontName) || !!domSample?.bold
     const italic = /italic|oblique/i.test(fontName) || !!domSample?.italic
+    const generic = domSample?.fontName === 'Times-Roman' ? 'serif'
+      : domSample?.fontName === 'Courier' ? 'monospace' : 'sans-serif'
+
+    // Face the new text in the document's OWN embedded program when we can — it is
+    // the exact typeface + weight of the surrounding text (e.g. a table's "Aptos
+    // Narrow,Bold"), so the edit is visually seamless. Back it with the matching
+    // INSTALLED font (complete glyph set) for any glyph the subset lacks, and embed
+    // that complete font into the saved file so every typed character is present.
+    let embFam: string | undefined
+    if (embedded && embedded.byteLength > 0) embFam = (await loadPdfFont(embedded)) ?? undefined
+
+    let sysFam: string | undefined        // loaded FontFace family for the installed font
+    let sysName: string | undefined       // installed family NAME (Chromium may resolve it directly)
+    let sysB64: string | undefined        // full installed-font bytes → embed into the saved PDF
     try {
       const sys = fontName ? await window.electronAPI.resolveSystemFont(fontName, bold, italic) : null
       if (sys) {
-        // Render the substitute by loading its actual BYTES as a FontFace — not by
-        // the installed family name, which a per-user-installed font (LocalAppData)
-        // may not expose to Chromium. The bytes also embed cleanly when saved.
-        // Base64 first so the buffer is read before FontFace can claim it.
-        const fontDataB64 = bytesToBase64(sys.data)
-        const fontFamily = (await loadPdfFont(sys.data)) ?? undefined
-        const generic = domSample?.fontName === 'Times-Roman' ? 'serif'
-          : domSample?.fontName === 'Courier' ? 'monospace' : 'sans-serif'
-        // If the FontFace failed to load, still try the installed family NAME (works
-        // where Chromium can see the font), then the PDF.js face, then generic.
-        const sample: FontSample = fontFamily
-          ? (domSample ?? { cssFamily: `'${sys.family}', ${generic}`, fontName: 'Helvetica', bold, italic })
-          : { cssFamily: `'${sys.family}', ${domSample?.cssFamily ?? generic}`,
-              fontName: domSample?.fontName ?? 'Helvetica', bold, italic }
-        return { fontFamily, fontDataB64, sample }
+        sysName = sys.family
+        sysB64 = bytesToBase64(sys.data)   // base64 first, before FontFace can claim the buffer
+        sysFam = (await loadPdfFont(sys.data)) ?? undefined
       }
-    } catch { /* fall through to the embedded font */ }
-    if (embedded && embedded.byteLength > 0) {
-      const fontFamily = (await loadPdfFont(embedded)) ?? undefined
-      if (fontFamily) return { fontFamily, fontDataB64: bytesToBase64(embedded), sample: domSample }
-    }
-    return { sample: domSample }
+    } catch { /* no installed match — the embedded face / DOM sample still apply */ }
+
+    // Primary on-screen face: embedded program, else the installed font. The CSS
+    // stack then lists every remaining same-family face so whichever Chromium can
+    // actually paint wins — all of them are the same typeface, so it stays seamless.
+    const primary = embFam ?? sysFam
+    const q = (n?: string) => (n ? `'${n}'` : null)
+    const fallbacks = [
+      primary === embFam ? q(sysFam) : null,   // the other loaded face
+      q(sysName),                              // installed family, by name
+      domSample?.cssFamily ?? null,            // PDF.js text-layer face
+      generic,
+    ].filter((v): v is string => !!v)
+    const sample: FontSample = { cssFamily: fallbacks.join(', '),
+      fontName: domSample?.fontName ?? 'Helvetica', bold, italic }
+    // Embed the complete installed font when available (all glyphs); else the
+    // embedded program; else nothing → the save path falls back to a base-14 match.
+    const fontDataB64 = sysB64 ?? (embFam && embedded ? bytesToBase64(embedded) : undefined)
+    return { fontFamily: primary, fontDataB64, sample }
   }
 
   // ── Poly tool: click to add points, dblclick to finish ──────────────────
@@ -714,13 +729,12 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
                   let fontDataB64: string | undefined
                   let sample = obj.nested ? readTextSpanAt(sx, sy)?.sample : undefined
                   if (obj.nested) {
-                    // Form-nested text can't be saved in place, and its embedded font
-                    // is usually a SUBSET that can't render newly typed glyphs. Swap in
-                    // the closest INSTALLED font (complete, so it renders + embeds) —
-                    // e.g. "Aptos Narrow,Bold" → system "Arial Narrow Bold".
+                    // Form-nested text can't be saved in place. Redraw it (cover-and-
+                    // replace) in the document's own embedded program when loadable,
+                    // backed by the matching installed font for missing glyphs + save.
                     const eff = await resolveEditFont(obj.fontName, obj.fontLoadable ? obj.fontData : null, sample)
                     fontFamily = eff.fontFamily; fontDataB64 = eff.fontDataB64; sample = eff.sample ?? sample
-                    editDbg(`CLICK nested  font="${obj.fontName}"\nface=${fontFamily ?? '(none — using sample)'}  bytes=${fontDataB64?.length ?? 0}\nsampleCss=${sample?.cssFamily ?? '-'}`)
+                    editDbg(`CLICK nested  font="${obj.fontName}"  embedded=${obj.fontLoadable ? obj.fontData.byteLength + 'B' : 'no'}\nprimaryFace=${fontFamily ?? '(none)'}\nstack=${sample?.cssFamily ?? '-'}\nsaveEmbed=${fontDataB64 ? Math.round(fontDataB64.length * 0.75) + 'B' : 'base-14'}`)
                   } else if (obj.fontLoadable && obj.fontData.byteLength > 0) {
                     fontFamily = (await loadPdfFont(obj.fontData)) ?? undefined
                     if (fontFamily) fontDataB64 = bytesToBase64(obj.fontData)
@@ -776,7 +790,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
             if (res.nested) {
               const eff = await resolveEditFont(res.fontName, res.fontLoadable ? res.fontData : null, dom.sample)
               fontFamily = eff.fontFamily; fontDataB64 = eff.fontDataB64; sampleOverride = eff.sample
-              editDbg(`DRAG nested  font="${res.fontName}"\nface=${fontFamily ?? '(none — using sample)'}  bytes=${fontDataB64?.length ?? 0}\nsampleCss=${sampleOverride?.cssFamily ?? '-'}`)
+              editDbg(`DRAG nested  font="${res.fontName}"  embedded=${res.fontLoadable ? res.fontData.byteLength + 'B' : 'no'}\nprimaryFace=${fontFamily ?? '(none)'}\nstack=${sampleOverride?.cssFamily ?? '-'}\nsaveEmbed=${fontDataB64 ? Math.round(fontDataB64.length * 0.75) + 'B' : 'base-14'}`)
             } else if (res.fontLoadable && res.fontData.byteLength > 0) {
               fontFamily = (await loadPdfFont(res.fontData)) ?? undefined
               if (fontFamily) fontDataB64 = bytesToBase64(res.fontData)
@@ -1506,7 +1520,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
             <div style={{
               width: '100%', height: '100%', padding: '0 2px',
               fontSize: a.fontSize * scale, color: a.color, opacity: a.opacity, lineHeight: 1.2,
-              fontFamily: a.fontFamily ? `'${a.fontFamily}', ${cssFont(a.font)}`
+              fontFamily: a.fontFamily ? `'${a.fontFamily}', ${a.cssFamily ?? cssFont(a.font)}`
                 : a.cssFamily ? a.cssFamily : cssFont(a.font),
               // A loaded face / PDF.js face already encodes its weight & slant — only
               // synthesize bold/italic for a bare generic, else we double-bold.

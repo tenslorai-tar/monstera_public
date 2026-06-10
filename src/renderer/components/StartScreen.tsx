@@ -34,7 +34,7 @@ export default function StartScreen({
           <img src={logoUrl} alt="Monstera" className="start-logo-img" draggable={false} />
         </div>
         <h1 className="start-title">Monstera</h1>
-        <div className="start-subtitle">PDF EDITOR{version ? ` · v${version}` : ''}</div>
+        <div className="start-subtitle">PDF EDITOR</div>
         <p className="start-tagline">A modern PDF editor — built for the way you work.</p>
       </div>
 
@@ -107,7 +107,7 @@ export default function StartScreen({
         }}>F1</kbd> for keyboard shortcuts
       </div>
       <div style={{ paddingTop: 6, paddingBottom: 4, fontSize: 11, color: 'var(--text-dim, var(--text-muted))' }}>
-        Monstera PDF Editor · © 2026 <strong style={{ fontWeight: 600 }}>Tenslor Inc.</strong>
+        Monstera PDF Editor{version ? ` v${version}` : ''} · © 2026 <strong style={{ fontWeight: 600 }}>Tenslor Inc.</strong>
       </div>
     </div>
   )
