@@ -81,15 +81,29 @@ export default function PdfViewer() {
     setCurrentPage(pageSizes.length)
   }, [pageSizes, scale, setCurrentPage])
 
-  // Ctrl+scroll to zoom
+  // Ctrl+scroll to zoom, anchored at the cursor: the content point under the
+  // pointer stays under the pointer instead of the viewport jumping.
   const handleWheel = useCallback((e: WheelEvent) => {
     if (!e.ctrlKey) return
     e.preventDefault()
-    const setScale = usePdfStore.getState().setScale
-    const current = usePdfStore.getState().scale
+    const el = scrollRef.current
+    if (!el) return
+    const { scale: current, setScale } = usePdfStore.getState()
     const delta = e.deltaY < 0 ? 0.1 : -0.1
     const next = Math.min(5, Math.max(0.25, Math.round((current + delta) * 100) / 100))
+    if (next === current) return
+    const rect = el.getBoundingClientRect()
+    const PADDING = 24 // fixed top padding does not scale with content
+    const vx = e.clientX - rect.left
+    const vy = e.clientY - rect.top
+    const cx = el.scrollLeft + vx
+    const cy = el.scrollTop + vy
+    const ratio = next / current
     setScale(next)
+    requestAnimationFrame(() => {
+      el.scrollLeft = cx * ratio - vx
+      el.scrollTop = (cy - PADDING) * ratio + PADDING - vy
+    })
   }, [])
 
   useEffect(() => {

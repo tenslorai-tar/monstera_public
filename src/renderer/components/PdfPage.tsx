@@ -71,11 +71,39 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
   const textLayerRef = useRef<HTMLDivElement>(null)
   const renderGenRef = useRef(0)
 
+  // Zoom is two-tier: the wrapper, overlays, text layer and the existing
+  // canvas bitmap track `scale` instantly (cheap CSS), while the expensive
+  // PDF re-render happens at `renderScale`, which follows after a short
+  // debounce — so Ctrl+wheel feels immediate and crispness lands when the
+  // user pauses.
+  const [renderScale, setRenderScale] = useState(scale)
+  useEffect(() => {
+    if (renderScale === scale) return
+    const t = setTimeout(() => setRenderScale(scale), 150)
+    return () => clearTimeout(t)
+  }, [scale, renderScale])
+
   const pageSize = pageSizes[pageNum - 1]
   const pageW = pageSize?.width ?? 612
   const pageH = pageSize?.height ?? 792
   const pageWidth = pageW * scale
   const pageHeight = pageH * scale
+
+  // Instant zoom feedback: stretch the current bitmap and re-position the
+  // text layer (pdf.js spans scale via --scale-factor) without re-rendering.
+  useEffect(() => {
+    const canvas = canvasRef.current
+    const textDiv = textLayerRef.current
+    if (canvas) {
+      canvas.style.width = `${pageW * scale}px`
+      canvas.style.height = `${pageH * scale}px`
+    }
+    if (textDiv) {
+      textDiv.style.width = `${pageW * scale}px`
+      textDiv.style.height = `${pageH * scale}px`
+      textDiv.style.setProperty('--scale-factor', String(scale))
+    }
+  }, [scale, pageW, pageH])
 
   // Text layer pointer-events: allow selection for markup tools, passthrough otherwise
   const isMarkupTool = activeTool === 'highlight' || activeTool === 'underline' || activeTool === 'strikethrough'
@@ -105,7 +133,7 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
       const page = await pdfDoc.getPage(pageNum)
       if (cancelled || gen !== renderGenRef.current) return
 
-      const viewport = page.getViewport({ scale })
+      const viewport = page.getViewport({ scale: renderScale })
       const ctx = canvas.getContext('2d')!
 
       // Crisp text: paint the backing store ABOVE the displayed size, then keep the
@@ -118,8 +146,6 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
       const quality = Math.min(Math.max(settings.renderQuality || 3, 1), 5)
       let density = Math.min(Math.max(dpr, quality), 8192 / viewport.width, 8192 / viewport.height)
       density = Math.max(density, 1)
-      canvas.style.width = `${viewport.width}px`
-      canvas.style.height = `${viewport.height}px`
 
       // Canvas pixels: PDFium (opt-in, higher fidelity) or PDF.js. The text layer
       // below is always PDF.js, so selection/search stays intact either way.
@@ -128,7 +154,7 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
         try {
           const bytes = usePdfStore.getState().pdfBytes
           if (bytes) {
-            const img = await hdRenderPage(bytes, pageNum - 1, scale * density)
+            const img = await hdRenderPage(bytes, pageNum - 1, renderScale * density)
             if (cancelled || gen !== renderGenRef.current) return
             if (img && img.width > 0 && img.data.byteLength === img.width * img.height * 4) {
               canvas.width = img.width
@@ -141,7 +167,7 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
       }
 
       if (!painted) {
-        const rvp = page.getViewport({ scale: scale * density })
+        const rvp = page.getViewport({ scale: renderScale * density })
         canvas.width = rvp.width
         canvas.height = rvp.height
         const ocgConfig = getOcgConfig()
@@ -155,14 +181,21 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
         if (cancelled || gen !== renderGenRef.current) return
       }
 
+      // CSS sizing tracks the LIVE scale (the user may have zoomed again while
+      // this render was in flight) — the bitmap just stretches until the next
+      // debounced render lands.
+      const liveScale = usePdfStore.getState().scale
+      canvas.style.width = `${pageW * liveScale}px`
+      canvas.style.height = `${pageH * liveScale}px`
+
       textDiv.innerHTML = ''
-      textDiv.style.width = `${viewport.width}px`
-      textDiv.style.height = `${viewport.height}px`
-      // pdf.js v4 positions every text span with percentages and sizes them with
+      textDiv.style.width = `${pageW * liveScale}px`
+      textDiv.style.height = `${pageH * liveScale}px`
+      // pdf.js positions every text span with percentages and sizes them with
       // calc(var(--scale-factor)*…). Without this custom property the text layer
       // collapses to width:0 and the spans land nowhere near the visible text —
       // which makes the page unselectable and breaks highlight/underline/strike.
-      textDiv.style.setProperty('--scale-factor', String(scale))
+      textDiv.style.setProperty('--scale-factor', String(liveScale))
       const textLayer = new TextLayer({
         textContentSource: page.streamTextContent(),
         container: textDiv,
@@ -178,7 +211,7 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
     })()
 
     return () => { cancelled = true }
-  }, [inView, pdfDoc, pageNum, scale, layerRevision, settings.pdfiumRender, settings.renderQuality]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [inView, pdfDoc, pageNum, renderScale, layerRevision, settings.pdfiumRender, settings.renderQuality]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const textDiv = textLayerRef.current
@@ -200,7 +233,7 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
     <div
       ref={wrapperRef}
       className="pdf-page-wrapper"
-      style={{ width: pageWidth, height: pageHeight, transition: 'width 0.15s ease, height 0.15s ease' }}
+      style={{ width: pageWidth, height: pageHeight }}
       data-page={pageNum}
     >
       {inView ? (
