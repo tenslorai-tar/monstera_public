@@ -112,6 +112,60 @@ function classifyFont(cs: CSSStyleDeclaration, text: string, widthPx: number, si
   return { cssFamily: fam, fontName, bold, italic }
 }
 
+// Renders a committed text-edit replacement onto a <canvas> and shows it as an
+// <image>. Canvas reliably paints fonts added via document.fonts (an SVG <div>
+// in <foreignObject> does not always repaint when a face activates), and lets us
+// scale each line to fit the cell so a substitute font can never wrap-and-clip
+// (the "13-3/8 → 13-" truncation). Rasterised at devicePixelRatio so it stays
+// crisp; the saved PDF still uses real vector text via pdf-lib.
+function TextEditRaster({ a, x, y, w, h, scale }: {
+  a: TextEditAnn; x: number; y: number; w: number; h: number; scale: number
+}) {
+  const [href, setHref] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    const fontPx = (a.fontSize || 12) * scale
+    const useFace = !!(a.fontFamily || a.cssFamily)   // a loaded/PDF.js face encodes weight+slant
+    const weight = useFace ? '' : (a.bold ? '700 ' : '')
+    const style = useFace ? '' : (a.italic ? 'italic ' : '')
+    const stack = a.fontFamily
+      ? `'${a.fontFamily}', ${a.cssFamily ?? cssFont(a.font)}`
+      : (a.cssFamily ?? cssFont(a.font))
+    const fontStr = `${style}${weight}${fontPx}px ${stack}`
+    ;(async () => {
+      try { await document.fonts.load(fontStr, a.text || ' ') } catch { /* paint with whatever resolves */ }
+      if (cancelled) return
+      const dpr = Math.min(Math.max(window.devicePixelRatio || 1, 1), 3)
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.ceil(w * dpr))
+      canvas.height = Math.max(1, Math.ceil(h * dpr))
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      ctx.scale(dpr, dpr)
+      ctx.font = fontStr
+      ctx.textBaseline = 'top'
+      ctx.fillStyle = a.color || '#000'
+      const padX = 2
+      const lh = fontPx * 1.2
+      const leadTop = (lh - fontPx) / 2     // match the old div's line-height centring
+      const maxW = Math.max(1, w - padX * 2)
+      ;(a.text || '').split('\n').forEach((line, i) => {
+        const mw = ctx.measureText(line).width
+        const xs = mw > maxW && mw > 0 ? maxW / mw : 1   // squeeze to fit, never overflow
+        ctx.save()
+        ctx.translate(padX, i * lh + leadTop)
+        if (xs !== 1) ctx.scale(xs, 1)
+        ctx.fillText(line, 0, 0)
+        ctx.restore()
+      })
+      if (!cancelled) setHref(canvas.toDataURL())
+    })()
+    return () => { cancelled = true }
+  }, [a.text, a.fontFamily, a.cssFamily, a.font, a.fontSize, a.color, a.bold, a.italic, w, h, scale])
+  if (!href) return null
+  return <image href={href} x={x} y={y} width={w} height={h} preserveAspectRatio="none" opacity={a.opacity} />
+}
+
 // TEMP diagnostic: show which font path an Edit Text action took, as a small toast
 // (bottom-left) the user can screenshot, plus a console line. Remove once the
 // table-font issue is confirmed fixed.
@@ -1513,24 +1567,13 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
     if (ann.type === 'text-edit') {
       const a = ann as TextEditAnn
       const [svgX, svgY_top] = toSvg(a.x, a.y + a.height)
+      const w = a.width * scale, h = a.height * scale
       return (
         <g key={a.id} onClick={e => handleAnnotClick(a, e)} style={annStyle(a)}>
-          <rect x={svgX} y={svgY_top} width={a.width * scale} height={a.height * scale} fill="white" />
-          <foreignObject x={svgX} y={svgY_top} width={a.width * scale} height={a.height * scale}>
-            <div style={{
-              width: '100%', height: '100%', padding: '0 2px',
-              fontSize: a.fontSize * scale, color: a.color, opacity: a.opacity, lineHeight: 1.2,
-              fontFamily: a.fontFamily ? `'${a.fontFamily}', ${a.cssFamily ?? cssFont(a.font)}`
-                : a.cssFamily ? a.cssFamily : cssFont(a.font),
-              // A loaded face / PDF.js face already encodes its weight & slant — only
-              // synthesize bold/italic for a bare generic, else we double-bold.
-              fontWeight: (a.fontFamily || a.cssFamily) ? undefined : (a.bold ? 700 : 400),
-              fontStyle: (a.fontFamily || a.cssFamily) ? undefined : (a.italic ? 'italic' : 'normal'),
-              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-              border: sel ? '1px dashed #4a9eff' : '1px solid transparent',
-              boxSizing: 'border-box', background: 'white',
-            }}>{a.text}</div>
-          </foreignObject>
+          <rect x={svgX} y={svgY_top} width={w} height={h} fill="white" />
+          <TextEditRaster a={a} x={svgX} y={svgY_top} w={w} h={h} scale={scale} />
+          {sel && <rect x={svgX} y={svgY_top} width={w} height={h} fill="none"
+            stroke="#4a9eff" strokeWidth={1} strokeDasharray="4,2" />}
         </g>
       )
     }

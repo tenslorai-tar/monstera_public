@@ -92,11 +92,15 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
       const viewport = page.getViewport({ scale })
       const ctx = canvas.getContext('2d')!
 
-      // Crisp text on HiDPI displays: paint the backing store at devicePixelRatio×
-      // (capped) the logical size, but keep the canvas's CSS size at the logical
-      // page size so the text/annotation overlays still align 1:1. Without this the
-      // canvas was a soft 1:1-CSS-pixel bitmap upscaled by the browser.
-      const dpr = Math.min(Math.max(window.devicePixelRatio || 1, 1), 3)
+      // Crisp text: paint the backing store ABOVE the displayed size, then keep the
+      // canvas's CSS size at the logical page size so the browser downscales the
+      // bitmap (antialiasing) and the text/annotation overlays still align 1:1.
+      // density = devicePixelRatio × a supersample factor, so text sharpens even on
+      // 1× monitors (where plain devicePixelRatio scaling changes nothing). Capped by
+      // both a max multiplier and a max backing dimension to bound canvas memory.
+      const dpr = Math.max(window.devicePixelRatio || 1, 1)
+      let density = Math.min(dpr * 2, 3, 4096 / viewport.width, 4096 / viewport.height)
+      density = Math.max(density, 1)
       canvas.style.width = `${viewport.width}px`
       canvas.style.height = `${viewport.height}px`
 
@@ -107,7 +111,7 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
         try {
           const bytes = usePdfStore.getState().pdfBytes
           if (bytes) {
-            const img = await hdRenderPage(bytes, pageNum - 1, scale * dpr)
+            const img = await hdRenderPage(bytes, pageNum - 1, scale * density)
             if (cancelled || gen !== renderGenRef.current) return
             if (img && img.width > 0 && img.data.byteLength === img.width * img.height * 4) {
               canvas.width = img.width
@@ -120,7 +124,7 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
       }
 
       if (!painted) {
-        const rvp = page.getViewport({ scale: scale * dpr })
+        const rvp = page.getViewport({ scale: scale * density })
         canvas.width = rvp.width
         canvas.height = rvp.height
         const ocgConfig = getOcgConfig()
