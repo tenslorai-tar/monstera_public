@@ -301,7 +301,7 @@ export default function App() {
     if (mins > 0 && numPages > 0) {
       autosaveRef.current = setInterval(() => {
         if (usePdfStore.getState().isDirty) {
-          save()
+          save(false)
             .then(() => setAutosaveError(''))
             .catch((err: unknown) => {
               const msg = err instanceof Error ? err.message : String(err)

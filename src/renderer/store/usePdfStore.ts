@@ -79,6 +79,22 @@ function isWholeWordMatch(text: string, start: number, len: number): boolean {
 // in-flight indexing loop from a previous document state.
 let textIndexGen = 0
 
+// True when the bytes contain a digital-signature dictionary (/ByteRange).
+// Saving rewrites the whole file, which invalidates such signatures — the
+// save flow warns first instead of silently breaking them.
+const BYTE_RANGE = [0x2F, 0x42, 0x79, 0x74, 0x65, 0x52, 0x61, 0x6E, 0x67, 0x65] // '/ByteRange'
+function hasDigitalSignature(bytes: Uint8Array): boolean {
+  const n = BYTE_RANGE.length
+  outer: for (let i = 0, end = bytes.length - n; i <= end; i++) {
+    if (bytes[i] !== BYTE_RANGE[0]) continue
+    for (let j = 1; j < n; j++) {
+      if (bytes[i + j] !== BYTE_RANGE[j]) continue outer
+    }
+    return true
+  }
+  return false
+}
+
 export type ZoomMode = 'custom' | 'fit-width' | 'fit-page'
 
 export const PAGE_GAP = 16
@@ -242,8 +258,11 @@ interface PdfStore {
   pushUndo: () => void
   undo: () => Promise<void>
   redo: () => Promise<void>
-  save: () => Promise<void>
+  // interactive=false (autosave) silently skips when a save would invalidate
+  // an existing digital signature instead of prompting.
+  save: (interactive?: boolean) => Promise<void>
   saveAs: () => Promise<void>
+  signatureWarningAccepted: boolean
 
   setSelectedPages: (pages: Set<number>) => void
   togglePageSelection: (pageNum: number) => void
@@ -322,6 +341,7 @@ interface PdfStore {
   identifyForms: () => Promise<number>
   resetFormFields: () => void
   exportFormData: () => string
+  exportFormDataXfdf: () => string
 
   flattenAnnotations: () => Promise<void>
   closePdf: () => void
@@ -458,6 +478,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
       formMode: false, formCreationTool: null, encryptionSettings: null,
       ocrData: new Map(), bookmarks: [], bookmarksPanelOpen: false,
       layers: [], namedDests: [], layerRevision: 0,
+      signatureWarningAccepted: false,
     })
     get().startTextIndexing(pdfDoc)
     // Load bookmarks (outline) from PDF in background
@@ -634,10 +655,23 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     get().startTextIndexing(pdfDoc)
   },
 
-  save: async () => {
+  signatureWarningAccepted: false,
+
+  save: async (interactive = true) => {
     // Re-entrancy guard: if a save is already running, await it instead of
     // launching a second concurrent write to the same file.
     if (saveInFlight) return saveInFlight
+
+    // Full-rewrite saves invalidate digital signatures. Ask once per document
+    // when saving interactively; autosave never breaks a signature silently.
+    const bytesNow = get().pdfBytes
+    if (bytesNow && !get().signatureWarningAccepted && hasDigitalSignature(bytesNow)) {
+      if (!interactive) return
+      const ok = await window.electronAPI.confirmSignatureInvalidation()
+      if (!ok) return
+      set({ signatureWarningAccepted: true })
+    }
+
     saveInFlight = (async () => {
       const { filePath, pdfBytes, annotations, formFields, encryptionSettings, bookmarks, getBakedBytes } = get()
       if (!pdfBytes || !filePath) return
@@ -661,6 +695,11 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   saveAs: async () => {
     const { fileName, pdfBytes, annotations, formFields, encryptionSettings, bookmarks, getBakedBytes } = get()
     if (!pdfBytes) return
+    if (!get().signatureWarningAccepted && hasDigitalSignature(pdfBytes)) {
+      const ok = await window.electronAPI.confirmSignatureInvalidation()
+      if (!ok) return
+      set({ signatureWarningAccepted: true })
+    }
     const newPath = await window.electronAPI.saveFileDialog(fileName || 'document.pdf')
     if (!newPath) return
     let baked = await getBakedBytes()
@@ -1034,6 +1073,37 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     return JSON.stringify(data, null, 2)
   },
 
+  // XFDF — the interchange format Acrobat/Foxit import via "Import Data".
+  exportFormDataXfdf: () => {
+    const { formFields, fileName } = get()
+    const esc = (s: string) => s
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&apos;')
+    const fields: string[] = []
+    for (const f of formFields) {
+      let value: string | null = null
+      if (f.type === 'text' || f.type === 'date') value = String((f as any).value ?? '')
+      else if (f.type === 'checkbox') value = (f as any).checked ? ((f as any).exportValue || 'Yes') : 'Off'
+      else if (f.type === 'radio') { if (!(f as any).selected) continue; value = String((f as any).exportValue ?? '') }
+      else if (f.type === 'dropdown' || f.type === 'listbox') {
+        const opts: string[] = (f as any).selectedOptions ?? []
+        fields.push(`    <field name="${esc(f.fieldName)}">${opts.map(o => `<value>${esc(o)}</value>`).join('')}</field>`)
+        continue
+      } else continue
+      fields.push(`    <field name="${esc(f.fieldName)}"><value>${esc(value ?? '')}</value></field>`)
+    }
+    return [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<xfdf xmlns="http://ns.adobe.com/xfdf/" xml:space="preserve">',
+      '  <fields>',
+      ...fields,
+      '  </fields>',
+      `  <f href="${esc(fileName || 'document.pdf')}"/>`,
+      '</xfdf>',
+      '',
+    ].join('\n')
+  },
+
   // ── Bookmark actions ──────────────────────────────────────────────────────────
   addBookmark: (pageNum, title) => set(s => ({
     bookmarks: [...s.bookmarks, { id: Math.random().toString(36).slice(2), title, pageNum }],
@@ -1120,6 +1190,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
       layers: [], layersPanelOpen: false, layerRevision: 0,
       namedDests: [], namedDestsPanelOpen: false, linksPanelOpen: false,
       encryptionSettings: null, ocrData: new Map(),
+      signatureWarningAccepted: false,
     })
   },
 

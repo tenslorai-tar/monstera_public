@@ -98,7 +98,7 @@ export default function Toolbar({
           </button>
           {hasPdf && (
             <>
-              <button className="toolbar-btn" onClick={save} disabled={!isDirty}
+              <button className="toolbar-btn" onClick={() => save()} disabled={!isDirty}
                 title="Save (Ctrl+S)" style={{ opacity: isDirty ? 1 : 0.45 }}>
                 💾 Save
               </button>

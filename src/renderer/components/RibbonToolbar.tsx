@@ -644,13 +644,20 @@ export default function RibbonToolbar(props: Props) {
                 disabled={formFields.filter(f => !f.isNew).length === 0}
                 title="Bake all field values permanently into the page content" />
               <SBtn icon={<RotateCcw size={15} />} label="Reset" onClick={resetFormFields} title="Reset all fields to their default/empty values" />
-              <SBtn icon={<Upload size={18} />} label="Export" onClick={() => {
+              <SBtn icon={<Upload size={18} />} label="JSON" onClick={() => {
                 const json = exportFormData()
                 const blob = new Blob([json], { type: 'application/json' })
                 const url = URL.createObjectURL(blob)
                 const a = document.createElement('a'); a.href = url; a.download = 'form-data.json'; a.click()
                 URL.revokeObjectURL(url)
               }} title="Export form field values as JSON" />
+              <SBtn icon={<Upload size={18} />} label="XFDF" onClick={() => {
+                const xfdf = usePdfStore.getState().exportFormDataXfdf()
+                const blob = new Blob([xfdf], { type: 'application/vnd.adobe.xfdf' })
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a'); a.href = url; a.download = 'form-data.xfdf'; a.click()
+                URL.revokeObjectURL(url)
+              }} title="Export form field values as XFDF (Acrobat-compatible interchange format)" />
             </div>
           </Group>
 

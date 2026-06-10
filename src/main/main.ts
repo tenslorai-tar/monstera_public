@@ -445,6 +445,22 @@ ipcMain.handle('print:pdf', async (_event, bytes: ArrayBuffer, opts: {
   }
 })
 
+ipcMain.handle('dialog:confirmSignatureInvalidation', async () => {
+  if (!mainWin) return false
+  const { response } = await dialog.showMessageBox(mainWin, {
+    type: 'warning',
+    title: 'Digital Signature Warning',
+    message: 'This document contains one or more digital signatures.',
+    detail: 'Saving rewrites the file, which will invalidate the existing signatures. ' +
+      'Use "Save As…" to keep the signed original untouched, or continue to save anyway.',
+    buttons: ['Save Anyway', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+  })
+  return response === 0
+})
+
 // Legacy DOM print kept for the rare "print the UI" case (not used by Ctrl+P).
 ipcMain.handle('window:print', () => {
   if (!mainWin) return

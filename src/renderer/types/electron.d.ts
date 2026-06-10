@@ -131,6 +131,7 @@ declare global {
       printWindow: () => Promise<void>
       printPdf: (bytes: ArrayBuffer, opts: { pages?: number[]; dpi?: number }) => Promise<boolean>
       confirmUnsaved: (fileName: string) => Promise<'save' | 'discard' | 'cancel'>
+      confirmSignatureInvalidation: () => Promise<boolean>
 
       // OS-keychain-backed encryption for secrets at rest (synchronous).
       secureEncryptSync: (plain: string) => string

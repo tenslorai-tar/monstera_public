@@ -157,6 +157,8 @@ export function installBrowserApi() {
     confirmAppClose: async () => {},
     printWindow: async () => { window.print() },
     printPdf: async () => { window.print(); return true },
+    confirmSignatureInvalidation: async () =>
+      window.confirm('This document contains digital signature(s). Saving will invalidate them. Save anyway?'),
     confirmUnsaved: async (fileName: string) => {
       // Browser only has a 2-button confirm; the packaged app shows a native
       // 3-button Save / Don't Save / Cancel dialog. Map OK→save, Cancel→cancel
