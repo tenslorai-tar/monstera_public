@@ -73,7 +73,6 @@
       "createDesktopShortcut": true,
       "shortcutName": "Monstera PDF Editor",
       "uninstallDisplayName": "Monstera PDF Editor (Tenslor Inc.)",
-      "artifactName": "Monstera PDF Editor Update Setup ${version}.${ext}",
       "license": "build/license.txt",
       "installerHeaderIcon": "assets/icons/icon.ico",
       "installerSidebar": "build/installerSidebar.bmp",
