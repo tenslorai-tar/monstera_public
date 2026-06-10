@@ -113,7 +113,7 @@ export default function DeskewDialog({ onClose }: Props) {
         const canvas = document.createElement('canvas')
         canvas.width = Math.ceil(vp.width); canvas.height = Math.ceil(vp.height)
         const ctx    = canvas.getContext('2d')!
-        await page.render({ canvasContext: ctx, viewport: vp }).promise
+        await page.render({ canvas, viewport: vp }).promise
 
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
         const angle = detectSkew(imageData)

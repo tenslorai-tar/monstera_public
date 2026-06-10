@@ -52,10 +52,7 @@ export interface NamedDest {
 let _ocgConfig: any = null
 export function getOcgConfig() { return _ocgConfig }
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.mjs',
-  import.meta.url
-).toString()
+import '../utils/pdfjsWorker'
 
 export interface PageSize { width: number; height: number }
 
@@ -414,12 +411,10 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     // Load layers (OCG) from PDF.js
     pdfDoc.getOptionalContentConfig().then(ocgConfig => {
       _ocgConfig = ocgConfig
-      const groups = ocgConfig?.getGroups?.() ?? null
       const layerItems: LayerItem[] = []
-      if (groups) {
-        for (const [id, group] of (groups as Map<string, {name: string; visible?: boolean}>).entries()) {
-          layerItems.push({ id, name: group.name ?? id, visible: group.visible !== false })
-        }
+      // pdf.js v6: OptionalContentConfig is iterable over [id, group] pairs
+      for (const [id, group] of (ocgConfig as Iterable<[string, { name?: string; visible?: boolean }]>)) {
+        layerItems.push({ id, name: group?.name ?? id, visible: group?.visible !== false })
       }
       set({ layers: layerItems })
     }).catch(() => { _ocgConfig = null })
@@ -771,8 +766,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
           const canvas = document.createElement('canvas')
           canvas.width = Math.round(viewport.width)
           canvas.height = Math.round(viewport.height)
-          const ctx = canvas.getContext('2d')!
-          await pdfPage.render({ canvasContext: ctx, viewport }).promise
+          await pdfPage.render({ canvas, viewport }).promise
           pageCache.set(a.pageNum, { canvas, pageH: viewport.height / BLUR_SCALE, scale: BLUR_SCALE })
         }
         const { canvas, pageH, scale } = pageCache.get(a.pageNum)!

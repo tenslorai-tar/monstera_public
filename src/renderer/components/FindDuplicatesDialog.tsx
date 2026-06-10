@@ -31,7 +31,7 @@ export default function FindDuplicatesDialog({ onClose }: Props) {
       canvas.width  = Math.ceil(vp.width)
       canvas.height = Math.ceil(vp.height)
       const ctx = canvas.getContext('2d')!
-      await page.render({ canvasContext: ctx, viewport: vp }).promise
+      await page.render({ canvas, viewport: vp }).promise
       // Simple hash: sample every 16th pixel
       const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data
       let hash = ''

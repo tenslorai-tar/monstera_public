@@ -4,11 +4,7 @@ import * as pdfjsLib from 'pdfjs-dist'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { usePdfStore } from '../store/usePdfStore'
 import { useTabsStore } from '../store/useTabsStore'
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.mjs',
-  import.meta.url,
-).toString()
+import '../utils/pdfjsWorker'
 
 interface Source { label: string; bytes: Uint8Array }
 
@@ -41,7 +37,7 @@ function LazyDocPage({ doc, pageNum, scale, pageW, pageH, root }: {
       const dpr = Math.min(Math.max(window.devicePixelRatio || 1, 1), 3)
       const rvp = page.getViewport({ scale: scale * dpr })
       c.width = rvp.width; c.height = rvp.height
-      await page.render({ canvasContext: c.getContext('2d')!, viewport: rvp }).promise
+      await page.render({ canvas: c, viewport: rvp }).promise
     })()
     return () => { cancelled = true }
   }, [inView, doc, pageNum, scale])

@@ -33,8 +33,7 @@ export default function OcrRegionDialog({ onClose }: Props) {
       const canvas = canvasRef.current!
       canvas.width  = Math.ceil(vp.width)
       canvas.height = Math.ceil(vp.height)
-      const ctx = canvas.getContext('2d')!
-      page.render({ canvasContext: ctx, viewport: vp }).promise.then(() => setRendered(true))
+      page.render({ canvas, viewport: vp }).promise.then(() => setRendered(true))
     })
   }, [pdfDoc, currentPage])
 
@@ -67,7 +66,7 @@ export default function OcrRegionDialog({ onClose }: Props) {
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     pdfDoc?.getPage(currentPage).then(page => {
       const vp = page.getViewport({ scale: SCALE })
-      page.render({ canvasContext: ctx, viewport: vp }).promise.then(() => {
+      page.render({ canvas, viewport: vp }).promise.then(() => {
         ctx.strokeStyle = '#4a9eff'
         ctx.lineWidth   = 2
         ctx.setLineDash([4, 2])

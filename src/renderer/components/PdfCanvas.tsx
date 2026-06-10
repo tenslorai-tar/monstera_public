@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.mjs',
-  import.meta.url
-).toString()
+import '../utils/pdfjsWorker'
 
 interface PdfCanvasProps {
   pdfBytes: ArrayBuffer
@@ -33,11 +29,10 @@ export default function PdfCanvas({ pdfBytes }: PdfCanvasProps) {
         if (!canvas) return
 
         const viewport = page.getViewport({ scale: 1.5 })
-        const context = canvas.getContext('2d')!
         canvas.width = viewport.width
         canvas.height = viewport.height
 
-        await page.render({ canvasContext: context, viewport }).promise
+        await page.render({ canvas, viewport }).promise
         setLoading(false)
       } catch (err) {
         if (!cancelled) {

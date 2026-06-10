@@ -113,7 +113,10 @@ export function installBrowserApi() {
       const [f] = await pickFiles('.pdf,application/pdf', false)
       return f ? stash(f) : null
     },
-    openMultipleFiles: async () => (await pickFiles('.pdf,application/pdf', true)).map(stash),
+    openMultipleFiles: async () => {
+      if (injectedFile) { const p = stash(injectedFile); injectedFile = null; return [p] }
+      return (await pickFiles('.pdf,application/pdf', true)).map(stash)
+    },
     openImageFile: async () => {
       const [f] = await pickFiles('image/png,image/jpeg,image/jpg', false)
       return f ? stash(f) : null

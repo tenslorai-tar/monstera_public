@@ -131,7 +131,7 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
         const ocgConfig = getOcgConfig()
         // annotationMode: 0 = DISABLE — our overlay handles annotation rendering
         await page.render({
-          canvasContext: ctx,
+          canvas,
           viewport: rvp,
           annotationMode: 0,
           ...(ocgConfig ? { optionalContentConfigPromise: Promise.resolve(ocgConfig) } : {}),

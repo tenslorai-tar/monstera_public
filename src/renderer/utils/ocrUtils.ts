@@ -82,25 +82,32 @@ export async function runOcrOnPages(
       const canvas = document.createElement('canvas')
       canvas.width = viewport.width
       canvas.height = viewport.height
-      const ctx = canvas.getContext('2d')!
-      await page.render({ canvasContext: ctx, viewport, annotationMode: 0 }).promise
+      await page.render({ canvas, viewport, annotationMode: 0 }).promise
 
-      const { data } = await worker.recognize(canvas)
+      // tesseract.js v6+: word lists are no longer in the default output —
+      // request the blocks tree and flatten it ourselves.
+      const { data } = await worker.recognize(canvas, {}, { blocks: true })
 
       const scaleX = pageW / canvas.width
       const scaleY = pageH / canvas.height
 
       const words: OcrWord[] = []
-      for (const word of (data.words ?? [])) {
-        if (!word.text.trim() || word.confidence < 20) continue
-        const { x0, y0, x1, y1 } = word.bbox
-        words.push({
-          text: word.text,
-          x: x0 * scaleX,
-          y: pageH - y1 * scaleY,       // flip Y: Tesseract y=0 top → PDF y=0 bottom
-          w: (x1 - x0) * scaleX,
-          h: (y1 - y0) * scaleY,
-        })
+      for (const block of (data.blocks ?? [])) {
+        for (const para of (block.paragraphs ?? [])) {
+          for (const line of (para.lines ?? [])) {
+            for (const word of (line.words ?? [])) {
+              if (!word.text.trim() || word.confidence < 20) continue
+              const { x0, y0, x1, y1 } = word.bbox
+              words.push({
+                text: word.text,
+                x: x0 * scaleX,
+                y: pageH - y1 * scaleY,       // flip Y: Tesseract y=0 top → PDF y=0 bottom
+                w: (x1 - x0) * scaleX,
+                h: (y1 - y0) * scaleY,
+              })
+            }
+          }
+        }
       }
 
       onPageDone(pageNum, words)

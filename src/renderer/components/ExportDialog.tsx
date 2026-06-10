@@ -89,7 +89,7 @@ export default function ExportDialog({ onClose }: Props) {
       ctx.fillStyle = '#ffffff'
       ctx.fillRect(0, 0, canvas.width, canvas.height)
     }
-    await page.render({ canvasContext: ctx, viewport: vp }).promise
+    await page.render({ canvas, viewport: vp }).promise
     return canvas.toDataURL(imgFmt === 'jpeg' ? 'image/jpeg' : imgFmt === 'webp' ? 'image/webp' : 'image/png', q / 100)
   }
 

@@ -2,11 +2,7 @@ import { useRef, useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import * as pdfjsLib from 'pdfjs-dist'
 import { usePdfStore } from '../store/usePdfStore'
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.mjs',
-  import.meta.url,
-).toString()
+import '../utils/pdfjsWorker'
 
 interface Props {
   onClose: () => void
@@ -34,7 +30,7 @@ export default function SplitViewPanel({ onClose }: Props) {
     canvas.height = rvp.height
     canvas.style.width  = `${vp.width}px`
     canvas.style.height = `${vp.height}px`
-    await page.render({ canvasContext: canvas.getContext('2d')!, viewport: rvp }).promise
+    await page.render({ canvas, viewport: rvp }).promise
   }
 
   useEffect(() => { renderPage(leftRef.current, leftPage) }, [leftPage, pdfBytes, scale])

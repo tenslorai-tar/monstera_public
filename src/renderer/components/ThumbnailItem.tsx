@@ -60,8 +60,7 @@ export default function ThumbnailItem({
       const viewport = page.getViewport({ scale: thumbScale })
       canvas.width = viewport.width
       canvas.height = viewport.height
-      const ctx = canvas.getContext('2d')!
-      await page.render({ canvasContext: ctx, viewport }).promise
+      await page.render({ canvas, viewport }).promise
     })()
   }, [inView, pdfDoc, pageNum, thumbScale])
 
