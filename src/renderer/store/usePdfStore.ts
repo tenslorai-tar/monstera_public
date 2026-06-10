@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import * as pdfjsLib from 'pdfjs-dist'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
-import { textCache, clearTextCache, loadAllPageText, loadPageText } from '../utils/textCache'
+import { textCache, clearTextCache, loadAllPageText, loadPageText, normalizeForSearch } from '../utils/textCache'
+import { clearAllSearchRanges } from '../utils/searchHighlights'
 import type { Annotation, AnnotationTool, StampName } from '../types/annotations'
 import { writeAnnotationsToPdf, readAnnotationsFromPdf } from '../utils/annotationPdfLib'
 import { newId } from '../utils/annotationUtils'
@@ -66,6 +67,17 @@ export interface EditSnapshot {
 }
 
 export interface SearchMatch { pageNum: number; matchStart: number; matchLen: number }
+
+const WORD_CHAR = /[\p{L}\p{N}_]/u
+function isWholeWordMatch(text: string, start: number, len: number): boolean {
+  const before = start > 0 ? text[start - 1] : ''
+  const after = start + len < text.length ? text[start + len] : ''
+  return !(before && WORD_CHAR.test(before)) && !(after && WORD_CHAR.test(after))
+}
+
+// Background text-extraction generation token: bumping it cancels any
+// in-flight indexing loop from a previous document state.
+let textIndexGen = 0
 
 export type ZoomMode = 'custom' | 'fit-width' | 'fit-page'
 
@@ -157,6 +169,13 @@ interface PdfStore {
   searchQuery: string
   searchMatches: SearchMatch[]
   activeMatchIndex: number
+  searchCaseSensitive: boolean
+  searchWholeWord: boolean
+  searchRegex: boolean
+  searchRegexError: string
+  searchIndexing: boolean
+  setSearchOptions: (patch: Partial<Pick<PdfStore, 'searchCaseSensitive' | 'searchWholeWord' | 'searchRegex'>>) => void
+  startTextIndexing: (doc: PDFDocumentProxy) => void
 
   scrollToPage: (pageNum: number) => void
   setScrollToPage: (fn: (pageNum: number) => void) => void
@@ -317,6 +336,28 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   scale: 1.5, zoomMode: 'custom', containerWidth: 0, containerHeight: 0, currentPage: 1,
   sidebarOpen: false,
   searchOpen: false, searchQuery: '', searchMatches: [], activeMatchIndex: -1,
+  searchCaseSensitive: false, searchWholeWord: false, searchRegex: false,
+  searchRegexError: '', searchIndexing: false,
+  setSearchOptions: (patch) => {
+    set(patch)
+    const q = get().searchQuery
+    if (q.trim()) get().runSearch(q)
+  },
+  // Extract page text in the background for search. A new call (new document
+  // state) cancels the previous loop; when done, an open query re-runs so the
+  // user gets complete results instead of silently partial ones.
+  startTextIndexing: (doc) => {
+    const gen = ++textIndexGen
+    set({ searchIndexing: true })
+    loadAllPageText(doc, () => gen !== textIndexGen)
+      .catch(() => {})
+      .finally(() => {
+        if (gen !== textIndexGen) return
+        set({ searchIndexing: false })
+        const q = get().searchQuery
+        if (q.trim() && get().searchOpen) get().runSearch(q)
+      })
+  },
   scrollToPage: () => {},
   setScrollToPage: (fn) => set({ scrollToPage: fn }),
 
@@ -418,7 +459,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
       ocrData: new Map(), bookmarks: [], bookmarksPanelOpen: false,
       layers: [], namedDests: [], layerRevision: 0,
     })
-    loadAllPageText(pdfDoc).catch(() => {})
+    get().startTextIndexing(pdfDoc)
     // Load bookmarks (outline) from PDF in background
     if (uint8.length > 0) {
       window.electronAPI.mupdfGetOutline(uint8.buffer as ArrayBuffer)
@@ -472,7 +513,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
       searchOpen: false, searchQuery: '', searchMatches: [], activeMatchIndex: -1,
       selectedAnnotationId: null, openStickyNoteId: null,
     })
-    loadAllPageText(pdfDoc).catch(() => {})
+    get().startTextIndexing(pdfDoc)
   },
 
   getBakedBytes: async () => {
@@ -560,7 +601,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
       selectedAnnotationId: null, openStickyNoteId: null,
       searchMatches: [], activeMatchIndex: -1,
     })
-    loadAllPageText(pdfDoc).catch(() => {})
+    get().startTextIndexing(pdfDoc)
   },
 
   redo: async () => {
@@ -590,7 +631,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
       selectedAnnotationId: null, openStickyNoteId: null,
       searchMatches: [], activeMatchIndex: -1,
     })
-    loadAllPageText(pdfDoc).catch(() => {})
+    get().startTextIndexing(pdfDoc)
   },
 
   save: async () => {
@@ -675,24 +716,76 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     if (!open) set({ searchQuery: '', searchMatches: [], activeMatchIndex: -1 })
   },
   runSearch: (query) => {
-    if (!query.trim()) { set({ searchQuery: query, searchMatches: [], activeMatchIndex: -1 }); return }
-    const { numPages, scrollToPage } = get()
-    const lower = query.toLowerCase()
+    if (!query.trim()) {
+      set({ searchQuery: query, searchMatches: [], activeMatchIndex: -1, searchRegexError: '' })
+      return
+    }
+    const { numPages, scrollToPage, searchCaseSensitive, searchWholeWord, searchRegex } = get()
     const matches: SearchMatch[] = []
-    for (let p = 1; p <= numPages; p++) {
-      const cache = textCache.get(p)
-      if (!cache) continue
-      const text = cache.text.toLowerCase()
-      let pos = 0
-      while (true) {
-        const idx = text.indexOf(lower, pos)
-        if (idx === -1) break
-        matches.push({ pageNum: p, matchStart: idx, matchLen: query.length })
-        pos = idx + 1
+    let regexError = ''
+
+    if (searchRegex) {
+      const flags = searchCaseSensitive ? 'g' : 'gi'
+      let re: RegExp | null = null
+      try { re = new RegExp(query, flags + 'u') } catch {
+        try { re = new RegExp(query, flags) } catch (e) {
+          regexError = e instanceof Error ? e.message : 'Invalid pattern'
+        }
+      }
+      if (re) {
+        for (let p = 1; p <= numPages; p++) {
+          const cache = textCache.get(p)
+          if (!cache) continue
+          re.lastIndex = 0
+          let m: RegExpExecArray | null
+          while ((m = re.exec(cache.text)) !== null) {
+            if (m[0].length === 0) { re.lastIndex++; continue }
+            if (!searchWholeWord || isWholeWordMatch(cache.text, m.index, m[0].length))
+              matches.push({ pageNum: p, matchStart: m.index, matchLen: m[0].length })
+          }
+        }
+      }
+    } else if (searchCaseSensitive) {
+      for (let p = 1; p <= numPages; p++) {
+        const cache = textCache.get(p)
+        if (!cache) continue
+        let pos = 0
+        while (true) {
+          const idx = cache.text.indexOf(query, pos)
+          if (idx === -1) break
+          if (!searchWholeWord || isWholeWordMatch(cache.text, idx, query.length))
+            matches.push({ pageNum: p, matchStart: idx, matchLen: query.length })
+          pos = idx + 1
+        }
+      }
+    } else {
+      // Normalized search: case-folded, accent-insensitive, ligature-aware.
+      // Matches are found in normalized space and mapped back to raw offsets.
+      const qNorm = normalizeForSearch(query).norm
+      if (qNorm) {
+        for (let p = 1; p <= numPages; p++) {
+          const cache = textCache.get(p)
+          if (!cache) continue
+          let pos = 0
+          while (true) {
+            const idx = cache.norm.indexOf(qNorm, pos)
+            if (idx === -1) break
+            const rawStart = cache.normToRaw[idx]
+            const rawEnd = cache.normToRaw[idx + qNorm.length - 1] + 1
+            if (!searchWholeWord || isWholeWordMatch(cache.text, rawStart, rawEnd - rawStart))
+              matches.push({ pageNum: p, matchStart: rawStart, matchLen: rawEnd - rawStart })
+            pos = idx + 1
+          }
+        }
       }
     }
+
     const firstPageNum = matches[0]?.pageNum
-    set({ searchQuery: query, searchMatches: matches, activeMatchIndex: matches.length > 0 ? 0 : -1 })
+    set({
+      searchQuery: query, searchMatches: matches,
+      activeMatchIndex: matches.length > 0 ? 0 : -1,
+      searchRegexError: regexError,
+    })
     if (firstPageNum != null) scrollToPage(firstPageNum)
   },
   setActiveMatch: (index) => {
@@ -1006,18 +1099,21 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
       searchOpen: false, searchQuery: '', searchMatches: [], activeMatchIndex: -1,
       selectedAnnotationId: null, openStickyNoteId: null,
     })
-    loadAllPageText(pdfDoc).catch(() => {})
+    get().startTextIndexing(pdfDoc)
   },
 
   // ── Document lifecycle ────────────────────────────────────────────────────────
   closePdf: () => {
     clearTextCache()
+    clearAllSearchRanges()
+    textIndexGen++  // cancel any in-flight background text indexing
     _ocgConfig = null
     set({
       pdfDoc: null, pdfBytes: null, numPages: 0, filePath: '', fileName: '',
       pageSizes: [], isDirty: false, undoStack: [], redoStack: [],
       selectedPages: new Set(), currentPage: 1, navBack: [], navForward: [],
       searchOpen: false, searchQuery: '', searchMatches: [], activeMatchIndex: -1,
+      searchRegexError: '', searchIndexing: false,
       annotations: [], activeTool: null, selectedAnnotationId: null, openStickyNoteId: null,
       formFields: [], formMode: false, formCreationTool: null, formsPanelOpen: false,
       bookmarks: [], bookmarksPanelOpen: false, annotationsPanelOpen: false,

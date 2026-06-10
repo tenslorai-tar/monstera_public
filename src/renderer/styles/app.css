@@ -904,6 +904,16 @@
   border-radius: 2px;
 }
 
+/* Exact-substring search highlights (CSS Custom Highlight API). The class
+   rules above remain as the fallback for environments without the API. */
+::highlight(monstera-search) {
+  background-color: rgba(255, 210, 0, 0.45);
+}
+::highlight(monstera-search-active) {
+  background-color: rgba(255, 140, 0, 0.8);
+  color: #000;
+}
+
 /* ── Search panel ────────────────────────────────────────── */
 .search-panel {
   position: absolute;

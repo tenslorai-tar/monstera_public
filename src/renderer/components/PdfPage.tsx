@@ -4,6 +4,10 @@ import { usePdfStore, getOcgConfig } from '../store/usePdfStore'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { textCache } from '../utils/textCache'
 import { hdRenderPage } from '../utils/pdfiumRender'
+import {
+  highlightApiAvailable, buildMatchRanges,
+  setPageSearchRanges, clearPageSearchRanges,
+} from '../utils/searchHighlights'
 import type { SearchMatch } from '../store/usePdfStore'
 import AnnotationOverlay from './AnnotationOverlay'
 import ObjectEditOverlay from './ObjectEditOverlay'
@@ -19,14 +23,26 @@ interface Props {
 
 function applyHighlights(
   textLayerEl: HTMLElement,
+  pageNum: number,
   pageMatches: SearchMatch[],
   activeMatch: SearchMatch | null
 ) {
   const spans = Array.from(textLayerEl.querySelectorAll<HTMLElement>('span'))
+  const cache = textCache.get(pageNum)
+
+  // Preferred path: CSS Custom Highlight API marks the exact matched
+  // characters, not whole spans.
+  if (highlightApiAvailable) {
+    if (!cache || pageMatches.length === 0) { clearPageSearchRanges(pageNum); return }
+    const { ranges, active } = buildMatchRanges(
+      spans, cache.itemOffsets, cache.itemLengths, pageMatches, activeMatch)
+    setPageSearchRanges(pageNum, ranges, active)
+    return
+  }
+
+  // Fallback: whole-span class highlighting.
   spans.forEach(s => s.classList.remove('search-match', 'search-match-active'))
-  if (pageMatches.length === 0) return
-  const cache = textCache.get(pageMatches[0]?.pageNum ?? -1)
-  if (!cache) return
+  if (!cache || pageMatches.length === 0) return
   const { itemOffsets, itemLengths } = cache
   for (const match of pageMatches) {
     const isActive = match === activeMatch
@@ -158,7 +174,7 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
       const pageMatches = searchMatches.filter(m => m.pageNum === pageNum)
       const activeMatch = activeMatchIndex >= 0 ? searchMatches[activeMatchIndex] : null
       const activeOnPage = activeMatch?.pageNum === pageNum ? activeMatch : null
-      applyHighlights(textDiv, pageMatches, activeOnPage)
+      applyHighlights(textDiv, pageNum, pageMatches, activeOnPage)
     })()
 
     return () => { cancelled = true }
@@ -170,8 +186,15 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
     const pageMatches = searchMatches.filter(m => m.pageNum === pageNum)
     const activeMatch = activeMatchIndex >= 0 ? searchMatches[activeMatchIndex] : null
     const activeOnPage = activeMatch?.pageNum === pageNum ? activeMatch : null
-    applyHighlights(textDiv, pageMatches, activeOnPage)
+    applyHighlights(textDiv, pageNum, pageMatches, activeOnPage)
   }, [searchMatches, activeMatchIndex, pageNum])
+
+  // Drop this page's highlight ranges when it unmounts or leaves the viewport
+  // (its DOM nodes are gone, so the Ranges would be dead anyway).
+  useEffect(() => {
+    if (!inView) clearPageSearchRanges(pageNum)
+    return () => clearPageSearchRanges(pageNum)
+  }, [inView, pageNum])
 
   return (
     <div

@@ -2,6 +2,10 @@ import { useEffect, useRef } from 'react'
 import { usePdfStore } from '../store/usePdfStore'
 import type { SearchMatch } from '../store/usePdfStore'
 import { textCache } from '../utils/textCache'
+import {
+  highlightApiAvailable, buildMatchRanges,
+  setPageSearchRanges, clearPageSearchRanges,
+} from '../utils/searchHighlights'
 
 interface Props {
   pageNum: number
@@ -12,15 +16,24 @@ interface Props {
 
 function applyOcrHighlights(
   container: HTMLDivElement,
+  pageNum: number,
   pageMatches: SearchMatch[],
   activeMatch: SearchMatch | null
 ) {
-  const spans = container.querySelectorAll<HTMLSpanElement>('span[data-offset]')
-  spans.forEach(s => s.classList.remove('search-match', 'search-match-active'))
-  if (pageMatches.length === 0) return
+  const spans = Array.from(container.querySelectorAll<HTMLSpanElement>('span[data-offset]'))
+  const cache = textCache.get(pageNum)
+  const key = `ocr:${pageNum}` // separate registry slot from the regular text layer
 
-  const cache = textCache.get(pageMatches[0]?.pageNum ?? -1)
-  if (!cache) return
+  if (highlightApiAvailable) {
+    if (!cache || pageMatches.length === 0) { clearPageSearchRanges(key); return }
+    const { ranges, active } = buildMatchRanges(
+      spans, cache.itemOffsets, cache.itemLengths, pageMatches, activeMatch)
+    setPageSearchRanges(key, ranges, active)
+    return
+  }
+
+  spans.forEach(s => s.classList.remove('search-match', 'search-match-active'))
+  if (!cache || pageMatches.length === 0) return
   const { itemOffsets, itemLengths } = cache
 
   for (const match of pageMatches) {
@@ -51,8 +64,10 @@ export default function OcrTextLayer({ pageNum, pageW, pageH, scale }: Props) {
     const pageMatches = searchMatches.filter(m => m.pageNum === pageNum)
     const activeMatch = activeMatchIndex >= 0 ? searchMatches[activeMatchIndex] : null
     const activeOnPage = activeMatch?.pageNum === pageNum ? activeMatch : null
-    applyOcrHighlights(el, pageMatches, activeOnPage)
+    applyOcrHighlights(el, pageNum, pageMatches, activeOnPage)
   }, [searchMatches, activeMatchIndex, pageNum, words])
+
+  useEffect(() => () => clearPageSearchRanges(`ocr:${pageNum}`), [pageNum])
 
   if (!words?.length) return null
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { X } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
 import { textCache } from '../utils/textCache'
@@ -16,6 +16,12 @@ export default function SearchPanel() {
   const setSearchOpen   = usePdfStore(s => s.setSearchOpen)
   const annotations     = usePdfStore(s => s.annotations)
   const updateAnnotation = usePdfStore(s => s.updateAnnotation)
+  const caseSensitive   = usePdfStore(s => s.searchCaseSensitive)
+  const wholeWord       = usePdfStore(s => s.searchWholeWord)
+  const useRegex        = usePdfStore(s => s.searchRegex)
+  const regexError      = usePdfStore(s => s.searchRegexError)
+  const indexing        = usePdfStore(s => s.searchIndexing)
+  const setSearchOptions = usePdfStore(s => s.setSearchOptions)
 
   const addAnnotation  = usePdfStore(s => s.addAnnotation)
 
@@ -31,9 +37,19 @@ export default function SearchPanel() {
 
   if (!searchOpen) return null
 
-  const matchLabel = searchMatches.length === 0
-    ? (searchQuery ? 'No results' : '')
-    : `${activeMatchIndex + 1} / ${searchMatches.length}`
+  const matchLabel = regexError
+    ? 'Invalid pattern'
+    : searchMatches.length === 0
+      ? (searchQuery ? (indexing ? 'Searching…' : 'No results') : '')
+      : `${activeMatchIndex + 1} / ${searchMatches.length}${indexing ? '+' : ''}`
+
+  const optBtn = (on: boolean): CSSProperties => ({
+    background: on ? 'var(--accent)' : 'none',
+    color: on ? '#fff' : 'var(--text-muted)',
+    border: '1px solid ' + (on ? 'var(--accent)' : 'var(--border)'),
+    borderRadius: 4, cursor: 'pointer', fontSize: 11, fontWeight: 600,
+    padding: '2px 7px', lineHeight: '16px', flexShrink: 0,
+  })
 
   // Replace in the document's real text via PDFium (true content edit), falling
   // back to text-edit overlays if the PDFium engine isn't available.
@@ -70,8 +86,9 @@ export default function SearchPanel() {
       try {
         const page = await pdfDoc.getPage(pageNum)
         const tc = await page.getTextContent()
+        // Non-empty items only — must mirror textCache's offset indexing.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const items: any[] = tc.items.filter((it: any) => 'str' in it)
+        const items: any[] = tc.items.filter((it: any) => 'str' in it && it.str !== '')
         const cache = textCache.get(pageNum)
         if (!cache) continue
         const pageMatches = targets.filter(m => m.pageNum === pageNum)
@@ -165,7 +182,13 @@ export default function SearchPanel() {
             if (e.key === 'Escape') setSearchOpen(false)
           }}
         />
-        <span className="search-count">{matchLabel}</span>
+        <button style={optBtn(caseSensitive)} title="Match case"
+          onClick={() => setSearchOptions({ searchCaseSensitive: !caseSensitive })}>Aa</button>
+        <button style={optBtn(wholeWord)} title="Whole words only"
+          onClick={() => setSearchOptions({ searchWholeWord: !wholeWord })}>W</button>
+        <button style={optBtn(useRegex)} title="Regular expression"
+          onClick={() => setSearchOptions({ searchRegex: !useRegex })}>.*</button>
+        <span className="search-count" style={regexError ? { color: '#f48771' } : undefined}>{matchLabel}</span>
         <button className="search-nav-btn" onClick={prevMatch} disabled={searchMatches.length === 0} title="Previous (Shift+Enter)">▲</button>
         <button className="search-nav-btn" onClick={nextMatch} disabled={searchMatches.length === 0} title="Next (Enter)">▼</button>
         <button className="search-close-btn" onClick={() => setSearchOpen(false)} title="Close (Escape)"><X size={14} /></button>
