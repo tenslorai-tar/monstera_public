@@ -27,7 +27,7 @@ type DrawPhase =
   | { k: 'textbox-edit'; x: number; y: number; w: number; h: number; text: string }
   | { k: 'typewriter-edit'; x: number; y: number; text: string }
   | { k: 'text-edit-size'; sx: number; sy: number; cx: number; cy: number }
-  | { k: 'text-edit-edit'; x: number; y: number; w: number; h: number; text: string; fontSize?: number; color?: string; bg?: string; fontFamily?: string; fontDataB64?: string; baselineX?: number; baselineY?: number; editPoint?: { x: number; y: number }; editRect?: { x1: number; y1: number; x2: number; y2: number }; sample?: FontSample }
+  | { k: 'text-edit-edit'; x: number; y: number; w: number; h: number; text: string; fontSize?: number; color?: string; bg?: string; fontFamily?: string; fontDataB64?: string; baselineX?: number; baselineY?: number; editPoint?: { x: number; y: number }; editRect?: { x1: number; y1: number; x2: number; y2: number }; paraPoint?: { x: number; y: number }; leading?: number; sample?: FontSample }
   | { k: 'callout-size'; sx: number; sy: number; cx: number; cy: number }
   | { k: 'callout-edit'; x: number; y: number; w: number; h: number; text: string; tipSvgX: number; tipSvgY: number }
   | { k: 'poly'; pts: Array<[number, number]>; curX: number; curY: number }
@@ -776,6 +776,26 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
               const bytes = usePdfStore.getState().pdfBytes
               if (bytes) {
                 const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+                // Paragraph-first: clicking inside a multi-line block opens the
+                // whole paragraph in a reflow editor (word-processor behaviour).
+                // Single-line paragraphs keep the in-place single-object path,
+                // which preserves the original embedded font exactly.
+                try {
+                  const para = await window.electronAPI.pdfiumParagraphAt(ab, pageNum - 1, px, py)
+                  if (para.found && para.editable && para.lineCount > 1) {
+                    let fontFamily: string | undefined
+                    if (para.fontLoadable && para.fontData.byteLength > 0) {
+                      fontFamily = (await loadPdfFont(para.fontData)) ?? undefined
+                    }
+                    const [qx1, qy2] = toSvg(para.x1, para.y2)
+                    const [qx2, qy1] = toSvg(para.x2, para.y1)
+                    setDraw({ k: 'text-edit-edit', x: qx1, y: qy2,
+                      w: Math.max(40, qx2 - qx1), h: Math.max(16, qy1 - qy2),
+                      text: para.text, fontSize: para.fontSize, color: para.color, fontFamily,
+                      paraPoint: { x: px, y: py }, leading: para.leading })
+                    return
+                  }
+                } catch { /* fall through to single-object edit */ }
                 const obj = await window.electronAPI.pdfiumTextObjectAt(ab, pageNum - 1, px, py)
                 if (obj.found) {
                   let fontFamily: string | undefined
@@ -1267,6 +1287,22 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
     const trimmed = text.trim()
     setDraw({ k: 'idle' })
     if (!trimmed) return
+
+    // Paragraph reflow: PDFium removes the original runs and re-inserts the new
+    // text wrapped to the paragraph's width at its original leading/alignment,
+    // in a complete installed substitute of the document font when available.
+    if (d.paraPoint) {
+      try {
+        const store = usePdfStore.getState()
+        const bytes = store.pdfBytes
+        if (bytes && await pdfiumReady()) {
+          const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+          const r = await window.electronAPI.pdfiumReplaceParagraph(ab, pageNum - 1, d.paraPoint.x, d.paraPoint.y, text)
+          await store.applyContentEdit(new Uint8Array(r.bytes), pageNum)
+          return
+        }
+      } catch { /* fall through to the cover-and-replace overlay */ }
+    }
 
     // Primary path: TRUE in-place edit via PDFium. FPDFText_SetText rewrites the
     // clicked text object's string while reusing its own embedded font, size and
@@ -1900,19 +1936,26 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
     const col = draw.color ?? toolColor
     // Caret-in-place mode: editor rendered in the real page font, tight border.
     const inPlace = !!draw.fontFamily
+    const isPara = !!draw.paraPoint
     const fam = draw.fontFamily ? `'${draw.fontFamily}', ${draw.sample?.cssFamily ?? 'serif'}`
       : draw.sample?.cssFamily ?? 'serif'
+    // Paragraph mode matches the page's own line spacing and leaves headroom for
+    // the text to grow while editing.
+    const lh = isPara && draw.leading && fs ? draw.leading / fs : (inPlace ? 1.0 : 1.2)
+    const boxH = isPara
+      ? Math.max(h, fs * scale + 8) + (draw.leading ?? fs * 1.2) * scale * 2
+      : Math.max(h, fs * scale + 8)
     return (
       <g>
-        <foreignObject x={x} y={y} width={w} height={Math.max(h, fs * scale + 8)} style={{ pointerEvents: 'all' }}>
+        <foreignObject x={x} y={y} width={w} height={boxH} style={{ pointerEvents: 'all' }}>
           <textarea style={{ width: '100%', height: '100%', background: 'white', color: col,
-            border: inPlace ? '1px solid #4a9eff' : '2px solid #ff8800', outline: 'none', resize: 'none',
-            fontFamily: fam, fontSize: fs * scale, lineHeight: inPlace ? 1.0 : 1.2,
+            border: inPlace || isPara ? '1px solid #4a9eff' : '2px solid #ff8800', outline: 'none', resize: 'none',
+            fontFamily: fam, fontSize: fs * scale, lineHeight: lh,
             fontWeight: (draw.fontFamily || draw.sample?.cssFamily) ? undefined : (draw.sample?.bold ? 700 : 400),
             fontStyle: (draw.fontFamily || draw.sample?.cssFamily) ? undefined : (draw.sample?.italic ? 'italic' : 'normal'),
-            padding: '0 1px', boxSizing: 'border-box', overflow: 'hidden' }}
+            padding: '0 1px', boxSizing: 'border-box', overflow: isPara ? 'auto' : 'hidden' }}
             autoFocus value={draw.text}
-            onFocus={e => e.currentTarget.select()}
+            onFocus={e => { if (!isPara) e.currentTarget.select() }}
             onChange={e => setDraw(d => ({ ...(d as any), text: e.target.value } as DrawPhase))}
             onBlur={e => {
               if (cancelEditRef.current) { cancelEditRef.current = false; setDraw({ k: 'idle' }); return }
@@ -1920,14 +1963,17 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
             }}
             onKeyDown={e => {
               if (e.key === 'Escape') { e.preventDefault(); cancelEditRef.current = true; e.currentTarget.blur() }
-              else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur() }
+              else if (e.key === 'Enter' && !e.shiftKey && !isPara) { e.preventDefault(); e.currentTarget.blur() }
+              else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.currentTarget.blur() }
             }}
             placeholder="Edit text…" />
         </foreignObject>
-        <foreignObject x={x} y={y + Math.max(h, fs * scale + 8) + 2} width={Math.max(w, 220)} height={18} style={{ pointerEvents: 'none' }}>
-          <div style={{ fontSize: 11, fontFamily: 'sans-serif', color: '#ff8800', fontWeight: 600,
+        <foreignObject x={x} y={y + boxH + 2} width={Math.max(w, 300)} height={18} style={{ pointerEvents: 'none' }}>
+          <div style={{ fontSize: 11, fontFamily: 'sans-serif', color: isPara ? '#4a9eff' : '#ff8800', fontWeight: 600,
             background: 'rgba(0,0,0,0.04)', whiteSpace: 'nowrap' }}>
-            Enter = apply · Shift+Enter = new line · Esc = cancel
+            {isPara
+              ? 'Paragraph reflow · Ctrl+Enter or click away = apply · Enter = new line · Esc = cancel'
+              : 'Enter = apply · Shift+Enter = new line · Esc = cancel'}
           </div>
         </foreignObject>
       </g>

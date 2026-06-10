@@ -72,6 +72,19 @@ declare global {
         y: number,
         newText: string,
       ) => Promise<ArrayBuffer>
+      pdfiumParagraphAt: (
+        bytes: ArrayBuffer,
+        pageIndex: number,
+        x: number,
+        y: number,
+      ) => Promise<{ found: boolean; editable: boolean; text: string; x1: number; y1: number; x2: number; y2: number; fontSize: number; color: string; leading: number; lineCount: number; align: string; fontName: string; fontData: ArrayBuffer; fontLoadable: boolean }>
+      pdfiumReplaceParagraph: (
+        bytes: ArrayBuffer,
+        pageIndex: number,
+        x: number,
+        y: number,
+        newText: string,
+      ) => Promise<{ bytes: ArrayBuffer; lineCount: number }>
 
       writeFile: (filePath: string, bytes: ArrayBuffer) => Promise<void>
       writeBytesToDir: (

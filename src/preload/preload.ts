@@ -96,6 +96,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     newText: string,
   ): Promise<ArrayBuffer> =>
     ipcRenderer.invoke('pdfium:editTextAt', bytes, pageIndex, x, y, newText),
+  pdfiumParagraphAt: (
+    bytes: ArrayBuffer,
+    pageIndex: number,
+    x: number,
+    y: number,
+  ): Promise<{ found: boolean; editable: boolean; text: string; x1: number; y1: number; x2: number; y2: number; fontSize: number; color: string; leading: number; lineCount: number; align: string; fontName: string; fontData: ArrayBuffer; fontLoadable: boolean }> =>
+    ipcRenderer.invoke('pdfium:paragraphAt', bytes, pageIndex, x, y),
+  pdfiumReplaceParagraph: (
+    bytes: ArrayBuffer,
+    pageIndex: number,
+    x: number,
+    y: number,
+    newText: string,
+  ): Promise<{ bytes: ArrayBuffer; lineCount: number }> =>
+    ipcRenderer.invoke('pdfium:replaceParagraph', bytes, pageIndex, x, y, newText),
 
   // Write
   writeFile: (filePath: string, bytes: ArrayBuffer): Promise<void> =>

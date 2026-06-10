@@ -60,6 +60,11 @@ type Lib = {
   SetText: (obj: unknown, text: Buffer) => number
   RemoveObject: (page: unknown, obj: unknown) => number
   DestroyObject: (obj: unknown) => void
+  InsertObject: (page: unknown, obj: unknown) => void
+  CreateTextObj: (doc: unknown, font: unknown, size: number) => unknown
+  LoadFontData: (doc: unknown, data: Buffer, size: number, fontType: number, cid: number) => unknown
+  LoadStandardFont: (doc: unknown, name: string) => unknown
+  FontClose: (font: unknown) => void
   Transform: (obj: unknown, a: number, b: number, c: number, d: number, e: number, f: number) => void
   SetFillColor: (obj: unknown, r: number, g: number, b: number, a: number) => number
   GenerateContent: (page: unknown) => number
@@ -117,6 +122,11 @@ function load(): Lib {
     SetText:         m.func('int FPDFText_SetText(void* obj, const char16_t* text)') as Lib['SetText'],
     RemoveObject:    m.func('int FPDFPage_RemoveObject(void* page, void* obj)') as Lib['RemoveObject'],
     DestroyObject:   m.func('void FPDFPageObj_Destroy(void* obj)') as Lib['DestroyObject'],
+    InsertObject:    m.func('void FPDFPage_InsertObject(void* page, void* page_object)') as Lib['InsertObject'],
+    CreateTextObj:   m.func('void* FPDFPageObj_CreateTextObj(void* document, void* font, float font_size)') as Lib['CreateTextObj'],
+    LoadFontData:    m.func('void* FPDFText_LoadFont(void* document, const uint8_t* data, uint32_t size, int font_type, int cid)') as Lib['LoadFontData'],
+    LoadStandardFont: m.func('void* FPDFText_LoadStandardFont(void* document, const char* font)') as Lib['LoadStandardFont'],
+    FontClose:       m.func('void FPDFFont_Close(void* font)') as Lib['FontClose'],
     Transform:       m.func('void FPDFPageObj_Transform(void* obj, double a, double b, double c, double d, double e, double f)') as Lib['Transform'],
     SetFillColor:    m.func('int FPDFPageObj_SetFillColor(void* obj, uint r, uint g, uint b, uint a)') as Lib['SetFillColor'],
     GenerateContent: m.func('int FPDFPage_GenerateContent(void* page)') as Lib['GenerateContent'],
@@ -442,7 +452,7 @@ export function editTextInRegion(
     const tp = L.TextLoadPage(page)
     const matches = findMatches(L, page, tp, rect)
     if (matches.length === 0) throw new Error('No editable text found in the selected area')
-    const wide = Buffer.from(newText + ' ', 'utf16le')
+    const wide = Buffer.from(newText + '\u0000', 'utf16le')
     if (!L.SetText(matches[0].obj, wide)) throw new Error('PDFium failed to set text')
     for (let i = 1; i < matches.length; i++) {
       if (L.RemoveObject(page, matches[i].obj)) L.DestroyObject(matches[i].obj)
@@ -803,6 +813,299 @@ export function replaceAllText(
     }
     if (count === 0) return { bytes, count: 0 }
     return { bytes: saveDoc(L, doc), count }
+  } finally {
+    L.CloseDocument(doc)
+  }
+}
+
+// ── Paragraph editing with reflow ────────────────────────────────────────────
+// PDF has no paragraphs — only positioned text runs. To edit a paragraph like a
+// word processor we reconstruct one: cluster runs into visual lines by baseline,
+// grow the clicked line into a block whose leading and font size are consistent,
+// then on commit remove every original run and re-insert the new text wrapped to
+// the paragraph's width at the original leading/alignment.
+
+const FPDF_FONT_TRUETYPE = 2
+
+interface ParaRun {
+  obj: unknown; l: number; b: number; r: number; t: number
+  nested: boolean; text: string; fontSize: number; baseX: number; baseY: number
+}
+interface ParaLine {
+  runs: ParaRun[]; l: number; b: number; r: number; t: number
+  baseY: number; fontSize: number; text: string
+}
+
+function collectParaRuns(L: Lib, page: unknown, tp: unknown): ParaRun[] {
+  const nodes: TextNode[] = []
+  collectTextNodes(L, page, true, IDENTITY, nodes)
+  const runs: ParaRun[] = []
+  for (const nd of nodes) {
+    const len = L.GetText(nd.obj, tp, null, 0)
+    const buf = Buffer.alloc(len)
+    if (len > 0) L.GetText(nd.obj, tp, buf, len)
+    const text = buf.toString('utf16le').replace(/\0+/g, '').replace(/\s+$/g, '')
+    const fsArr = [0]; L.GetFontSize(nd.obj, fsArr)
+    const m = composeMat(nd.pm, readMatrix(L, nd.obj) as Mat)
+    runs.push({
+      obj: nd.obj, l: nd.l, b: nd.b, r: nd.r, t: nd.t, nested: nd.nested,
+      text, fontSize: fsArr[0] || Math.max(1, nd.t - nd.b), baseX: m[4], baseY: m[5],
+    })
+  }
+  return runs
+}
+
+// Cluster runs sharing a baseline into visual lines. The horizontal-gap guard
+// keeps side-by-side columns (which share baselines) from fusing into one line.
+function groupIntoLines(runs: ParaRun[]): ParaLine[] {
+  const sorted = [...runs].filter(r => r.text.trim() !== '').sort((a, b) => b.baseY - a.baseY || a.l - b.l)
+  const lines: ParaLine[] = []
+  for (const r of sorted) {
+    const tol = Math.max(2, r.fontSize * 0.45)
+    const gapCap = r.fontSize * 2.5
+    const line = lines.find(ln =>
+      Math.abs(ln.baseY - r.baseY) < tol && r.l < ln.r + gapCap && r.r > ln.l - gapCap)
+    if (line) {
+      line.runs.push(r)
+      line.l = Math.min(line.l, r.l); line.r = Math.max(line.r, r.r)
+      line.b = Math.min(line.b, r.b); line.t = Math.max(line.t, r.t)
+      line.fontSize = Math.max(line.fontSize, r.fontSize)
+    } else {
+      lines.push({ runs: [r], l: r.l, b: r.b, r: r.r, t: r.t, baseY: r.baseY, fontSize: r.fontSize, text: '' })
+    }
+  }
+  for (const ln of lines) {
+    ln.runs.sort((a, b) => a.l - b.l)
+    let text = ''
+    let prevRight: number | null = null
+    for (const r of ln.runs) {
+      if (prevRight !== null && r.l - prevRight > Math.max(0.5, ln.fontSize * 0.18) && text && !text.endsWith(' ')) text += ' '
+      text += r.text
+      prevRight = r.r
+    }
+    ln.text = text
+  }
+  lines.sort((a, b) => b.baseY - a.baseY)
+  return lines
+}
+
+// Grow the clicked line up/down into a paragraph: consistent leading, similar
+// font size (so headings don't fuse with body text), and horizontal overlap.
+function paragraphLinesAt(lines: ParaLine[], x: number, y: number): ParaLine[] {
+  const idx = lines.findIndex(ln => x >= ln.l - 2 && x <= ln.r + 2 && y >= ln.b - 1 && y <= ln.t + 1)
+  if (idx < 0) return []
+  const samePara = (above: ParaLine, below: ParaLine): boolean => {
+    const gap = above.baseY - below.baseY
+    const fs = Math.max(above.fontSize, below.fontSize)
+    if (gap <= 0 || gap > fs * 1.95) return false
+    const ratio = above.fontSize / below.fontSize
+    if (ratio < 0.77 || ratio > 1.3) return false
+    const overlap = Math.min(above.r, below.r) - Math.max(above.l, below.l)
+    return overlap >= Math.min(above.r - above.l, below.r - below.l) * 0.3
+  }
+  let start = idx, end = idx
+  while (start > 0 && samePara(lines[start - 1], lines[start])) start--
+  while (end < lines.length - 1 && samePara(lines[end], lines[end + 1])) end++
+  const grp = lines.slice(start, end + 1)
+  if (grp.length < 3) return grp
+  // Trim outward from the clicked line where the leading deviates from the
+  // paragraph's median — a larger gap means a paragraph break.
+  const gaps: number[] = []
+  for (let i = 0; i + 1 < grp.length; i++) gaps.push(grp[i].baseY - grp[i + 1].baseY)
+  const med = [...gaps].sort((a, b) => a - b)[Math.floor(gaps.length / 2)]
+  const ci = idx - start
+  let s = ci, e = ci
+  while (s > 0 && Math.abs((grp[s - 1].baseY - grp[s].baseY) - med) <= med * 0.4) s--
+  while (e < grp.length - 1 && Math.abs((grp[e].baseY - grp[e + 1].baseY) - med) <= med * 0.4) e++
+  return grp.slice(s, e + 1)
+}
+
+function detectAlign(grp: ParaLine[]): 'left' | 'center' | 'right' {
+  if (grp.length < 2) return 'left'
+  // The last line of left/justified text is ragged — ignore it when possible.
+  const consider = grp.length > 2 ? grp.slice(0, -1) : grp
+  const spread = (vals: number[]) => Math.max(...vals) - Math.min(...vals)
+  const lefts = spread(consider.map(l => l.l))
+  const rights = spread(consider.map(l => l.r))
+  const centers = spread(consider.map(l => (l.l + l.r) / 2))
+  if (lefts < 3) return 'left'
+  if (rights < 3 && lefts > 6) return 'right'
+  if (centers < 4) return 'center'
+  return 'left'
+}
+
+function medianLeading(grp: ParaLine[]): number {
+  const gaps: number[] = []
+  for (let i = 0; i + 1 < grp.length; i++) gaps.push(grp[i].baseY - grp[i + 1].baseY)
+  return gaps.length ? gaps.sort((a, b) => a - b)[Math.floor(gaps.length / 2)] : grp[0].fontSize * 1.2
+}
+
+// Join soft-wrapped lines back into flowing text; rejoin hyphenated breaks.
+function joinParagraphText(grp: ParaLine[]): string {
+  let text = ''
+  for (const ln of grp) {
+    const t = ln.text.trim()
+    if (!t) continue
+    if (!text) text = t
+    else if (text.endsWith('-')) text = text.slice(0, -1) + t
+    else text += ' ' + t
+  }
+  return text
+}
+
+export interface ParagraphHit {
+  found: boolean
+  editable: boolean   // every run is top-level — PDFium can save the rewrite
+  text: string
+  x1: number; y1: number; x2: number; y2: number
+  fontSize: number
+  color: string
+  leading: number
+  lineCount: number
+  align: 'left' | 'center' | 'right'
+  fontName: string
+  fontData: Buffer
+  fontLoadable: boolean
+}
+
+const NO_PARA: ParagraphHit = {
+  found: false, editable: false, text: '', x1: 0, y1: 0, x2: 0, y2: 0,
+  fontSize: 0, color: '#000000', leading: 0, lineCount: 0, align: 'left',
+  fontName: '', fontData: Buffer.alloc(0), fontLoadable: false,
+}
+
+export function getParagraphAt(bytes: Buffer, pageIndex: number, x: number, y: number): ParagraphHit {
+  const L = load()
+  const doc = L.LoadMemDocument(bytes, bytes.length, null)
+  if (!doc) return NO_PARA
+  try {
+    const page = L.LoadPage(doc, pageIndex)
+    if (!page) return NO_PARA
+    const tp = L.TextLoadPage(page)
+    const grp = paragraphLinesAt(groupIntoLines(collectParaRuns(L, page, tp)), x, y)
+    L.TextClosePage(tp)
+    if (grp.length === 0) { L.ClosePage(page); return NO_PARA }
+    const firstRun = grp[0].runs[0]
+    const font = extractFont(L, firstRun.obj)
+    const rr = [0], gg = [0], bb = [0], aa = [0]; L.GetFillColor(firstRun.obj, rr, gg, bb, aa)
+    const hex = (v: number) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')
+    const hit: ParagraphHit = {
+      found: true,
+      editable: grp.every(l => l.runs.every(r => !r.nested)),
+      text: joinParagraphText(grp),
+      x1: Math.min(...grp.map(l => l.l)), y1: Math.min(...grp.map(l => l.b)),
+      x2: Math.max(...grp.map(l => l.r)), y2: Math.max(...grp.map(l => l.t)),
+      fontSize: grp[0].fontSize,
+      color: `#${hex(rr[0])}${hex(gg[0])}${hex(bb[0])}`,
+      leading: medianLeading(grp),
+      lineCount: grp.length,
+      align: detectAlign(grp),
+      fontName: font.name, fontData: font.data, fontLoadable: font.loadable,
+    }
+    L.ClosePage(page)
+    return hit
+  } finally {
+    L.CloseDocument(doc)
+  }
+}
+
+/**
+ * Replace the paragraph at (x, y) with `newText`, reflowing it: the original
+ * runs are removed and the new text is greedy-wrapped to the paragraph's width
+ * at its original leading, alignment, colour and font size. `substituteFont`
+ * (a complete installed font file) is preferred over the document's embedded
+ * font, which is usually a subset that lacks glyphs for newly typed characters;
+ * without a substitute the original font handle is reused as-is.
+ */
+export function replaceParagraphAt(
+  bytes: Buffer, pageIndex: number, x: number, y: number, newText: string,
+  substituteFont?: Buffer | null,
+): { bytes: Buffer; lineCount: number } {
+  const L = load()
+  const doc = L.LoadMemDocument(bytes, bytes.length, null)
+  if (!doc) throw new Error('PDFium could not open the document')
+  try {
+    const page = L.LoadPage(doc, pageIndex)
+    if (!page) throw new Error('PDFium could not load the page')
+    const tp = L.TextLoadPage(page)
+    const grp = paragraphLinesAt(groupIntoLines(collectParaRuns(L, page, tp)), x, y)
+    L.TextClosePage(tp)
+    if (grp.length === 0) throw new Error('No paragraph found at that point')
+    if (!grp.every(l => l.runs.every(r => !r.nested)))
+      throw new Error('Paragraph contains form-nested text PDFium cannot rewrite')
+
+    const firstRun = grp[0].runs[0]
+    const fontSize = grp[0].fontSize
+    const rr = [0], gg = [0], bb = [0], aa = [0]; L.GetFillColor(firstRun.obj, rr, gg, bb, aa)
+    const px1 = Math.min(...grp.map(l => l.l))
+    const px2 = Math.max(...grp.map(l => l.r))
+    const width = px2 - px1
+    const leading = medianLeading(grp)
+    const align = detectAlign(grp)
+    const firstBaseY = grp[0].baseY
+
+    let loadedFont: unknown = null
+    if (substituteFont && substituteFont.length > 4) {
+      try { loadedFont = L.LoadFontData(doc, substituteFont, substituteFont.length, FPDF_FONT_TRUETYPE, 1) }
+      catch { loadedFont = null }
+    }
+    let font = loadedFont
+    if (!font) font = L.GetFont(firstRun.obj)
+    if (!font) {
+      loadedFont = L.LoadStandardFont(doc, 'Helvetica')
+      font = loadedFont
+    }
+    if (!font) throw new Error('No usable font for paragraph reflow')
+
+    const scratch = L.CreateTextObj(doc, font, fontSize)
+    if (!scratch) throw new Error('PDFium could not create a text object')
+    const measure = (s: string): number => {
+      if (!s) return 0
+      if (!L.SetText(scratch, Buffer.from(s + '\u0000', 'utf16le'))) return s.length * fontSize * 0.5
+      const l = [0], b = [0], r = [0], t = [0]
+      if (!L.GetBounds(scratch, l, b, r, t)) return s.length * fontSize * 0.5
+      return r[0] - l[0]
+    }
+
+    const outLines: string[] = []
+    const tolerance = Math.max(2, width * 0.02)
+    for (const block of newText.replace(/\r/g, '').split('\n')) {
+      const words = block.split(/\s+/).filter(Boolean)
+      if (words.length === 0) { outLines.push(''); continue }
+      let cur = ''
+      for (const w of words) {
+        const candidate = cur ? cur + ' ' + w : w
+        if (cur && measure(candidate) > width + tolerance) { outLines.push(cur); cur = w }
+        else cur = candidate
+      }
+      if (cur) outLines.push(cur)
+    }
+
+    for (const ln of grp) for (const r of ln.runs) {
+      if (L.RemoveObject(page, r.obj)) L.DestroyObject(r.obj)
+    }
+
+    for (let i = 0; i < outLines.length; i++) {
+      const s = outLines[i]
+      if (!s) continue
+      const obj = L.CreateTextObj(doc, font, fontSize)
+      if (!obj) throw new Error('PDFium could not create a text object')
+      L.SetText(obj, Buffer.from(s + '\u0000', 'utf16le'))
+      L.SetFillColor(obj, rr[0], gg[0], bb[0], aa[0] || 255)
+      let lx = px1
+      if (align !== 'left') {
+        const wln = measure(s)
+        lx = align === 'center' ? px1 + (width - wln) / 2 : px2 - wln
+      }
+      L.Transform(obj, 1, 0, 0, 1, lx, firstBaseY - i * leading)
+      L.InsertObject(page, obj)
+    }
+    L.DestroyObject(scratch)
+    L.GenerateContent(page)
+    const out = saveDoc(L, doc)
+    if (loadedFont) { try { L.FontClose(loadedFont) } catch { /* handle already gone */ } }
+    L.ClosePage(page)
+    return { bytes: out, lineCount: outLines.length }
   } finally {
     L.CloseDocument(doc)
   }
