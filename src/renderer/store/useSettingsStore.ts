@@ -15,7 +15,8 @@ export interface AppSettings {
   darkPageMode: boolean
   loupeEnabled: boolean
   pdfiumRender: boolean             // render pages with PDFium instead of PDF.js
-  renderQuality: number             // page supersample factor 1–5 (higher = sharper, more memory)
+  renderQuality: number             // extra supersample ×1–×3 on top of devicePixelRatio (1 = pixel-perfect)
+  settingsVersion: number
   measureUnit: string
   measureScale: number
   // UX / personalization
@@ -68,7 +69,8 @@ function load(): AppSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
-      const parsed = { ...defaults(), ...JSON.parse(raw) } as AppSettings
+      const stored = JSON.parse(raw) as Partial<AppSettings>
+      const parsed = { ...defaults(), ...stored } as AppSettings
       const rec = parsed as unknown as Record<string, unknown>
       for (const k of SECRET_KEYS) {
         const val = rec[k]
@@ -76,6 +78,16 @@ function load(): AppSettings {
       }
       // Migrate persisted settings that point at a retired model id.
       if (parsed.aiModel === 'claude-opus-4-20250514') parsed.aiModel = 'claude-opus-4-8'
+      // v2: renderQuality changed meaning. It used to be an absolute supersample
+      // factor (1–5, default 3) whose fractional CSS downscale blurred text on
+      // HiDPI displays; it is now an extra multiplier on top of devicePixelRatio
+      // where 1 means pixel-perfect. Old values would massively over-render.
+      // The version must be read from what was STORED — the defaults() spread
+      // above already injects the current version.
+      if ((stored.settingsVersion ?? 1) < 2) {
+        parsed.renderQuality = 1
+        parsed.settingsVersion = 2
+      }
       return parsed
     }
   } catch {}
@@ -95,7 +107,8 @@ function defaults(): AppSettings {
     darkPageMode: false,
     loupeEnabled: false,
     pdfiumRender: false,
-    renderQuality: 3,
+    renderQuality: 1,
+    settingsVersion: 2,
     measureUnit: 'pt',
     measureScale: 1.0,
     accentColor: '',

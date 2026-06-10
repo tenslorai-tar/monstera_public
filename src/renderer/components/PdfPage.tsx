@@ -136,15 +136,16 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
       const viewport = page.getViewport({ scale: renderScale })
       const ctx = canvas.getContext('2d')!
 
-      // Crisp text: paint the backing store ABOVE the displayed size, then keep the
-      // canvas's CSS size at the logical page size so the browser downscales the
-      // bitmap (antialiasing) and the text/annotation overlays still align 1:1.
-      // density = devicePixelRatio × a supersample factor, so text sharpens even on
-      // 1× monitors (where plain devicePixelRatio scaling changes nothing). Capped by
-      // both a max multiplier and a max backing dimension to bound canvas memory.
+      // Crisp text: map backing-store pixels 1:1 onto physical device pixels.
+      // Rendering at a flat supersample and letting CSS downscale it looks
+      // BLURRIER, not sharper — a fractional downscale (e.g. 3× → 1.25×) runs
+      // through the compositor's bilinear filter and smears glyph edges. So the
+      // backing store is exactly cssSize × devicePixelRatio (× an optional
+      // integer supersample), and the CSS size is snapped so it lands on whole
+      // device pixels. Capped to bound canvas memory.
       const dpr = Math.max(window.devicePixelRatio || 1, 1)
-      const quality = Math.min(Math.max(settings.renderQuality || 3, 1), 5)
-      let density = Math.min(Math.max(dpr, quality), 8192 / viewport.width, 8192 / viewport.height)
+      const ssaa = Math.min(Math.max(settings.renderQuality || 1, 1), 3)
+      let density = Math.min(dpr * ssaa, 8192 / viewport.width, 8192 / viewport.height)
       density = Math.max(density, 1)
 
       // Canvas pixels: PDFium (opt-in, higher fidelity) or PDF.js. The text layer
@@ -168,8 +169,8 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
 
       if (!painted) {
         const rvp = page.getViewport({ scale: renderScale * density })
-        canvas.width = rvp.width
-        canvas.height = rvp.height
+        canvas.width = Math.round(rvp.width)
+        canvas.height = Math.round(rvp.height)
         const ocgConfig = getOcgConfig()
         // annotationMode: 0 = DISABLE — our overlay handles annotation rendering
         await page.render({
@@ -183,10 +184,18 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
 
       // CSS sizing tracks the LIVE scale (the user may have zoomed again while
       // this render was in flight) — the bitmap just stretches until the next
-      // debounced render lands.
+      // debounced render lands. When the render IS current, the CSS size is
+      // derived from the backing store itself so each bitmap pixel sits on
+      // exactly one device pixel (any fractional offset re-blurs the page).
       const liveScale = usePdfStore.getState().scale
-      canvas.style.width = `${pageW * liveScale}px`
-      canvas.style.height = `${pageH * liveScale}px`
+      const cssW = liveScale === renderScale
+        ? canvas.width / density
+        : Math.round(pageW * liveScale * dpr) / dpr
+      const cssH = liveScale === renderScale
+        ? canvas.height / density
+        : Math.round(pageH * liveScale * dpr) / dpr
+      canvas.style.width = `${cssW}px`
+      canvas.style.height = `${cssH}px`
 
       textDiv.innerHTML = ''
       textDiv.style.width = `${pageW * liveScale}px`

@@ -162,17 +162,18 @@ export default function SettingsDialog({ onClose }: Props) {
         <div className="modal-field">
           <label className="modal-label">Page sharpness</label>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input type="range" min={1} max={5} step={1}
-              value={local.renderQuality ?? 3}
+            <input type="range" min={1} max={3} step={1}
+              value={Math.min(local.renderQuality ?? 1, 3)}
               onChange={e => setLocal(l => ({ ...l, renderQuality: parseInt(e.target.value) }))}
               style={{ flex: 1 }} />
-            <span style={{ fontSize: 12, minWidth: 64 }}>
-              {(['Standard', 'Standard+', 'High', 'Very High', 'Ultra'] as const)[(local.renderQuality ?? 3) - 1]}
+            <span style={{ fontSize: 12, minWidth: 96 }}>
+              {(['Pixel-perfect', '2× supersample', '3× supersample'] as const)[Math.min(local.renderQuality ?? 1, 3) - 1]}
             </span>
           </div>
           <span className="modal-hint">
-            Renders pages above screen resolution then downscales for crisper text. Higher = sharper
-            but uses more memory — drop it if scrolling feels heavy.
+            Pixel-perfect matches your display resolution exactly (sharpest text, recommended).
+            Supersampling renders above display resolution — it can soften thin strokes and uses
+            more memory.
           </span>
         </div>
 
