@@ -251,6 +251,9 @@ export function installBrowserApi() {
     spellCheck: emptyArr,
     aiQuery: async () => '',
     azureLayoutAnalyze: async () => { throw new Error('Azure analysis runs in the desktop app, not the browser preview') },
+    trocrStatus: async () => ({ ready: false, cached: false }),
+    trocrSetup: async () => { throw new Error('The local handwriting model runs in the desktop app, not the browser preview') },
+    trocrRecognize: async () => { throw new Error('The local handwriting model runs in the desktop app, not the browser preview') },
 
     // ── Native binaries (unavailable in browser) ───────────────────────────────
     binsGetStatus: async () => ({

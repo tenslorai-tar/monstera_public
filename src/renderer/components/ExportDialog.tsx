@@ -12,7 +12,7 @@ interface Props { onClose: () => void }
 type ExportTab = 'images' | 'text' | 'docx' | 'xlsx' | 'pdfa' | 'annotations'
 type ImageFormat = 'png' | 'jpeg' | 'webp'
 type DocxMode = 'rich' | 'layout' | 'text'
-type XlsxEngine = 'auto' | 'ocr' | 'azure'
+type XlsxEngine = 'auto' | 'ocr' | 'trocr' | 'azure'
 
 export default function ExportDialog({ onClose }: Props) {
   const pdfDoc = usePdfStore(s => s.pdfDoc)
@@ -36,7 +36,6 @@ export default function ExportDialog({ onClose }: Props) {
   const pdfaBytesRef = useRef<ArrayBuffer | null>(null)
   const cancelRef = useRef(false)
   const settings = useSettingsStore(s => s.settings)
-  const updateSettings = useSettingsStore(s => s.updateSettings)
   const [xlsxEngine, setXlsxEngine] = useState<XlsxEngine>('auto')
   const [xlsxLang, setXlsxLang] = useState(settings.ocrLanguage || 'eng')
   const [grids, setGrids] = useState<PageGrid[] | null>(null)
@@ -205,10 +204,69 @@ export default function ExportDialog({ onClose }: Props) {
     try {
       const ex = await import('../utils/extractTables')
 
+      if (xlsxEngine === 'trocr') {
+        const st = await window.electronAPI.trocrStatus()
+        if (!st.ready) {
+          setStatus(st.cached
+            ? 'Loading the local handwriting model…'
+            : 'Downloading the local handwriting model (one-time, ≈80 MB)…')
+          await window.electronAPI.trocrSetup()
+        }
+        const out: PageGrid[] = []
+        for (const p of pages) {
+          if (cancelRef.current) break
+          setStatus(`Analyzing the layout of page ${p}…`)
+          const page = await pdfDoc.getPage(p)
+          const vp0 = page.getViewport({ scale: 1 })
+          const scale = Math.min(3, 4000 / Math.max(vp0.width, vp0.height))
+          const vp = page.getViewport({ scale })
+          const canvas = document.createElement('canvas')
+          canvas.width = Math.ceil(vp.width)
+          canvas.height = Math.ceil(vp.height)
+          const ctx = canvas.getContext('2d', { willReadFrequently: true })!
+          ctx.fillStyle = '#ffffff'
+          ctx.fillRect(0, 0, canvas.width, canvas.height)
+          await page.render({ canvas, viewport: vp, annotationMode: 0 }).promise
+          const img = ctx.getImageData(0, 0, canvas.width, canvas.height)
+          const seg = ex.segmentTableCells({ data: img.data, width: img.width, height: img.height, channels: 4 })
+          const grid: string[][] = Array.from({ length: seg.rows }, () => new Array(seg.cols).fill(''))
+          for (let i = 0; i < seg.cells.length; i++) {
+            if (cancelRef.current) break
+            const cell = seg.cells[i]
+            setStatus(`Page ${p}: reading cell ${i + 1} / ${seg.cells.length} with the local model…`)
+            const c2 = document.createElement('canvas')
+            c2.width = cell.w
+            c2.height = cell.h
+            const ictx = c2.getContext('2d')!
+            const id = ictx.createImageData(cell.w, cell.h)
+            for (let yy = 0; yy < cell.h; yy++) {
+              for (let xx = 0; xx < cell.w; xx++) {
+                const v = seg.ink[(cell.y + yy) * img.width + (cell.x + xx)] ? 0 : 255
+                const o = (yy * cell.w + xx) * 4
+                id.data[o] = v; id.data[o + 1] = v; id.data[o + 2] = v; id.data[o + 3] = 255
+              }
+            }
+            ictx.putImageData(id, 0, 0)
+            const blob = await new Promise<Blob | null>(res => c2.toBlob(res, 'image/png'))
+            if (!blob) continue
+            grid[cell.row][cell.col] = await window.electronAPI.trocrRecognize(await blob.arrayBuffer())
+          }
+          out.push({ page: p, grid: ex.trimGrid(grid), source: 'trocr' })
+        }
+        if (cancelRef.current) { setStatus('Cancelled.'); setBusy(false); return }
+        setGrids(out)
+        const n = out.filter(g => g.grid.length > 0).length
+        setStatus(n > 0
+          ? `✓ ${n} page${n !== 1 ? 's' : ''} read with the local handwriting model — click any cell below to correct it, then export.`
+          : 'No table content found on the selected pages.')
+        setBusy(false)
+        return
+      }
+
       if (xlsxEngine === 'azure') {
         const endpoint = settings.azureDiEndpoint.trim()
         const key = settings.azureDiKey.trim()
-        if (!endpoint || !key) { setStatus('Error: enter your Azure endpoint and key first.'); setBusy(false); return }
+        if (!endpoint || !key) { setStatus('Error: add your Azure endpoint and key in Settings (Ctrl+,) → API keys first.'); setBusy(false); return }
         setStatus('Analyzing with Azure Document Intelligence (reads handwriting)…')
         const ab = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength) as ArrayBuffer
         const result = await window.electronAPI.azureLayoutAnalyze(ab, endpoint, key, pages.join(','))
@@ -560,9 +618,10 @@ export default function ExportDialog({ onClose }: Props) {
             <label className="modal-label" style={{ display: 'block', marginBottom: 6 }}>Reading engine</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
               {([
-                { id: 'auto',  title: 'Automatic',              desc: 'Uses the PDF’s own text; scanned pages are read with OCR (printed text).' },
-                { id: 'ocr',   title: 'Force OCR',              desc: 'Re-reads every page with OCR — use when the embedded text layer is wrong.' },
-                { id: 'azure', title: 'Azure AI (handwriting)', desc: 'Cloud analysis that reads handwriting and detects table cells precisely. Needs a free Azure Document Intelligence key.' },
+                { id: 'auto',  title: 'Automatic',                    desc: 'Uses the PDF’s own text; scanned pages are read with OCR (printed text).' },
+                { id: 'ocr',   title: 'Force OCR',                    desc: 'Re-reads every page with OCR — use when the embedded text layer is wrong.' },
+                { id: 'trocr', title: 'Local handwriting (offline)',  desc: 'Reads handwriting with an AI model on this PC — private, no cloud, no key. One-time ≈80 MB download; slower, so check the review grid.' },
+                { id: 'azure', title: 'Azure AI (handwriting, cloud)', desc: 'Cloud analysis that reads handwriting and detects table cells precisely. Best accuracy; needs a free Azure Document Intelligence key.' },
               ] as const).map(opt => (
                 <label key={opt.id}
                   style={{
@@ -581,7 +640,7 @@ export default function ExportDialog({ onClose }: Props) {
               ))}
             </div>
 
-            {xlsxEngine !== 'azure' && (
+            {(xlsxEngine === 'auto' || xlsxEngine === 'ocr') && (
               <div className="modal-field">
                 <label className="modal-label">OCR language</label>
                 <select className="annot-select" value={xlsxLang} onChange={e => setXlsxLang(e.target.value)}>
@@ -590,26 +649,19 @@ export default function ExportDialog({ onClose }: Props) {
               </div>
             )}
 
+            {xlsxEngine === 'trocr' && (
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 10px' }}>
+                First use downloads the model (≈80 MB) — after that it works without internet.
+                Each cell is read individually, so a dense page can take a minute or two.
+              </p>
+            )}
+
             {xlsxEngine === 'azure' && (
-              <>
-                <div className="modal-field">
-                  <label className="modal-label">Endpoint</label>
-                  <input className="modal-input" style={{ width: 280 }}
-                    placeholder="https://<resource>.cognitiveservices.azure.com"
-                    value={settings.azureDiEndpoint}
-                    onChange={e => updateSettings({ azureDiEndpoint: e.target.value })} />
-                </div>
-                <div className="modal-field">
-                  <label className="modal-label">Key</label>
-                  <input className="modal-input" type="password" style={{ width: 280 }}
-                    value={settings.azureDiKey}
-                    onChange={e => updateSettings({ azureDiKey: e.target.value })} />
-                </div>
-                <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 10px' }}>
-                  Create a free “Document Intelligence” resource in the Azure portal and copy its key and
-                  endpoint. The free tier analyzes 500 pages per month (first 2 pages per call).
-                </p>
-              </>
+              <p style={{ fontSize: 11, color: settings.azureDiEndpoint.trim() && settings.azureDiKey.trim() ? 'var(--text-muted)' : 'var(--warning)', margin: '0 0 10px' }}>
+                {settings.azureDiEndpoint.trim() && settings.azureDiKey.trim()
+                  ? '✓ Azure is configured — manage the endpoint and key in Settings (Ctrl+,) → API keys.'
+                  : 'Not configured yet: add your Azure Document Intelligence endpoint and key in Settings (Ctrl+,) → API keys. The free tier analyzes 500 pages/month (first 2 pages per call).'}
+              </p>
             )}
 
             {grids && (() => {
@@ -656,7 +708,8 @@ export default function ExportDialog({ onClose }: Props) {
                     <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>No table content found on this page.</p>
                   )}
                   <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '6px 0 0' }}>
-                    {g?.source === 'ocr' ? 'Read with OCR — ' : g?.source === 'azure' ? 'Read with Azure AI — ' : ''}
+                    {g?.source === 'ocr' ? 'Read with OCR — ' : g?.source === 'azure' ? 'Read with Azure AI — '
+                      : g?.source === 'trocr' ? 'Read with the local handwriting model — ' : ''}
                     click any cell to correct it before exporting.
                   </p>
                 </div>

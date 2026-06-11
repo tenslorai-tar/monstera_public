@@ -1,0 +1,1 @@
+export * from '../src/renderer/utils/extractTables'

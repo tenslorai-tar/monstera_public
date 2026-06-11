@@ -49,7 +49,7 @@ const STORAGE_KEY = 'monstera-settings'
 // Secret fields encrypted at rest via the OS keychain (Electron safeStorage).
 // Everything degrades to plaintext passthrough when the bridge is unavailable
 // (e.g. the browser dev preview), so settings never break.
-const SECRET_KEYS: (keyof AppSettings)[] = [
+export const SECRET_KEYS: (keyof AppSettings)[] = [
   'anthropicApiKey', 'gdToken', 'dropboxToken', 'onedriveToken',
   'boxToken', 'sharepointToken', 'docusignKey', 'azureDiKey',
 ]

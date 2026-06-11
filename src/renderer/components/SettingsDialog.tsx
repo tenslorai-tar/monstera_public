@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Settings as SettingsIcon, X as XIcon, Moon, Sun, Upload, Download } from 'lucide-react'
-import { useSettingsStore } from '../store/useSettingsStore'
-import type { Theme, DefaultZoom } from '../store/useSettingsStore'
+import { Settings as SettingsIcon, X as XIcon, Moon, Sun, Upload, Download, KeyRound } from 'lucide-react'
+import { useSettingsStore, SECRET_KEYS } from '../store/useSettingsStore'
+import type { Theme, DefaultZoom, AppSettings } from '../store/useSettingsStore'
 
 const ACCENTS: { name: string; hex: string }[] = [
   { name: 'Monstera Green', hex: '' },
@@ -26,12 +26,28 @@ const OCR_LANGUAGES = [
 
 interface Props { onClose: () => void }
 
+// API keys are write-only in this dialog: the saved value is never loaded back
+// into an input — drafts start empty, a non-empty draft replaces the stored key
+// on Apply, an empty draft leaves it untouched, and Remove explicitly clears it.
+const WRITE_ONLY_KEYS = ['anthropicApiKey', 'azureDiKey'] as const
+type WriteOnlyKey = typeof WRITE_ONLY_KEYS[number]
+
 export default function SettingsDialog({ onClose }: Props) {
   const { settings, updateSettings, resetSettings } = useSettingsStore()
-  const [local, setLocal] = useState({ ...settings })
+  const [local, setLocal] = useState(() => {
+    const l = { ...settings }
+    for (const k of WRITE_ONLY_KEYS) l[k] = ''
+    return l
+  })
+  const [removeKeys, setRemoveKeys] = useState<Partial<Record<WriteOnlyKey, boolean>>>({})
 
   const apply = () => {
-    updateSettings(local)
+    const patch: Partial<AppSettings> = { ...local }
+    for (const k of WRITE_ONLY_KEYS) {
+      if (!local[k].trim() && !removeKeys[k]) delete patch[k]
+      else if (removeKeys[k]) patch[k] = ''
+    }
+    updateSettings(patch)
     onClose()
   }
 
@@ -333,14 +349,53 @@ export default function SettingsDialog({ onClose }: Props) {
           <span className="modal-hint">Multiply raw PDF point values by this factor before displaying measurements.</span>
         </div>
 
-        {/* Anthropic API key */}
+        {/* API keys — write-only: saved keys are masked and never echoed back */}
         <div className="modal-field settings-span-2">
-          <label className="modal-label">Anthropic API key (for AI Assistant)</label>
-          <input type="password" className="modal-input" style={{ fontSize: 12 }}
-            value={(local as any).anthropicApiKey ?? ''}
-            onChange={e => setLocal(l => ({ ...l, anthropicApiKey: e.target.value } as any))}
-            placeholder="sk-ant-…  (stored locally, only sent to Anthropic)" />
-          <span className="modal-hint">Get yours at console.anthropic.com</span>
+          <label className="modal-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <KeyRound size={13} /> API keys
+          </label>
+          {([
+            { id: 'anthropicApiKey' as WriteOnlyKey, label: 'Anthropic (AI Assistant)', ph: 'sk-ant-…', hint: 'Get yours at console.anthropic.com' },
+            { id: 'azureDiKey' as WriteOnlyKey, label: 'Azure Document Intelligence (handwriting → Excel)', ph: 'Azure key…', hint: 'Azure portal → your Document Intelligence resource → Keys and Endpoint' },
+          ]).map(k => {
+            const saved = !!settings[k.id]?.trim()
+            const removing = !!removeKeys[k.id]
+            return (
+              <div key={k.id} style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>{k.label}</div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input type="password" className="modal-input" style={{ fontSize: 12, flex: 1 }}
+                    value={local[k.id]}
+                    onChange={e => { const v = e.target.value; setLocal(l => ({ ...l, [k.id]: v })); setRemoveKeys(r => ({ ...r, [k.id]: false })) }}
+                    placeholder={removing ? 'will be removed when you Apply' : saved ? '••••••••••••••••  (saved — type to replace)' : k.ph}
+                    autoComplete="new-password" />
+                  {saved && !removing && (
+                    <button className="modal-btn-secondary" style={{ fontSize: 11, padding: '5px 10px' }}
+                      onClick={() => { setRemoveKeys(r => ({ ...r, [k.id]: true })); setLocal(l => ({ ...l, [k.id]: '' })) }}>
+                      Remove
+                    </button>
+                  )}
+                  {removing && (
+                    <button className="modal-btn-secondary" style={{ fontSize: 11, padding: '5px 10px' }}
+                      onClick={() => setRemoveKeys(r => ({ ...r, [k.id]: false }))}>
+                      Keep
+                    </button>
+                  )}
+                </div>
+                <span className="modal-hint">
+                  {saved && !removing ? 'A key is saved (encrypted on this PC) and is never shown again — type a new one to replace it. ' : ''}{k.hint}
+                </span>
+              </div>
+            )
+          })}
+          <div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>Azure Document Intelligence endpoint</div>
+            <input className="modal-input" style={{ fontSize: 12, width: '100%' }}
+              value={local.azureDiEndpoint}
+              onChange={e => setLocal(l => ({ ...l, azureDiEndpoint: e.target.value }))}
+              placeholder="https://<resource>.cognitiveservices.azure.com" />
+            <span className="modal-hint">Used by Export → Excel → Azure AI. The endpoint is not a secret; the key above is.</span>
+          </div>
         </div>
 
         {/* RTL text direction */}
@@ -358,9 +413,10 @@ export default function SettingsDialog({ onClose }: Props) {
           <button className="modal-btn-secondary" onClick={reset} style={{ marginRight: 'auto' }}>
             Reset to defaults
           </button>
-          <button className="modal-btn-secondary" title="Export settings to a JSON file"
+          <button className="modal-btn-secondary" title="Export settings to a JSON file (API keys and tokens are excluded)"
             onClick={() => {
-              const json = JSON.stringify(local, null, 2)
+              const safe = Object.fromEntries(Object.entries(local).filter(([k]) => !(SECRET_KEYS as string[]).includes(k)))
+              const json = JSON.stringify(safe, null, 2)
               const blob = new Blob([json], { type: 'application/json' })
               const url = URL.createObjectURL(blob)
               const a = document.createElement('a')

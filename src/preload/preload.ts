@@ -353,6 +353,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   azureLayoutAnalyze: (bytes: ArrayBuffer, endpoint: string, key: string, pages: string): Promise<unknown> =>
     ipcRenderer.invoke('azure:layoutAnalyze', bytes, endpoint, key, pages),
 
+  trocrStatus: (): Promise<{ ready: boolean; cached: boolean }> => ipcRenderer.invoke('trocr:status'),
+  trocrSetup: (): Promise<boolean> => ipcRenderer.invoke('trocr:setup'),
+  trocrRecognize: (png: ArrayBuffer): Promise<string> => ipcRenderer.invoke('trocr:recognize', png),
+
   spellCheck: (text: string): Promise<Array<{ word: string; suggestions: string[] }>> =>
     ipcRenderer.invoke('dict:spellCheck', text),
 

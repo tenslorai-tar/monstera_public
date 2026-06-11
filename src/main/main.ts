@@ -6,6 +6,7 @@ import * as pdfium from './pdfiumEngine'
 import { resolveSystemFont } from './systemFonts'
 import * as spell from './spell'
 import * as mupdfOps from './mupdfOps'
+import * as trocr from './trocrEngine'
 import { convertToPdfA } from './pdfaExport'
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
@@ -1601,6 +1602,26 @@ ipcMain.handle('azure:layoutAnalyze', async (_event, bytes: ArrayBuffer, endpoin
   }
   throw new Error('Azure analysis timed out after 2 minutes.')
 })
+
+// ── TrOCR: local handwriting OCR (offline after a one-time model download) ───
+
+function trocrConfigured(): typeof trocr {
+  trocr.configure(path.join(app.getPath('userData'), 'trocr-cache'))
+  return trocr
+}
+
+ipcMain.handle('trocr:status', () => {
+  const t = trocrConfigured()
+  return { ready: t.isReady(), cached: t.isCached() }
+})
+
+ipcMain.handle('trocr:setup', async () => {
+  await trocrConfigured().setup()
+  return true
+})
+
+ipcMain.handle('trocr:recognize', async (_event, png: ArrayBuffer): Promise<string> =>
+  trocrConfigured().recognizePng(Buffer.from(png)))
 
 // ── Open/Save file dialog accepting multiple types (for Office import) ────────
 

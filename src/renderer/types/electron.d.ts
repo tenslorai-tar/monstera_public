@@ -221,6 +221,9 @@ declare global {
       pdf2docxInstall: () => Promise<{ ok: boolean; version: string; log: string }>
 
       azureLayoutAnalyze: (bytes: ArrayBuffer, endpoint: string, key: string, pages: string) => Promise<unknown>
+      trocrStatus: () => Promise<{ ready: boolean; cached: boolean }>
+      trocrSetup: () => Promise<boolean>
+      trocrRecognize: (png: ArrayBuffer) => Promise<string>
 
       spellCheck: (text: string) => Promise<Array<{ word: string; suggestions: string[] }>>
       emailToPdf: (filePath: string) => Promise<ArrayBuffer>

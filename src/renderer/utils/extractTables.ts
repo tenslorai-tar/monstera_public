@@ -10,7 +10,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist'
 import type { OcrWord } from './ocrUtils'
 
 export interface TableItem { str: string; x: number; y: number; w: number; h: number }
-export type GridSource = 'text' | 'ocr' | 'azure'
+export type GridSource = 'text' | 'ocr' | 'azure' | 'trocr'
 export interface PageGrid { page: number; grid: string[][]; source: GridSource }
 
 function median(nums: number[]): number {
@@ -54,12 +54,20 @@ export function whitespaceSeparators(rows: TableItem[][]): number[] {
     }
     for (let x = 0; x < W; x++) cover[x] += hit[x]
   }
+  // Handwritten columns wobble: a few rows always stray into the corridor
+  // between columns, so tolerate ~12% encroachment instead of demanding an
+  // empty gap (floor() keeps small clean tables at exactly zero tolerance).
   const R = rows.length
-  const gapThr = Math.max(0, Math.floor(R * 0.06))
+  const gapThr = Math.max(0, Math.floor(R * 0.12))
   const sideThr = Math.max(2, Math.ceil(R * 0.15))
   let minX = -1, maxCov = -1
   for (let x = 0; x < W; x++) if (cover[x] > gapThr) { if (minX < 0) minX = x; maxCov = x }
   if (minX < 0) return []
+  // Windows scale with content width so the same logic works in PDF points
+  // (text items) and rendered pixels (ink runs); right-aligned columns need a
+  // side window deeper than the few px next to the gap.
+  const sideWin = Math.max(40, Math.round((maxCov - minX) * 0.08))
+  const minGap = Math.max(5, Math.round((maxCov - minX) * 0.005))
   const seps: number[] = []
   let gapStart = -1
   for (let x = minX; x <= maxCov + 1; x++) {
@@ -67,10 +75,10 @@ export function whitespaceSeparators(rows: TableItem[][]): number[] {
     if (inGap && gapStart < 0) gapStart = x
     else if (!inGap && gapStart >= 0) {
       const gapEnd = x - 1
-      if (gapEnd - gapStart + 1 >= 5) {
+      if (gapEnd - gapStart + 1 >= minGap) {
         let lOk = false, rOk = false
-        for (let l = gapStart - 1; l >= Math.max(minX, gapStart - 40); l--) if (cover[l] >= sideThr) { lOk = true; break }
-        for (let r = gapEnd + 1; r <= Math.min(maxCov, gapEnd + 40); r++) if (cover[r] >= sideThr) { rOk = true; break }
+        for (let l = gapStart - 1; l >= Math.max(minX, gapStart - sideWin); l--) if (cover[l] >= sideThr) { lOk = true; break }
+        for (let r = gapEnd + 1; r <= Math.min(maxCov, gapEnd + sideWin); r++) if (cover[r] >= sideThr) { rOk = true; break }
         if (lOk && rOk) seps.push((gapStart + gapEnd) / 2)
       }
       gapStart = -1
@@ -109,7 +117,7 @@ export function detectRuledColumnSeparators(
   return lineXs.map(x => x / renderScale)
 }
 
-function trimGrid(grid: string[][]): string[][] {
+export function trimGrid(grid: string[][]): string[][] {
   const rows = grid.filter(r => r.some(c => c !== ''))
   if (rows.length === 0) return []
   const nCols = Math.max(...rows.map(r => r.length))
@@ -166,6 +174,209 @@ export async function nativeItems(pdfDoc: PDFDocumentProxy, pageNum: number): Pr
 
 export function ocrWordsToItems(words: OcrWord[]): TableItem[] {
   return words.filter(w => w.text.trim()).map(w => ({ str: w.text.trim(), x: w.x, y: w.y, w: w.w, h: w.h }))
+}
+
+// ── Cell segmentation from pixels (for per-cell handwriting recognition) ─────
+// Splits a rendered page into table-cell crops: ruled lines define bands when
+// present; otherwise ink projection (with rule pixels excluded) finds the row
+// and column bands. Returns pixel-space crops tagged with row/col indices.
+
+interface Pix { data: Uint8ClampedArray | Uint8Array; width: number; height: number; channels?: number }
+export interface CellBox { row: number; col: number; x: number; y: number; w: number; h: number }
+// `ink` is the cleaned binarized page (1 = writing, rules/noise removed) —
+// recognising crops from it instead of the raw scan keeps ruled lines out of
+// the model's view.
+export interface SegmentedPage { cells: CellBox[]; rows: number; cols: number; ink: Uint8Array }
+
+export function segmentTableCells(px: Pix): SegmentedPage {
+  const { data, width: w, height: h } = px
+  const n = px.channels ?? 4
+  const mask = new Uint8Array(w * h)
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const o = (y * w + x) * n
+      if (data[o] * 0.299 + data[o + 1] * 0.587 + data[o + 2] * 0.114 < 160) mask[y * w + x] = 1
+    }
+  }
+
+  // Ruled lines, borders and scan shadows are LONG straight dark runs; pen
+  // strokes are short. Stripping long runs (in either direction) leaves only
+  // the writing — robust against faint, broken or slightly skewed lines that
+  // explicit line detection misses.
+  const ink = new Uint8Array(mask)
+  const Lh = Math.max(30, Math.round(w * 0.04))
+  for (let y = 0; y < h; y++) {
+    let start = -1
+    for (let x = 0; x <= w; x++) {
+      const on = x < w && mask[y * w + x] === 1
+      if (on && start < 0) start = x
+      else if (!on && start >= 0) {
+        if (x - start >= Lh) for (let i = start; i < x; i++) ink[y * w + i] = 0
+        start = -1
+      }
+    }
+  }
+  const Lv = Math.max(30, Math.round(h * 0.04))
+  for (let x = 0; x < w; x++) {
+    let start = -1
+    for (let y = 0; y <= h; y++) {
+      const on = y < h && mask[y * w + x] === 1
+      if (on && start < 0) start = y
+      else if (!on && start >= 0) {
+        if (y - start >= Lv) for (let i = start; i < y; i++) ink[i * w + x] = 0
+        start = -1
+      }
+    }
+  }
+
+  // Photographed pages warp: curved rules survive straight-run stripping as
+  // chains of short fragments. Connected-component filtering drops specks,
+  // elongated thin fragments and anything spanning a third of the page, while
+  // glyph-sized components (even a handwritten "1") stay.
+  const visited = new Uint8Array(w * h)
+  const queue = new Int32Array(w * h)
+  for (let start = 0; start < w * h; start++) {
+    if (!ink[start] || visited[start]) continue
+    let head = 0, tail = 0
+    queue[tail++] = start
+    visited[start] = 1
+    let minX = w, maxX = 0, minY = h, maxY = 0
+    while (head < tail) {
+      const idx = queue[head++]
+      const y = (idx / w) | 0, x = idx - y * w
+      if (x < minX) minX = x
+      if (x > maxX) maxX = x
+      if (y < minY) minY = y
+      if (y > maxY) maxY = y
+      for (let dy = -1; dy <= 1; dy++) {
+        const ny = y + dy
+        if (ny < 0 || ny >= h) continue
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx
+          if (nx < 0 || nx >= w) continue
+          const n = ny * w + nx
+          if (ink[n] && !visited[n]) { visited[n] = 1; queue[tail++] = n }
+        }
+      }
+    }
+    const bw = maxX - minX + 1, bh = maxY - minY + 1
+    if (tail <= 2 || (bh <= 4 && bw >= 10 && bw >= 3 * bh) || (bw <= 5 && bh >= 45) || bw >= w * 0.35 || bh >= h * 0.35) {
+      for (let i = 0; i < tail; i++) ink[queue[i]] = 0
+    }
+  }
+
+  const inkRow = new Uint32Array(h)
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (ink[y * w + x]) inkRow[y]++
+    }
+  }
+  // Noise floor keeps speckle and leftover line fragments from bridging gaps.
+  const rowFloor = Math.max(2, Math.round(w * 0.004))
+
+  const bandsFromInk = (proj: Uint32Array, size: number, floor: number, mergeGap: number, minLen: number): Array<[number, number]> => {
+    const runs: Array<[number, number]> = []
+    let start = -1
+    for (let i = 0; i <= size; i++) {
+      const on = i < size && proj[i] > floor
+      if (on && start < 0) start = i
+      else if (!on && start >= 0) { runs.push([start, i - 1]); start = -1 }
+    }
+    const merged: Array<[number, number]> = []
+    for (const r of runs) {
+      const last = merged[merged.length - 1]
+      if (last && r[0] - last[1] <= mergeGap) last[1] = r[1]
+      else merged.push([...r] as [number, number])
+    }
+    return merged.filter(b => b[1] - b[0] + 1 >= minLen)
+  }
+
+  const rowBands = bandsFromInk(inkRow, h, rowFloor, 3, 5)
+  if (rowBands.length === 0) return { cells: [], rows: 0, cols: 0, ink }
+
+  // Columns come from per-row ink runs (pseudo-words) fed through the same
+  // whitespace-gap voting used for text items — a header scrawled across the
+  // whole width can't weld the body columns together that way.
+  interface InkRun { x1: number; x2: number; y1: number; y2: number; count: number }
+  const bandHeights = rowBands.map(([y1, y2]) => y2 - y1 + 1).sort((a, b) => a - b)
+  // Runs much flatter than the text height are leftover fragments of dashed or
+  // curved ruling — they would otherwise vote down every column corridor.
+  const minRunH = Math.max(4, Math.round(bandHeights[Math.floor(bandHeights.length / 2)] * 0.2))
+  const rowRuns: InkRun[][] = rowBands.map(([y1, y2]) => {
+    const proj = new Uint32Array(w)
+    for (let y = y1; y <= y2; y++) for (let x = 0; x < w; x++) if (ink[y * w + x]) proj[x]++
+    return bandsFromInk(proj, w, 0, Math.max(6, Math.round(w * 0.008)), 3).map(([x1, x2]) => {
+      let a = y2, b = y1, count = 0
+      for (let y = y1; y <= y2; y++) {
+        for (let x = x1; x <= x2; x++) {
+          if (ink[y * w + x]) { count++; if (y < a) a = y; if (y > b) b = y }
+        }
+      }
+      return { x1, x2, y1: a, y2: b, count }
+    }).filter(r => r.y2 - r.y1 + 1 >= minRunH && r.count >= 8)
+  })
+
+  const itemRows: TableItem[][] = rowRuns.map(rs =>
+    rs.map(r => ({ str: 'x', x: r.x1, y: 0, w: r.x2 - r.x1 + 1, h: r.y2 - r.y1 + 1 })))
+  const seps = whitespaceSeparators(itemRows)
+  const nCols = seps.length + 1
+
+  const cells: CellBox[] = []
+  const pushCell = (ri: number, ci: number, m: InkRun) => {
+    if (m.count < 15) return
+    const pad = 4
+    const cx = Math.max(0, m.x1 - pad)
+    const cy = Math.max(0, m.y1 - pad)
+    cells.push({
+      row: ri, col: ci,
+      x: cx, y: cy,
+      w: Math.min(w - 1, m.x2 + pad) - cx + 1,
+      h: Math.min(h - 1, m.y2 + pad) - cy + 1,
+    })
+  }
+
+  if (seps.length >= 1) {
+    for (let ri = 0; ri < rowBands.length; ri++) {
+      const merged = new Map<number, InkRun>()
+      for (const run of rowRuns[ri]) {
+        const center = (run.x1 + run.x2) / 2
+        let ci = 0
+        while (ci < seps.length && center > seps[ci]) ci++
+        const m = merged.get(ci)
+        if (!m) merged.set(ci, { ...run })
+        else {
+          m.x1 = Math.min(m.x1, run.x1); m.x2 = Math.max(m.x2, run.x2)
+          m.y1 = Math.min(m.y1, run.y1); m.y2 = Math.max(m.y2, run.y2)
+          m.count += run.count
+        }
+      }
+      for (const [ci, m] of merged) pushCell(ri, ci, m)
+    }
+    return { cells, rows: rowBands.length, cols: nCols, ink }
+  }
+
+  // No global column grid exists (columns drift or change layout mid-page,
+  // as on handwritten ledgers). Split each row on its own large gaps instead;
+  // the column index is the cell's position within its row.
+  const joinGap = Math.max(10, Math.round(bandHeights[Math.floor(bandHeights.length / 2)] * 0.6))
+  let maxCols = 1
+  for (let ri = 0; ri < rowBands.length; ri++) {
+    const runs = [...rowRuns[ri]].sort((a, b) => a.x1 - b.x1)
+    let ci = 0
+    let cur: InkRun | null = null
+    for (const run of runs) {
+      if (cur && run.x1 - cur.x2 > joinGap) { pushCell(ri, ci, cur); ci++; cur = null }
+      if (!cur) cur = { ...run }
+      else {
+        cur.x2 = Math.max(cur.x2, run.x2)
+        cur.y1 = Math.min(cur.y1, run.y1); cur.y2 = Math.max(cur.y2, run.y2)
+        cur.count += run.count
+      }
+    }
+    if (cur) { pushCell(ri, ci, cur); ci++ }
+    if (ci > maxCols) maxCols = ci
+  }
+  return { cells, rows: rowBands.length, cols: maxCols, ink }
 }
 
 // ── Azure Document Intelligence (prebuilt-layout) result mapping ─────────────
