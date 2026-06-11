@@ -36,7 +36,7 @@ export function computeStyling(
   nCols: number,
 ): PageStyling {
   const styles: Array<Array<CellStyle | null>> = Array.from({ length: nRows }, () => new Array(nCols).fill(null))
-  const merges: Array<{ row: number; c1: number; c2: number }> = []
+  const merges: PageStyling['merges'] = []
   const n = px?.channels ?? 4
 
   // Text band per row (PDF pts, y-up): border lines live between bands, so the
@@ -125,15 +125,17 @@ export function computeStyling(
           }
           return hit >= (ry2 - ry1 + 1) * 0.6
         }
-        const reachPx = (pt: number): number => Math.max(2, Math.round(pt * scale))
+        // Reach across the FULL whitespace gap to the neighbour: grid rules sit
+        // at the cell boundary, which right/left-aligned text never touches.
+        const reachPx = (pt: number): number => Math.max(2, Math.round(Math.min(24, pt) * scale))
         const above = rowBand[cell.row - 1]
         const below = rowBand[cell.row + 1]
-        const reachT = reachPx(above ? Math.max(2, (above.y1 - rowBand[cell.row].y2) / 2 + 2) : 8)
-        const reachB = reachPx(below ? Math.max(2, (rowBand[cell.row].y1 - below.y2) / 2 + 2) : 8)
+        const reachT = reachPx(above ? Math.max(2, (above.y1 - rowBand[cell.row].y2) + 3) : 8)
+        const reachB = reachPx(below ? Math.max(2, (rowBand[cell.row].y1 - below.y2) + 3) : 8)
         const left = detail.colBounds[cell.col - 1]
         const right = detail.colBounds[cell.col + 1]
-        const reachL = reachPx(left ? Math.max(2, (detail.colBounds[cell.col][0] - left[1]) / 2 + 2) : 8)
-        const reachR = reachPx(right ? Math.max(2, (right[0] - detail.colBounds[cell.col][1]) / 2 + 2) : 8)
+        const reachL = reachPx(left ? Math.max(2, (detail.colBounds[cell.col][0] - left[1]) + 3) : 8)
+        const reachR = reachPx(right ? Math.max(2, (right[0] - detail.colBounds[cell.col][1]) + 3) : 8)
         const border: NonNullable<CellStyle['border']> = {}
         for (let off = 0; off <= reachT; off++) if (lineAcross(ry1 - off)) { border.t = true; break }
         for (let off = 0; off <= reachB; off++) if (lineAcross(ry2 + off)) { border.b = true; break }
@@ -162,17 +164,33 @@ export function computeStyling(
         if (detail.colBounds[k] && detail.colBounds[k][0] < cell.x2 - 2) c2 = k
         else break
       }
-      if (c2 > cell.col && cs.every(o => o === cell || o.col > c2 || o.col < cell.col)) {
-        merges.push({ row, c1: cell.col, c2 })
+      let c1 = cell.col
+      for (let k = cell.col - 1; k >= 0; k--) {
+        if (detail.colBounds[k] && detail.colBounds[k][1] > cell.x1 + 2) c1 = k
+        else break
+      }
+      if ((c2 > cell.col || c1 < cell.col) && cs.every(o => o === cell || o.col > c2 || o.col < c1)) {
+        merges.push({ row, c1, c2, src: cell.col })
       }
     }
   }
 
-  // Column widths from the midpoints between adjacent column extents.
+  // Column widths from the midpoints between adjacent column extents. Cells
+  // that span several columns (merged titles) must not inflate the bounds.
   let colWidths: number[] | null = null
   if (detail.colBounds.length === nCols && nCols > 0) {
+    const spanning = new Set(merges.map(m => `${m.row}:${m.c1}`))
+    const wBounds: Array<[number, number]> = Array.from({ length: nCols }, () => [Infinity, -Infinity])
+    for (const cell of detail.cells) {
+      if (spanning.has(`${cell.row}:${cell.col}`)) continue
+      wBounds[cell.col][0] = Math.min(wBounds[cell.col][0], cell.x1)
+      wBounds[cell.col][1] = Math.max(wBounds[cell.col][1], cell.x2)
+    }
+    for (let k = 0; k < nCols; k++) {
+      if (!Number.isFinite(wBounds[k][0])) wBounds[k] = detail.colBounds[k]
+    }
     const edges: number[] = [detail.minX]
-    for (let k = 1; k < nCols; k++) edges.push((detail.colBounds[k - 1][1] + detail.colBounds[k][0]) / 2)
+    for (let k = 1; k < nCols; k++) edges.push((wBounds[k - 1][1] + wBounds[k][0]) / 2)
     edges.push(detail.maxX)
     colWidths = []
     for (let k = 0; k < nCols; k++) colWidths.push(Math.min(60, Math.max(3, (edges[k + 1] - edges[k]) / 5.2)))
@@ -237,9 +255,25 @@ export async function gridsToXlsxStyled(grids: PageGrid[], combine: boolean): Pr
       }
       for (const m of styling?.merges ?? []) {
         try {
-          ws.mergeCells(rowBase + m.row + 1, m.c1 + 1, rowBase + m.row + 1, m.c2 + 1)
-          ws.getCell(rowBase + m.row + 1, m.c1 + 1).alignment = { horizontal: 'center' }
+          const rr = rowBase + m.row + 1
+          const src = ws.getCell(rr, (m.src ?? m.c1) + 1)
+          const kept = { value: src.value, font: src.font, fill: src.fill, numFmt: src.numFmt }
+          ws.mergeCells(rr, m.c1 + 1, rr, m.c2 + 1)
+          const master = ws.getCell(rr, m.c1 + 1)
+          master.value = kept.value
+          if (kept.font) master.font = kept.font
+          if (kept.fill) master.fill = kept.fill
+          if (kept.numFmt) master.numFmt = kept.numFmt
+          master.alignment = { horizontal: 'center' }
         } catch { /* overlapping merge — keep the first */ }
+      }
+      // Compact rows to the text size, like the original layout.
+      if (styling?.styles) {
+        for (let r = 0; r < g.grid.length; r++) {
+          let maxSize = 0
+          for (const s of styling.styles[r] ?? []) if (s?.size && s.size > maxSize) maxSize = s.size
+          if (maxSize > 0) ws.getRow(rowBase + r + 1).height = Math.max(9, Math.round(maxSize * 1.45 * 2) / 2)
+        }
       }
       styling?.colWidths?.forEach((w, i) => widths.set(i, Math.max(widths.get(i) ?? 0, w)))
       rowBase += g.grid.length

@@ -43,7 +43,10 @@ async function makeStyledPdf() {
   const helv = await doc.embedFont(StandardFonts.Helvetica)
   const bold = await doc.embedFont(StandardFonts.HelveticaBold)
   const page = doc.addPage([612, 400])
-  page.drawText('CONOIL 9-5/8 CASING RUNNING LIST', { x: 140, y: 372, size: 18, font: bold, color: rgb(0, 0, 0.8) })
+  // starts left of column 0's text END so the merge extends LEFT of the cell
+  // that holds the value — the case that loses the text if the writer merges
+  // without moving it to the top-left master first
+  page.drawText('CONOIL 9-5/8 CASING RUNNING LIST', { x: 80, y: 372, size: 18, font: bold, color: rgb(0, 0, 0.8) })
   // yellow highlight behind the first Qty value
   page.drawRectangle({ x: 240, y: 314, width: 66, height: 16, color: rgb(1, 1, 0) })
   // border box around the header row

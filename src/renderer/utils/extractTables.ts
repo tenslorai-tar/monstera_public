@@ -20,7 +20,9 @@ export interface CellStyle {
 }
 export interface PageStyling {
   styles: Array<Array<CellStyle | null>>
-  merges: Array<{ row: number; c1: number; c2: number }>
+  // src = the column whose cell holds the text; the writer moves it to c1
+  // because merging clears every cell but the top-left master.
+  merges: Array<{ row: number; c1: number; c2: number; src: number }>
   colWidths: number[] | null
 }
 export interface PageGrid { page: number; grid: string[][]; source: GridSource; styling?: PageStyling }
