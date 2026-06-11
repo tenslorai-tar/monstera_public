@@ -11,7 +11,28 @@ import type { OcrWord } from './ocrUtils'
 
 export interface TableItem { str: string; x: number; y: number; w: number; h: number }
 export type GridSource = 'text' | 'ocr' | 'azure' | 'trocr'
-export interface PageGrid { page: number; grid: string[][]; source: GridSource }
+
+export interface CellStyle {
+  family?: string; size?: number; bold?: boolean; italic?: boolean
+  color?: string; fill?: string
+  border?: { t?: boolean; b?: boolean; l?: boolean; r?: boolean }
+  numFmt?: string
+}
+export interface PageStyling {
+  styles: Array<Array<CellStyle | null>>
+  merges: Array<{ row: number; c1: number; c2: number }>
+  colWidths: number[] | null
+}
+export interface PageGrid { page: number; grid: string[][]; source: GridSource; styling?: PageStyling }
+
+export interface CellDetail { row: number; col: number; text: string; x1: number; y1: number; x2: number; y2: number }
+export interface GridDetail {
+  grid: string[][]
+  cells: CellDetail[]
+  colBounds: Array<[number, number]>   // PDF-pt extent of each kept column
+  minX: number
+  maxX: number
+}
 
 function median(nums: number[]): number {
   if (nums.length === 0) return 0
@@ -127,39 +148,86 @@ export function trimGrid(grid: string[][]): string[][] {
 }
 
 export function itemsToGrid(items: TableItem[], separators?: number[] | null): string[][] {
-  const rows = clusterRows(items)
-  if (rows.length === 0) return []
-  const seps = separators && separators.length >= 1 ? separators : whitespaceSeparators(rows)
+  return itemsToGridDetailed(items, separators).grid
+}
 
+export function itemsToGridDetailed(items: TableItem[], separators?: number[] | null): GridDetail {
+  const empty: GridDetail = { grid: [], cells: [], colBounds: [], minX: 0, maxX: 0 }
+  const rows = clusterRows(items)
+  if (rows.length === 0) return empty
+  const seps = separators && separators.length >= 1
+    ? [...separators].sort((a, b) => a - b)
+    : whitespaceSeparators(rows)
+
+  let nCols: number
+  let binOf: (it: TableItem) => number
   if (seps.length >= 1) {
-    const sorted = [...seps].sort((a, b) => a - b)
-    return trimGrid(rows.map(r => {
-      const cells = new Array(sorted.length + 1).fill('')
-      for (const it of [...r].sort((a, b) => a.x - b.x)) {
-        const xc = it.x + it.w / 2
-        let ci = 0
-        while (ci < sorted.length && xc > sorted[ci]) ci++
-        cells[ci] = cells[ci] ? `${cells[ci]} ${it.str}` : it.str
-      }
-      return cells
-    }))
+    nCols = seps.length + 1
+    binOf = it => {
+      const xc = it.x + it.w / 2
+      let ci = 0
+      while (ci < seps.length && xc > seps[ci]) ci++
+      return ci
+    }
+  } else {
+    // Fallback: cluster x-starts into column anchors; bin items to the last
+    // anchor at or left of their start (text flows rightward from a column edge).
+    const xs = items.map(i => i.x).sort((a, b) => a - b)
+    const colTol = 14
+    const anchors: number[] = []
+    for (const x of xs) { if (anchors.length === 0 || x - anchors[anchors.length - 1] > colTol) anchors.push(x) }
+    nCols = anchors.length
+    binOf = it => {
+      let ci = 0
+      for (let c = 0; c < anchors.length; c++) if (anchors[c] <= it.x + 2) ci = c
+      return ci
+    }
   }
 
-  // Fallback: cluster x-starts into column anchors; bin items to the last
-  // anchor at or left of their start (text flows rightward from a column edge).
-  const xs = items.map(i => i.x).sort((a, b) => a - b)
-  const colTol = 14
-  const cols: number[] = []
-  for (const x of xs) { if (cols.length === 0 || x - cols[cols.length - 1] > colTol) cols.push(x) }
-  return trimGrid(rows.map(r => {
-    const cells = new Array(cols.length).fill('')
+  const rowCells: Array<Map<number, TableItem[]>> = rows.map(r => {
+    const m = new Map<number, TableItem[]>()
     for (const it of [...r].sort((a, b) => a.x - b.x)) {
-      let ci = 0
-      for (let c = 0; c < cols.length; c++) if (cols[c] <= it.x + 2) ci = c
-      cells[ci] = cells[ci] ? `${cells[ci]} ${it.str}` : it.str
+      const ci = binOf(it)
+      if (!m.has(ci)) m.set(ci, [])
+      m.get(ci)!.push(it)
     }
+    return m
+  })
+  const rawGrid: string[][] = rowCells.map(m => {
+    const cells = new Array(nCols).fill('')
+    for (const [ci, its] of m) cells[ci] = its.map(i => i.str).join(' ')
     return cells
-  }))
+  })
+
+  const keptRows: number[] = []
+  rawGrid.forEach((r, i) => { if (r.some(c => c !== '')) keptRows.push(i) })
+  if (keptRows.length === 0) return empty
+  const keptCols: number[] = []
+  for (let c = 0; c < nCols; c++) if (keptRows.some(ri => rawGrid[ri][c] !== '')) keptCols.push(c)
+
+  const grid = keptRows.map(ri => keptCols.map(ci => rawGrid[ri][ci]))
+  const cells: CellDetail[] = []
+  keptRows.forEach((ri, r2) => {
+    keptCols.forEach((ci, c2) => {
+      const its = rowCells[ri].get(ci)
+      if (!its || its.length === 0) return
+      let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity
+      for (const it of its) {
+        x1 = Math.min(x1, it.x); y1 = Math.min(y1, it.y)
+        x2 = Math.max(x2, it.x + it.w); y2 = Math.max(y2, it.y + it.h)
+      }
+      cells.push({ row: r2, col: c2, text: grid[r2][c2], x1, y1, x2, y2 })
+    })
+  })
+
+  const colBounds: Array<[number, number]> = keptCols.map((_, c2) => {
+    let a = Infinity, b = -Infinity
+    for (const cell of cells) if (cell.col === c2) { a = Math.min(a, cell.x1); b = Math.max(b, cell.x2) }
+    return [a, b]
+  })
+  let minX = Infinity, maxX = 0
+  for (const it of items) { minX = Math.min(minX, it.x); maxX = Math.max(maxX, it.x + it.w) }
+  return { grid, cells, colBounds, minX, maxX }
 }
 
 export async function nativeItems(pdfDoc: PDFDocumentProxy, pageNum: number): Promise<TableItem[]> {
@@ -439,7 +507,7 @@ export function azureResultToGrids(result: unknown, wantedPages: number[]): Page
 
 const NUM_RE = /^-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?$/
 
-function toCellValue(s: string): string | number {
+export function toCellValue(s: string): string | number {
   const t = s.trim()
   if (NUM_RE.test(t) && !/^0\d/.test(t)) {
     const n = Number(t.replace(/,/g, ''))

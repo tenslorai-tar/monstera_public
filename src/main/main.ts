@@ -1603,6 +1603,9 @@ ipcMain.handle('azure:layoutAnalyze', async (_event, bytes: ArrayBuffer, endpoin
   throw new Error('Azure analysis timed out after 2 minutes.')
 })
 
+ipcMain.handle('pdfium:styledRuns', (_event, bytes: ArrayBuffer, pageIndex: number) =>
+  pdfium.getStyledTextRuns(Buffer.from(bytes), pageIndex))
+
 // ── TrOCR: local handwriting OCR (offline after a one-time model download) ───
 
 function trocrConfigured(): typeof trocr {

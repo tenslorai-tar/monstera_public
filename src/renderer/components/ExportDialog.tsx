@@ -40,6 +40,7 @@ export default function ExportDialog({ onClose }: Props) {
   const [xlsxLang, setXlsxLang] = useState(settings.ocrLanguage || 'eng')
   const [grids, setGrids] = useState<PageGrid[] | null>(null)
   const [gridIdx, setGridIdx] = useState(0)
+  const [combineSheets, setCombineSheets] = useState(true)
 
   useEffect(() => {
     window.electronAPI.pdf2docxStatus().then(s => {
@@ -177,10 +178,9 @@ export default function ExportDialog({ onClose }: Props) {
 
   // ── Export XLSX: detect (text / OCR / Azure) → review grid → save ─────────
 
-  async function rulingSeps(pageNum: number, ex: typeof import('../utils/extractTables')): Promise<number[] | null> {
+  async function renderPagePixels(pageNum: number, scale: number): Promise<{ data: Uint8ClampedArray; width: number; height: number } | null> {
     if (!pdfDoc) return null
     const page = await pdfDoc.getPage(pageNum)
-    const scale = 1.5
     const vp = page.getViewport({ scale })
     const canvas = document.createElement('canvas')
     canvas.width = Math.ceil(vp.width)
@@ -190,6 +190,13 @@ export default function ExportDialog({ onClose }: Props) {
     ctx.fillRect(0, 0, canvas.width, canvas.height)
     await page.render({ canvas, viewport: vp, annotationMode: 0 }).promise
     const img = ctx.getImageData(0, 0, canvas.width, canvas.height)
+    return { data: img.data, width: img.width, height: img.height }
+  }
+
+  async function rulingSeps(pageNum: number, ex: typeof import('../utils/extractTables')): Promise<number[] | null> {
+    const scale = 1.5
+    const img = await renderPagePixels(pageNum, scale)
+    if (!img) return null
     return ex.detectRuledColumnSeparators({ data: img.data, width: img.width, height: img.height, channels: 4 }, scale)
   }
 
@@ -289,7 +296,19 @@ export default function ExportDialog({ onClose }: Props) {
           setStatus(`Reading text on page ${p}…`)
           const items = await ex.nativeItems(pdfDoc, p)
           if (items.reduce((s, i) => s + i.str.length, 0) >= 15) {
-            out.push({ page: p, grid: ex.itemsToGrid(items), source: 'text' })
+            const detail = ex.itemsToGridDetailed(items)
+            let styling: import('../utils/extractTables').PageStyling | undefined
+            try {
+              const sx = await import('../utils/styledExcel')
+              const ab2 = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength) as ArrayBuffer
+              const runs = await window.electronAPI.pdfiumStyledRuns(ab2, p - 1)
+              const scale = 1.5
+              const img = await renderPagePixels(p, scale)
+              const nR = detail.grid.length
+              const nC = nR > 0 ? Math.max(...detail.grid.map(r => r.length)) : 0
+              styling = sx.computeStyling(detail, runs, img ? { ...img, channels: 4 } : null, scale, pageSizes[p - 1]?.height ?? 792, nR, nC)
+            } catch { /* plain cells when styling is unavailable */ }
+            out.push({ page: p, grid: detail.grid, source: 'text', styling })
             continue
           }
         }
@@ -341,8 +360,8 @@ export default function ExportDialog({ onClose }: Props) {
     if (!grids) return
     setBusy(true)
     try {
-      const { gridsToXlsx } = await import('../utils/extractTables')
-      const result = gridsToXlsx(grids)
+      const { gridsToXlsxStyled } = await import('../utils/styledExcel')
+      const result = await gridsToXlsxStyled(grids, combineSheets)
       const savePath = await window.electronAPI.saveFileDialog(`${baseName}.xlsx`)
       if (savePath) {
         await window.electronAPI.writeFile(savePath, result.buffer.slice(result.byteOffset, result.byteOffset + result.byteLength) as ArrayBuffer)
@@ -638,6 +657,11 @@ export default function ExportDialog({ onClose }: Props) {
                 onChange={e => { setPageRange(e.target.value); setGrids(null) }}
                 placeholder={`all  or  1-3, 5  (1–${numPages})`} />
             </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 10, fontSize: 12.5, color: 'var(--text-primary)' }}>
+              <input type="checkbox" checked={combineSheets} onChange={e => setCombineSheets(e.target.checked)} />
+              Combine all pages into one continuous sheet
+            </label>
 
             <label className="modal-label" style={{ display: 'block', marginBottom: 6 }}>Reading engine</label>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>

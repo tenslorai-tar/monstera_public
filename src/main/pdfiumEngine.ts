@@ -1433,3 +1433,92 @@ export function getAllTextLines(
     L.CloseDocument(doc)
   }
 }
+
+/** Text runs with style info (font family, size, weight, fill colour) for styled export. */
+export interface StyledRun {
+  text: string; x1: number; y1: number; x2: number; y2: number
+  fontName: string; family: string; bold: boolean; italic: boolean
+  fontSize: number; color: string
+}
+
+export function getStyledTextRuns(bytes: Buffer, pageIndex: number): StyledRun[] {
+  const L = load()
+  const doc = L.LoadMemDocument(bytes, bytes.length, null)
+  if (!doc) throw new Error('PDFium could not open the document')
+  const nulTail = new RegExp(String.fromCharCode(0) + '+$')
+  const hex = (v: number) => v.toString(16).padStart(2, '0')
+  // PDF base font names are often anonymised (CIDFont+F1); the embedded font
+  // program still carries the real family + weight in its name/OS2 tables.
+  const fontInfo = new Map<string, { family: string; bold: boolean; italic: boolean }>()
+  const resolveFont = (obj: unknown, fontName: string): { family: string; bold: boolean; italic: boolean } => {
+    const cached = fontInfo.get(fontName)
+    if (cached) return cached
+    let family = ''
+    let bold = /bold|black|heavy|semibold/i.test(fontName)
+    let italic = /italic|oblique/i.test(fontName)
+    try {
+      const f = extractFont(L, obj)
+      if (f.data.length > 0) {
+        let fk = fontkit.create(f.data) as unknown as {
+          fonts?: Array<unknown>
+          familyName?: string | null
+          subfamilyName?: string | null
+          'OS/2'?: { usWeightClass?: number }
+          italicAngle?: number
+        }
+        if (fk.fonts && fk.fonts.length) fk = fk.fonts[0] as typeof fk
+        family = (fk.familyName ?? '').trim()
+        const sub = (fk.subfamilyName ?? '').toLowerCase()
+        const weight = fk['OS/2']?.usWeightClass ?? 0
+        bold = bold || /bold|black|heavy/.test(sub) || weight >= 600
+        italic = italic || /italic|oblique/.test(sub) || Math.abs(fk.italicAngle ?? 0) > 4
+      }
+    } catch { /* fall back to the base name heuristics */ }
+    if (!family) family = fontName.replace(/^[A-Z]{6}\+/, '').replace(/^CIDFont\+/i, '').split(/[-,]/)[0]
+    const info = { family, bold, italic }
+    fontInfo.set(fontName, info)
+    return info
+  }
+  try {
+    const page = L.LoadPage(doc, pageIndex)
+    const tp = L.TextLoadPage(page)
+    const n = L.CountObjects(page)
+    const runs: StyledRun[] = []
+    for (let i = 0; i < n; i++) {
+      const obj = L.GetObject(page, i)
+      if (L.GetType(obj) !== PDFOBJ_TEXT) continue
+      const l = [0], b = [0], r = [0], t = [0]
+      L.GetBounds(obj, l, b, r, t)
+      const len = L.GetText(obj, tp, null, 0)
+      const buf = Buffer.alloc(len)
+      L.GetText(obj, tp, buf, len)
+      const text = buf.toString('utf16le').replace(nulTail, '')
+      if (!text.trim()) continue
+      const fs = [0]
+      L.GetFontSize(obj, fs)
+      const rr = [0], gg = [0], bb = [0], aa = [0]
+      const hasColor = L.GetFillColor(obj, rr, gg, bb, aa)
+      let fontName = ''
+      try {
+        const font = L.GetFont(obj)
+        if (font) {
+          const nb = Buffer.alloc(128)
+          const nl = L.GetBaseFontName(font, nb, 128)
+          if (nl > 0) fontName = nb.toString('utf8', 0, Math.min(nb.length, Math.max(0, nl - 1))).replace(nulTail, '')
+        }
+      } catch { /* name optional */ }
+      const info = resolveFont(obj, fontName)
+      runs.push({
+        text, x1: l[0], y1: b[0], x2: r[0], y2: t[0],
+        fontName, family: info.family, bold: info.bold, italic: info.italic,
+        fontSize: fs[0],
+        color: hasColor ? `#${hex(rr[0])}${hex(gg[0])}${hex(bb[0])}` : '#000000',
+      })
+    }
+    L.TextClosePage(tp)
+    L.ClosePage(page)
+    return runs
+  } finally {
+    L.CloseDocument(doc)
+  }
+}

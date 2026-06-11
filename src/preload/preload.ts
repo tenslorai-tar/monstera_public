@@ -353,6 +353,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   azureLayoutAnalyze: (bytes: ArrayBuffer, endpoint: string, key: string, pages: string): Promise<unknown> =>
     ipcRenderer.invoke('azure:layoutAnalyze', bytes, endpoint, key, pages),
 
+  pdfiumStyledRuns: (bytes: ArrayBuffer, pageIndex: number): Promise<Array<{
+    text: string; x1: number; y1: number; x2: number; y2: number
+    fontName: string; family: string; bold: boolean; italic: boolean
+    fontSize: number; color: string
+  }>> => ipcRenderer.invoke('pdfium:styledRuns', bytes, pageIndex),
+
   trocrStatus: (): Promise<{ ready: boolean; cached: boolean }> => ipcRenderer.invoke('trocr:status'),
   trocrSetup: (): Promise<boolean> => ipcRenderer.invoke('trocr:setup'),
   trocrRecognize: (png: ArrayBuffer): Promise<string> => ipcRenderer.invoke('trocr:recognize', png),

@@ -221,6 +221,11 @@ declare global {
       pdf2docxInstall: () => Promise<{ ok: boolean; version: string; log: string }>
 
       azureLayoutAnalyze: (bytes: ArrayBuffer, endpoint: string, key: string, pages: string) => Promise<unknown>
+      pdfiumStyledRuns: (bytes: ArrayBuffer, pageIndex: number) => Promise<Array<{
+        text: string; x1: number; y1: number; x2: number; y2: number
+        fontName: string; family: string; bold: boolean; italic: boolean
+        fontSize: number; color: string
+      }>>
       trocrStatus: () => Promise<{ ready: boolean; cached: boolean }>
       trocrSetup: () => Promise<boolean>
       trocrRecognize: (png: ArrayBuffer) => Promise<string>
