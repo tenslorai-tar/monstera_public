@@ -437,7 +437,10 @@ export default function ExportDialog({ onClose }: Props) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal-box" style={{ width: tab === 'xlsx' && grids ? 760 : 480, maxWidth: '94vw' }}>
+      <div className="modal-box" style={{
+        width: tab === 'xlsx' && grids ? 760 : 480, maxWidth: '94vw',
+        maxHeight: '88vh', display: 'flex', flexDirection: 'column',
+      }}>
         <div className="modal-title"><Upload size={18} /> Export</div>
 
         {/* tabs */}
@@ -461,6 +464,9 @@ export default function ExportDialog({ onClose }: Props) {
             </button>
           ))}
         </div>
+
+        {/* Scrollable body: action buttons below stay visible on small screens */}
+        <div style={{ overflowY: 'auto', minHeight: 0, flex: '1 1 auto' }}>
 
         {/* ── Images tab ──────────────────────────────────── */}
         {tab === 'images' && (
@@ -604,6 +610,24 @@ export default function ExportDialog({ onClose }: Props) {
         {/* ── XLSX tab ─────────────────────────────────────── */}
         {tab === 'xlsx' && (
           <div>
+            {/* After detection only the review grid matters — the setup
+                controls collapse into one summary line so the action buttons
+                never get pushed off-screen. */}
+            {grids && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, fontSize: 12, color: 'var(--text-muted)' }}>
+                <span>
+                  Engine: <strong style={{ color: 'var(--text-primary)' }}>
+                    {xlsxEngine === 'auto' ? 'Automatic' : xlsxEngine === 'ocr' ? 'Force OCR' : xlsxEngine === 'trocr' ? 'Local handwriting' : 'Azure AI'}
+                  </strong> · Pages: {pageRange}
+                </span>
+                <button onClick={() => { setGrids(null); setStatus('') }}
+                  style={{ border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)',
+                    borderRadius: 999, padding: '2px 10px', fontSize: 11, cursor: 'pointer' }}>
+                  Change options
+                </button>
+              </div>
+            )}
+            {!grids && (<>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>
               Reconstructs tables into a spreadsheet, one sheet per page. Detect first, fix any
               misread cell in the preview, then export.
@@ -663,6 +687,7 @@ export default function ExportDialog({ onClose }: Props) {
                   : 'Not configured yet: add your Azure Document Intelligence endpoint and key in Settings (Ctrl+,) → API keys. The free tier analyzes 500 pages/month (first 2 pages per call).'}
               </p>
             )}
+            </>)}
 
             {grids && (() => {
               const g = grids[Math.min(gridIdx, grids.length - 1)]
@@ -684,7 +709,7 @@ export default function ExportDialog({ onClose }: Props) {
                     </div>
                   )}
                   {g && g.grid.length > 0 ? (
-                    <div style={{ overflow: 'auto', maxHeight: 280, border: '1px solid var(--border)', borderRadius: 8 }}>
+                    <div style={{ overflow: 'auto', maxHeight: 'min(48vh, 420px)', border: '1px solid var(--border)', borderRadius: 8 }}>
                       <table style={{ borderCollapse: 'collapse', fontSize: 12, minWidth: '100%' }}>
                         <tbody>
                           {g.grid.map((row, ri) => (
@@ -810,6 +835,8 @@ export default function ExportDialog({ onClose }: Props) {
             </div>
           </div>
         )}
+
+        </div>{/* /scrollable body */}
 
         {status && (
           <div style={{
