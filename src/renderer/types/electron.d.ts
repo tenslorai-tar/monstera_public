@@ -72,6 +72,19 @@ declare global {
         y: number,
         newText: string,
       ) => Promise<ArrayBuffer>
+      pdfiumLineAt: (
+        bytes: ArrayBuffer,
+        pageIndex: number,
+        x: number,
+        y: number,
+      ) => Promise<{ found: boolean; editable: boolean; text: string; x1: number; y1: number; x2: number; y2: number; baseY: number; fontSize: number; color: string; fontName: string; fontData: ArrayBuffer; fontLoadable: boolean }>
+      pdfiumReplaceLine: (
+        bytes: ArrayBuffer,
+        pageIndex: number,
+        x: number,
+        y: number,
+        newText: string,
+      ) => Promise<ArrayBuffer>
       pdfaConvert: (
         bytes: ArrayBuffer,
       ) => Promise<{ bytes: ArrayBuffer; report: Array<{ level: string; message: string }>; ok: boolean }>

@@ -27,7 +27,7 @@ type DrawPhase =
   | { k: 'textbox-edit'; x: number; y: number; w: number; h: number; text: string }
   | { k: 'typewriter-edit'; x: number; y: number; text: string }
   | { k: 'text-edit-size'; sx: number; sy: number; cx: number; cy: number }
-  | { k: 'text-edit-edit'; x: number; y: number; w: number; h: number; text: string; fontSize?: number; color?: string; bg?: string; fontFamily?: string; fontDataB64?: string; baselineX?: number; baselineY?: number; editPoint?: { x: number; y: number }; editRect?: { x1: number; y1: number; x2: number; y2: number }; sample?: FontSample }
+  | { k: 'text-edit-edit'; x: number; y: number; w: number; h: number; text: string; fontSize?: number; color?: string; bg?: string; fontFamily?: string; fontDataB64?: string; baselineX?: number; baselineY?: number; linePoint?: { x: number; y: number }; editPoint?: { x: number; y: number }; editRect?: { x1: number; y1: number; x2: number; y2: number }; sample?: FontSample }
   | { k: 'callout-size'; sx: number; sy: number; cx: number; cy: number }
   | { k: 'callout-edit'; x: number; y: number; w: number; h: number; text: string; tipSvgX: number; tipSvgY: number }
   | { k: 'poly'; pts: Array<[number, number]>; curX: number; curY: number }
@@ -409,9 +409,44 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
     return {
       text,
       fontSize: fontPx > 0 ? Math.round((fontPx / scale) * 10) / 10 : undefined,
-      color: pxToHex(cs.color),
+      color: sampleInkColor(hits[0].r) ?? pxToHex(cs.color),
       sample: classifyFont(cs, hits[0].el.textContent ?? '', hits[0].r.width, fontPx),
     }
+  }
+
+  // Text-layer spans are color:transparent, so CSS can never tell us the real
+  // ink colour — sample it from the rendered page canvas instead: histogram the
+  // non-background pixels inside the rect and take the most common colour.
+  const sampleInkColor = (clientRect: { left: number; top: number; width: number; height: number }): string | undefined => {
+    const wrapper = svgRef.current?.closest('.pdf-page-wrapper')
+    const canvas = wrapper?.querySelector<HTMLCanvasElement>('.pdf-page-canvas')
+    if (!canvas) return undefined
+    const cr = canvas.getBoundingClientRect()
+    if (cr.width <= 0 || cr.height <= 0) return undefined
+    const fx = canvas.width / cr.width, fy = canvas.height / cr.height
+    const x = Math.max(0, Math.round((clientRect.left - cr.left) * fx))
+    const y = Math.max(0, Math.round((clientRect.top - cr.top) * fy))
+    const w = Math.min(canvas.width - x, Math.max(1, Math.round(clientRect.width * fx)))
+    const h = Math.min(canvas.height - y, Math.max(1, Math.round(clientRect.height * fy)))
+    if (w <= 0 || h <= 0) return undefined
+    try {
+      const data = canvas.getContext('2d')?.getImageData(x, y, w, h).data
+      if (!data) return undefined
+      const counts = new Map<string, number>()
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i], g = data[i + 1], b = data[i + 2]
+        if (r > 235 && g > 235 && b > 235) continue
+        // quantise so antialiased edge pixels pool with the core ink colour
+        const key = `${r >> 4},${g >> 4},${b >> 4}`
+        counts.set(key, (counts.get(key) ?? 0) + 1)
+      }
+      let best: string | null = null, bestN = 0
+      for (const [k, n] of counts) if (n > bestN) { best = k; bestN = n }
+      if (!best || bestN < 4) return undefined
+      const [r, g, b] = best.split(',').map(v => (parseInt(v, 10) << 4) + 8)
+      const hex = (v: number) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')
+      return `#${hex(r)}${hex(g)}${hex(b)}`
+    } catch { return undefined }
   }
 
   // Find the single text-layer run under a click point. Used as the cover-and-
@@ -446,7 +481,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       w: best.r.width,
       h: best.r.height,
       fontSize: fontPx > 0 ? Math.round((fontPx / scale) * 10) / 10 : undefined,
-      color: pxToHex(cs.color),
+      color: sampleInkColor(best.r) ?? pxToHex(cs.color),
       sample: classifyFont(cs, best.el.textContent ?? '', best.r.width, fontPx),
     }
   }
@@ -776,6 +811,25 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
               const bytes = usePdfStore.getState().pdfBytes
               if (bytes) {
                 const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+                // Line-first (Adobe/PDF-XChange behaviour): a click selects the whole
+                // visual line for editing. On commit only the changed run(s) are
+                // rewritten, so every face/colour on the line survives the edit.
+                try {
+                  const line = await window.electronAPI.pdfiumLineAt(ab, pageNum - 1, px, py)
+                  if (line.found && line.editable) {
+                    let fontFamily: string | undefined
+                    if (line.fontLoadable && line.fontData.byteLength > 0) {
+                      fontFamily = (await loadPdfFont(line.fontData)) ?? undefined
+                    }
+                    const [lx1, ly2] = toSvg(line.x1, line.y2)
+                    const [lx2, ly1] = toSvg(line.x2, line.y1)
+                    setDraw({ k: 'text-edit-edit', x: lx1, y: ly2,
+                      w: Math.max(24, lx2 - lx1), h: Math.max(10, ly1 - ly2),
+                      text: line.text, fontSize: line.fontSize, color: line.color, fontFamily,
+                      linePoint: { x: px, y: py } })
+                    return
+                  }
+                } catch { /* fall through to the single-object path */ }
                 const obj = await window.electronAPI.pdfiumTextObjectAt(ab, pageNum - 1, px, py)
                 if (obj.found) {
                   let fontFamily: string | undefined
@@ -1267,6 +1321,22 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
     const trimmed = text.trim()
     setDraw({ k: 'idle' })
     if (!trimmed) return
+
+    // Line-level edit: PDFium diffs the new line text against the old one and
+    // rewrites ONLY the changed run(s) — untouched runs keep their font and
+    // colour byte-for-byte, and runs right of the edit shift by the width delta.
+    if (d.linePoint) {
+      try {
+        const store = usePdfStore.getState()
+        const bytes = store.pdfBytes
+        if (bytes && await pdfiumReady()) {
+          const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+          const edited = await window.electronAPI.pdfiumReplaceLine(ab, pageNum - 1, d.linePoint.x, d.linePoint.y, text)
+          await store.applyContentEdit(new Uint8Array(edited), pageNum)
+          return
+        }
+      } catch { /* fall through to the cover-and-replace overlay */ }
+    }
 
     // Primary path: TRUE in-place edit via PDFium. FPDFText_SetText rewrites the
     // clicked text object's string while reusing its own embedded font, size and

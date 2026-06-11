@@ -616,9 +616,42 @@ ipcMain.handle('pdfium:textObjectAt', async (
   }
 })
 
+// Per-LINE outlines: the Edit Text tool selects whole visual lines, so the
+// clickable hints must show lines, not raw PDF text objects (which can be
+// single letters in kerned output).
 ipcMain.handle('pdfium:textBoxes', async (_event, bytes: ArrayBuffer, pageIndex: number) => {
-  try { return pdfium.getAllTextBoxes(Buffer.from(bytes), pageIndex) }
+  try { return pdfium.getAllTextLines(Buffer.from(bytes), pageIndex) }
   catch { return [] }
+})
+
+ipcMain.handle('pdfium:lineAt', async (
+  _e, bytes: ArrayBuffer, pageIndex: number, x: number, y: number,
+) => {
+  const h = pdfium.getLineAt(Buffer.from(bytes), pageIndex, x, y)
+  const { fontData, ...rest } = h
+  return {
+    ...rest,
+    fontData: fontData.buffer.slice(fontData.byteOffset, fontData.byteOffset + fontData.byteLength),
+  }
+})
+
+ipcMain.handle('pdfium:replaceLine', async (
+  _e, bytes: ArrayBuffer, pageIndex: number, x: number, y: number, newText: string,
+) => {
+  const buf = Buffer.from(bytes)
+  // Substitution is the LAST resort and only ever touches the changed run; the
+  // engine prefers the run's own embedded font whenever it covers the new text.
+  let substitute: Buffer | null = null
+  try {
+    const h = pdfium.getLineAt(buf, pageIndex, x, y)
+    if (h.found && h.fontName) {
+      const bold = /bold|black|heavy|semibold/i.test(h.fontName)
+      const italic = /italic|oblique/i.test(h.fontName)
+      substitute = resolveSystemFont(h.fontName, bold, italic)?.data ?? null
+    }
+  } catch { /* substitution is best-effort */ }
+  const out = pdfium.replaceLineAt(buf, pageIndex, x, y, newText, substitute)
+  return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength)
 })
 
 // Resolve the closest installed system font for an edited run, so cover-and-replace

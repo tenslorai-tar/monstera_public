@@ -1184,3 +1184,252 @@ export function replaceParagraphAt(
     L.CloseDocument(doc)
   }
 }
+
+// ── Line-level text editing ───────────────────────────────────────────────────
+// Click-to-edit operates on a whole VISUAL LINE (Adobe / PDF-XChange behaviour):
+// the editor opens with the full line, and on commit only the run(s) the user
+// actually changed are rewritten — every untouched run keeps its page object,
+// font and colour byte-for-byte. The changed run is re-set through its OWN
+// embedded font whenever that font provably covers the new characters, so the
+// original face survives the edit; a substitute can only ever touch the changed
+// run, never the rest of the line. Runs right of the edit are shifted by the
+// width delta so inter-word spacing stays intact.
+
+export interface LineHit {
+  found: boolean
+  editable: boolean   // every run is top-level — PDFium can save the rewrite
+  text: string
+  x1: number; y1: number; x2: number; y2: number
+  baseY: number
+  fontSize: number
+  color: string
+  fontName: string
+  fontData: Buffer
+  fontLoadable: boolean
+}
+
+const NO_LINE_HIT: LineHit = {
+  found: false, editable: false, text: '', x1: 0, y1: 0, x2: 0, y2: 0,
+  baseY: 0, fontSize: 0, color: '#000000', fontName: '',
+  fontData: Buffer.alloc(0), fontLoadable: false,
+}
+
+// UTF-16LE with explicit NUL terminator (FPDFText_SetText contract).
+const wideStr = (s: string): Buffer => Buffer.from(s + String.fromCharCode(0), 'utf16le')
+
+function lineAtPoint(lines: ParaLine[], x: number, y: number): ParaLine | null {
+  return lines.find(l => x >= l.l - 2 && x <= l.r + 2 && y >= l.b - 1 && y <= l.t + 1) ?? null
+}
+
+// Character range each run occupies inside ParaLine.text. Gap characters (the
+// spaces inferred between runs) belong to no run. Must mirror the line-text
+// assembly in groupIntoLines exactly.
+function lineRunRanges(ln: ParaLine): Array<{ run: ParaRun; start: number; end: number }> {
+  const ranges: Array<{ run: ParaRun; start: number; end: number }> = []
+  let text = ''
+  let prevRight: number | null = null
+  for (const r of ln.runs) {
+    if (prevRight !== null && r.l - prevRight > Math.max(0.5, ln.fontSize * 0.18) && text && !text.endsWith(' ')) text += ' '
+    ranges.push({ run: r, start: text.length, end: text.length + r.text.length })
+    text += r.text
+    prevRight = r.r
+  }
+  return ranges
+}
+
+// Like fontCovers but does NOT skip spaces: FPDFText_SetText maps every
+// character (the space included) through the font's charmap, and a subset
+// missing the space glyph would render boxes between words.
+function fontCoversAll(data: Buffer, text: string): boolean {
+  try {
+    let f = fontkit.create(data) as unknown as {
+      fonts?: Array<{ hasGlyphForCodePoint(cp: number): boolean }>
+      hasGlyphForCodePoint(cp: number): boolean
+    }
+    if (f.fonts && f.fonts.length) f = f.fonts[0] as typeof f
+    for (const ch of new Set(text)) {
+      if (ch === String.fromCharCode(9) || ch === String.fromCharCode(13) || ch === String.fromCharCode(10)) continue
+      if (!f.hasGlyphForCodePoint(ch.codePointAt(0)!)) return false
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function getLineAt(bytes: Buffer, pageIndex: number, x: number, y: number): LineHit {
+  const L = load()
+  const doc = L.LoadMemDocument(bytes, bytes.length, null)
+  if (!doc) return NO_LINE_HIT
+  try {
+    const page = L.LoadPage(doc, pageIndex)
+    if (!page) return NO_LINE_HIT
+    const tp = L.TextLoadPage(page)
+    const ln = lineAtPoint(groupIntoLines(collectParaRuns(L, page, tp)), x, y)
+    L.TextClosePage(tp)
+    if (!ln) { L.ClosePage(page); return NO_LINE_HIT }
+    // Style preview comes from the run actually under the cursor (a line can
+    // mix faces); fall back to the widest run.
+    const hitRun = ln.runs.find(r => x >= r.l - 2 && x <= r.r + 2)
+      ?? ln.runs.reduce((a, b) => (b.r - b.l > a.r - a.l ? b : a))
+    const font = extractFont(L, hitRun.obj)
+    const rr = [0], gg = [0], bb = [0], aa = [0]
+    L.GetFillColor(hitRun.obj, rr, gg, bb, aa)
+    const hex = (v: number) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')
+    L.ClosePage(page)
+    return {
+      found: true,
+      editable: ln.runs.every(r => !r.nested),
+      text: ln.text,
+      x1: ln.l, y1: ln.b, x2: ln.r, y2: ln.t,
+      baseY: ln.baseY,
+      fontSize: hitRun.fontSize || ln.fontSize,
+      color: '#' + hex(rr[0]) + hex(gg[0]) + hex(bb[0]),
+      fontName: font.name, fontData: font.data, fontLoadable: font.loadable,
+    }
+  } finally {
+    L.CloseDocument(doc)
+  }
+}
+
+export function replaceLineAt(
+  bytes: Buffer, pageIndex: number, x: number, y: number, newTextRaw: string,
+  substituteFont?: Buffer | null,
+): Buffer {
+  const L = load()
+  const doc = L.LoadMemDocument(bytes, bytes.length, null)
+  if (!doc) throw new Error('PDFium could not open the document')
+  try {
+    const page = L.LoadPage(doc, pageIndex)
+    if (!page) throw new Error('PDFium could not load the page')
+    const tp = L.TextLoadPage(page)
+    const ln = lineAtPoint(groupIntoLines(collectParaRuns(L, page, tp)), x, y)
+    L.TextClosePage(tp)
+    if (!ln) throw new Error('No text line at that point')
+    if (ln.runs.some(r => r.nested)) throw new Error('Line is inside a form group; PDFium cannot save in-place edits there')
+
+    const oldText = ln.text
+    const newText = newTextRaw.replace(/[\r\n]+/g, ' ').replace(/\s+$/, '')
+
+    if (newText.trim() === '') {
+      for (const r of ln.runs) { if (L.RemoveObject(page, r.obj)) L.DestroyObject(r.obj) }
+      L.GenerateContent(page)
+      const cleared = saveDoc(L, doc)
+      L.ClosePage(page)
+      return cleared
+    }
+    if (newText === oldText) { L.ClosePage(page); return Buffer.from(bytes) }
+
+    // Common prefix/suffix → smallest changed region. Only the run(s) that
+    // region touches get rewritten; every other run keeps its bytes, which is
+    // what preserves mixed fonts/colours through an edit.
+    let p = 0
+    const maxP = Math.min(oldText.length, newText.length)
+    while (p < maxP && oldText[p] === newText[p]) p++
+    let sfx = 0
+    const maxS = maxP - p
+    while (sfx < maxS && oldText[oldText.length - 1 - sfx] === newText[newText.length - 1 - sfx]) sfx++
+    const aStart = p
+    const aEnd = oldText.length - sfx
+
+    const ranges = lineRunRanges(ln)
+    // The run owning the change start is the LAST run beginning at or before
+    // it — so a pure insertion at a run boundary extends the run the user was
+    // typing after, not the following run across the inter-run gap.
+    let i = 0
+    for (let k = 0; k < ranges.length; k++) if (ranges[k].start <= aStart) i = k
+    let j = ranges.length - 1
+    while (j > i && ranges[j].start >= aEnd) j--
+
+    const mergStart = Math.min(ranges[i].start, aStart)
+    const mergEnd = Math.max(ranges[j].end, aEnd)
+    const merged = oldText.slice(mergStart, aStart)
+      + newText.slice(p, newText.length - sfx)
+      + oldText.slice(aEnd, mergEnd)
+
+    const target = ranges[i].run
+    const oldRight = ranges[j].run.r
+    const trailing = ranges.slice(j + 1).map(r => r.run)
+
+    const fsArr = [0]; L.GetFontSize(target.obj, fsArr)
+    const fontSize = fsArr[0] || target.fontSize
+    const rr0 = [0], gg0 = [0], bb0 = [0], aa0 = [0]
+    L.GetFillColor(target.obj, rr0, gg0, bb0, aa0)
+
+    const embedded = extractFont(L, target.obj)
+    // In-place SetText is the high-fidelity path: the run keeps its own font
+    // object, so the face is preserved exactly. Allowed when the embedded
+    // program PROVABLY covers the new text, or — for font programs fontkit
+    // cannot parse (bare CFF / standard 14) — when the text is plain WinAnsi,
+    // which those charmaps always carry. Never SetText through an unverified
+    // subset: missing glyphs render as .notdef boxes.
+    const canInPlace = embedded.loadable
+      ? fontCoversAll(embedded.data, merged)
+      : isWinAnsiText(merged)
+
+    let newRight = oldRight
+    let loadedFont: unknown = null
+    if (canInPlace) {
+      if (!L.SetText(target.obj, wideStr(merged))) throw new Error('PDFium failed to set text')
+      for (let k = i + 1; k <= j; k++) {
+        if (L.RemoveObject(page, ranges[k].run.obj)) L.DestroyObject(ranges[k].run.obj)
+      }
+      const l = [0], b = [0], r = [0], t = [0]
+      if (L.GetBounds(target.obj, l, b, r, t)) newRight = r[0]
+    } else {
+      if (substituteFont && substituteFont.length > 4 && fontCoversAll(substituteFont, merged)) {
+        try { loadedFont = L.LoadFontData(doc, substituteFont, substituteFont.length, FPDF_FONT_TRUETYPE, 1) } catch { loadedFont = null }
+      }
+      if (!loadedFont && isWinAnsiText(merged)) {
+        try { loadedFont = L.LoadStandardFont(doc, 'Helvetica') } catch { loadedFont = null }
+      }
+      if (!loadedFont) throw new Error('No font covers the edited characters; falling back to overlay editing')
+      const obj = L.CreateTextObj(doc, loadedFont, fontSize)
+      if (!obj) {
+        try { L.FontClose(loadedFont) } catch { /* ignore */ }
+        throw new Error('PDFium could not create a text object')
+      }
+      L.SetText(obj, wideStr(merged))
+      L.SetFillColor(obj, rr0[0], gg0[0], bb0[0], aa0[0] || 255)
+      L.Transform(obj, 1, 0, 0, 1, target.baseX, target.baseY)
+      L.InsertObject(page, obj)
+      const l = [0], b = [0], r = [0], t = [0]
+      if (L.GetBounds(obj, l, b, r, t)) newRight = r[0]
+      for (let k = i; k <= j; k++) {
+        if (L.RemoveObject(page, ranges[k].run.obj)) L.DestroyObject(ranges[k].run.obj)
+      }
+    }
+
+    const dx = newRight - oldRight
+    if (Math.abs(dx) > 0.01) {
+      for (const run of trailing) L.Transform(run.obj, 1, 0, 0, 1, dx, 0)
+    }
+    L.GenerateContent(page)
+    const out = saveDoc(L, doc)
+    if (loadedFont) { try { L.FontClose(loadedFont) } catch { /* handle already gone */ } }
+    L.ClosePage(page)
+    return out
+  } finally {
+    L.CloseDocument(doc)
+  }
+}
+
+/** Per-LINE clickable outlines for the Edit Text tool (matches what a click selects). */
+export function getAllTextLines(
+  bytes: Buffer, pageIndex: number,
+): Array<{ x1: number; y1: number; x2: number; y2: number; nested: boolean }> {
+  const L = load()
+  const doc = L.LoadMemDocument(bytes, bytes.length, null)
+  if (!doc) return []
+  try {
+    const page = L.LoadPage(doc, pageIndex)
+    if (!page) return []
+    const tp = L.TextLoadPage(page)
+    const lines = groupIntoLines(collectParaRuns(L, page, tp))
+    L.TextClosePage(tp)
+    L.ClosePage(page)
+    return lines.map(ln => ({ x1: ln.l, y1: ln.b, x2: ln.r, y2: ln.t, nested: ln.runs.some(r => r.nested) }))
+  } finally {
+    L.CloseDocument(doc)
+  }
+}
