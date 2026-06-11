@@ -318,8 +318,8 @@ npm run build
 ```
 
 ## Output locations (after `npm run build`)
-- Installer: `release\Monstera PDF Editor Setup 0.1.0.exe`
-- Portable:  `release\Monstera PDF Editor 0.1.0.exe`
+- Installer: `release\Monstera PDF Editor Setup <version>.exe` — universal: fresh install AND in-place update (settings/documents kept)
+- Portable:  `release\Monstera PDF Editor <version>.exe`
 - Unpacked:  `release\win-unpacked\Monstera PDF Editor.exe`
 
 ### Phase 11 — Export ✅
