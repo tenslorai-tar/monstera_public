@@ -42,6 +42,7 @@ export interface AppSettings {
   docusignBasePath: string
   azureDiEndpoint: string // Azure Document Intelligence resource endpoint
   azureDiKey: string      // Azure Document Intelligence API key
+  trocrModel: 'small' | 'base' // local handwriting model size for Excel export
 }
 
 const STORAGE_KEY = 'monstera-settings'
@@ -135,6 +136,7 @@ function defaults(): AppSettings {
     docusignBasePath: 'https://demo.docusign.net/restapi',
     azureDiEndpoint: '',
     azureDiKey: '',
+    trocrModel: 'base',
   }
 }
 

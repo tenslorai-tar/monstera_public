@@ -359,9 +359,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     fontSize: number; color: string
   }>> => ipcRenderer.invoke('pdfium:styledRuns', bytes, pageIndex),
 
-  trocrStatus: (): Promise<{ ready: boolean; cached: boolean }> => ipcRenderer.invoke('trocr:status'),
-  trocrSetup: (): Promise<boolean> => ipcRenderer.invoke('trocr:setup'),
-  trocrRecognize: (png: ArrayBuffer): Promise<string> => ipcRenderer.invoke('trocr:recognize', png),
+  trocrStatus: (model?: 'small' | 'base'): Promise<{ ready: boolean; cached: boolean }> => ipcRenderer.invoke('trocr:status', model),
+  trocrSetup: (model?: 'small' | 'base'): Promise<boolean> => ipcRenderer.invoke('trocr:setup', model),
+  trocrRecognize: (png: ArrayBuffer, model?: 'small' | 'base'): Promise<string> => ipcRenderer.invoke('trocr:recognize', png, model),
 
   spellCheck: (text: string): Promise<Array<{ word: string; suggestions: string[] }>> =>
     ipcRenderer.invoke('dict:spellCheck', text),

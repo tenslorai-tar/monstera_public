@@ -36,6 +36,7 @@ export default function ExportDialog({ onClose }: Props) {
   const pdfaBytesRef = useRef<ArrayBuffer | null>(null)
   const cancelRef = useRef(false)
   const settings = useSettingsStore(s => s.settings)
+  const updateSettings = useSettingsStore(s => s.updateSettings)
   const [xlsxEngine, setXlsxEngine] = useState<XlsxEngine>('auto')
   const [xlsxLang, setXlsxLang] = useState(settings.ocrLanguage || 'eng')
   const [grids, setGrids] = useState<PageGrid[] | null>(null)
@@ -212,12 +213,13 @@ export default function ExportDialog({ onClose }: Props) {
       const ex = await import('../utils/extractTables')
 
       if (xlsxEngine === 'trocr') {
-        const st = await window.electronAPI.trocrStatus()
+        const model = settings.trocrModel === 'small' ? 'small' : 'base'
+        const st = await window.electronAPI.trocrStatus(model)
         if (!st.ready) {
           setStatus(st.cached
             ? 'Loading the local handwriting model…'
-            : 'Downloading the local handwriting model (one-time, ≈80 MB)…')
-          await window.electronAPI.trocrSetup()
+            : `Downloading the ${model === 'base' ? 'best-quality' : 'fast'} handwriting model (one-time, ≈${model === 'base' ? '340' : '80'} MB)…`)
+          await window.electronAPI.trocrSetup(model)
         }
         const out: PageGrid[] = []
         for (const p of pages) {
@@ -256,7 +258,7 @@ export default function ExportDialog({ onClose }: Props) {
             ictx.putImageData(id, 0, 0)
             const blob = await new Promise<Blob | null>(res => c2.toBlob(res, 'image/png'))
             if (!blob) continue
-            grid[cell.row][cell.col] = await window.electronAPI.trocrRecognize(await blob.arrayBuffer())
+            grid[cell.row][cell.col] = await window.electronAPI.trocrRecognize(await blob.arrayBuffer(), model)
           }
           out.push({ page: p, grid: ex.trimGrid(grid), source: 'trocr' })
         }
@@ -636,7 +638,7 @@ export default function ExportDialog({ onClose }: Props) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, fontSize: 12, color: 'var(--text-muted)' }}>
                 <span>
                   Engine: <strong style={{ color: 'var(--text-primary)' }}>
-                    {xlsxEngine === 'auto' ? 'Automatic' : xlsxEngine === 'ocr' ? 'Force OCR' : xlsxEngine === 'trocr' ? 'Local handwriting' : 'Azure AI'}
+                    {xlsxEngine === 'auto' ? 'Automatic' : xlsxEngine === 'ocr' ? 'Force OCR' : xlsxEngine === 'trocr' ? `Local handwriting (${settings.trocrModel === 'small' ? 'fast' : 'best quality'})` : 'Azure AI'}
                   </strong> · Pages: {pageRange}
                 </span>
                 <button onClick={() => { setGrids(null); setStatus('') }}
@@ -668,7 +670,7 @@ export default function ExportDialog({ onClose }: Props) {
               {([
                 { id: 'auto',  title: 'Automatic',                    desc: 'Uses the PDF’s own text; scanned pages are read with OCR (printed text).' },
                 { id: 'ocr',   title: 'Force OCR',                    desc: 'Re-reads every page with OCR — use when the embedded text layer is wrong.' },
-                { id: 'trocr', title: 'Local handwriting (offline)',  desc: 'Reads handwriting with an AI model on this PC — private, no cloud, no key. One-time ≈80 MB download; slower, so check the review grid.' },
+                { id: 'trocr', title: 'Local handwriting (offline)',  desc: 'Reads handwriting with an AI model on this PC — private, no cloud, no key. One-time model download; slower, so check the review grid.' },
                 { id: 'azure', title: 'Azure AI (handwriting, cloud)', desc: 'Cloud analysis that reads handwriting and detects table cells precisely. Best accuracy; needs a free Azure Document Intelligence key.' },
               ] as const).map(opt => (
                 <label key={opt.id}
@@ -698,10 +700,26 @@ export default function ExportDialog({ onClose }: Props) {
             )}
 
             {xlsxEngine === 'trocr' && (
-              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '0 0 10px' }}>
-                First use downloads the model (≈80 MB) — after that it works without internet.
-                Each cell is read individually, so a dense page can take a minute or two.
-              </p>
+              <div style={{ margin: '0 0 10px', padding: '8px 11px', border: '1px solid var(--border)', borderRadius: 8 }}>
+                <label className="modal-label" style={{ display: 'block', marginBottom: 5 }}>Model quality</label>
+                {([
+                  { id: 'base',  title: 'Best quality (recommended)', desc: 'Reads digits more reliably and invents far less text on messy handwriting. One-time ≈340 MB download; a little slower per cell.' },
+                  { id: 'small', title: 'Fast',                       desc: 'Smaller one-time download (≈80 MB) and quicker, but misreads more — expect more fixes in the review grid.' },
+                ] as const).map(opt => (
+                  <label key={opt.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', padding: '3px 0' }}>
+                    <input type="radio" name="trocrModel" checked={(settings.trocrModel === 'small' ? 'small' : 'base') === opt.id}
+                      onChange={() => { updateSettings({ trocrModel: opt.id }); setGrids(null) }} style={{ marginTop: 2 }} />
+                    <div>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{opt.title}</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}> — {opt.desc}</span>
+                    </div>
+                  </label>
+                ))}
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '5px 0 0' }}>
+                  After the one-time download the model works without internet. Each cell is read
+                  individually, so a dense page can take a few minutes.
+                </p>
+              </div>
             )}
 
             {xlsxEngine === 'azure' && (

@@ -1613,18 +1613,21 @@ function trocrConfigured(): typeof trocr {
   return trocr
 }
 
-ipcMain.handle('trocr:status', () => {
+const trocrModelId = (m?: string): trocr.TrocrModelId => (m === 'base' ? 'base' : 'small')
+
+ipcMain.handle('trocr:status', (_event, model?: string) => {
   const t = trocrConfigured()
-  return { ready: t.isReady(), cached: t.isCached() }
+  const m = trocrModelId(model)
+  return { ready: t.isReady(m), cached: t.isCached(m) }
 })
 
-ipcMain.handle('trocr:setup', async () => {
-  await trocrConfigured().setup()
+ipcMain.handle('trocr:setup', async (_event, model?: string) => {
+  await trocrConfigured().setup(trocrModelId(model))
   return true
 })
 
-ipcMain.handle('trocr:recognize', async (_event, png: ArrayBuffer): Promise<string> =>
-  trocrConfigured().recognizePng(Buffer.from(png)))
+ipcMain.handle('trocr:recognize', async (_event, png: ArrayBuffer, model?: string): Promise<string> =>
+  trocrConfigured().recognizePng(Buffer.from(png), trocrModelId(model)))
 
 // ── Open/Save file dialog accepting multiple types (for Office import) ────────
 

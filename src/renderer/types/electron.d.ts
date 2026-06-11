@@ -226,9 +226,9 @@ declare global {
         fontName: string; family: string; bold: boolean; italic: boolean
         fontSize: number; color: string
       }>>
-      trocrStatus: () => Promise<{ ready: boolean; cached: boolean }>
-      trocrSetup: () => Promise<boolean>
-      trocrRecognize: (png: ArrayBuffer) => Promise<string>
+      trocrStatus: (model?: 'small' | 'base') => Promise<{ ready: boolean; cached: boolean }>
+      trocrSetup: (model?: 'small' | 'base') => Promise<boolean>
+      trocrRecognize: (png: ArrayBuffer, model?: 'small' | 'base') => Promise<string>
 
       spellCheck: (text: string) => Promise<Array<{ word: string; suggestions: string[] }>>
       emailToPdf: (filePath: string) => Promise<ArrayBuffer>

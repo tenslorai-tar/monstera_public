@@ -7,8 +7,10 @@
 // Case C — TrOCR end-to-end in plain Node (same code path the Electron main
 //   process runs): model downloads once into a persistent cache, then reads
 //   real cell crops; the numeric crop must come back as its digits.
+// Case C2 — the best-quality model (trocr-base, the app default): downloads,
+//   reads the numeric crop correctly, and is cached independently of small.
 // Case D (informational) — the real handwritten ledger: segment + recognize a
-//   sample of cells to show actual local-model quality on handwriting.
+//   sample of cells with BOTH models side by side to show the quality gap.
 
 import { readFileSync, writeFileSync, rmSync, mkdirSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -102,7 +104,7 @@ trocr.configure(cacheDir)
 console.log('  model cached already:', trocr.isCached())
 const sharp = (await import('sharp')).default
 
-async function recognizeCell(seg, pageW, cell) {
+async function recognizeCell(seg, pageW, cell, model = 'small') {
   const buf = Buffer.alloc(cell.w * cell.h * 3, 255)
   for (let yy = 0; yy < cell.h; yy++) {
     for (let xx = 0; xx < cell.w; xx++) {
@@ -113,42 +115,65 @@ async function recognizeCell(seg, pageW, cell) {
     }
   }
   const png = await sharp(buf, { raw: { width: cell.w, height: cell.h, channels: 3 } }).png().toBuffer()
-  return trocr.recognizePng(png)
+  return trocr.recognizePng(png, model)
 }
 
+// The ledger is segmented up front so each model only has to be loaded once —
+// switching models disposes the previous pipeline (base is ~400 MB resident).
+const challenge = 'C:/Users/emiso/Downloads/20260611072850.pdf'
+let ledger = null
+if (existsSync(challenge)) {
+  const scan = renderPix(readFileSync(challenge), 3)
+  const seg = ex.segmentTableCells(px(scan))
+  ledger = { scan, seg, sample: seg.cells.filter(c => c.row >= 2 && c.row <= 7).slice(0, 12), readings: [] }
+}
+
+const priceCell = cellAt(segA, 1, 2)              // "24.50"
 try {
   const t0 = Date.now()
-  const priceCell = cellAt(segA, 1, 2)            // "24.50"
-  const priceText = await recognizeCell(segA, ruledScan.w, priceCell)
+  const priceText = await recognizeCell(segA, ruledScan.w, priceCell, 'small')
   console.log(`  model ready in ${((Date.now() - t0) / 1000).toFixed(0)}s; "24.50" crop →`, JSON.stringify(priceText))
   const digits = priceText.replace(/\D/g, '')
   ok(digits.includes('24') && digits.includes('50'), `numeric cell read correctly (got ${JSON.stringify(priceText)})`)
   const nameCell = cellAt(segA, 1, 0)             // "Monstera plant"
-  const nameText = await recognizeCell(segA, ruledScan.w, nameCell)
+  const nameText = await recognizeCell(segA, ruledScan.w, nameCell, 'small')
   console.log('  "Monstera plant" crop →', JSON.stringify(nameText))
   ok(nameText.trim().length > 0, 'text cell produced output (handwriting model on printed text — review grid covers misreads)')
-  ok(trocr.isCached(), 'model is cached on disk for offline reuse')
+  ok(trocr.isCached('small'), 'small model is cached on disk for offline reuse')
+  if (ledger) {
+    for (const cell of ledger.sample)
+      ledger.readings.push({ cell, small: await recognizeCell(ledger.seg, ledger.scan.w, cell, 'small') })
+  }
 } catch (e) {
   ok(false, 'TrOCR recognition failed: ' + e.message)
 }
 
-// ── Case D (informational): the real handwritten ledger ──────────────────────
-const challenge = 'C:/Users/emiso/Downloads/20260611072850.pdf'
-if (existsSync(challenge) && errs.length === 0) {
-  console.log('\n=== Case D (informational): handwritten ledger, local model ===')
-  try {
-    const scan = renderPix(readFileSync(challenge), 3)
-    const seg = ex.segmentTableCells(px(scan))
-    console.log(`  segmented ${seg.cells.length} cells across ${seg.rows} rows × ${seg.cols} cols`)
-    const sample = seg.cells.filter(c => c.row >= 2 && c.row <= 7).slice(0, 16)
-    for (const cell of sample) {
-      const text = await recognizeCell(seg, scan.w, cell)
-      console.log(`   r${cell.row} c${cell.col}: ${JSON.stringify(text)}`)
-    }
-    console.log('  (digits land close; the review grid is there for the misses — Azure remains the accuracy pick)')
-  } catch (e) {
-    console.log('  SKIP - ' + e.message)
+// ── Case C2: best-quality model (trocr-base — the app default) ────────────────
+console.log('\n=== Case C2: best-quality model (trocr-base) ===')
+try {
+  console.log('  base model cached already:', trocr.isCached('base'))
+  const t0 = Date.now()
+  const priceText = await recognizeCell(segA, ruledScan.w, priceCell, 'base')
+  console.log(`  base model ready in ${((Date.now() - t0) / 1000).toFixed(0)}s; "24.50" crop →`, JSON.stringify(priceText))
+  const digits = priceText.replace(/\D/g, '')
+  ok(digits.includes('24') && digits.includes('50'), `base model reads the numeric cell correctly (got ${JSON.stringify(priceText)})`)
+  ok(trocr.isCached('base'), 'base model is cached on disk independently of small')
+  ok(trocr.isReady('base') && !trocr.isReady('small'), 'only one model resident at a time (small was disposed)')
+  if (ledger) {
+    for (const r of ledger.readings)
+      r.base = await recognizeCell(ledger.seg, ledger.scan.w, r.cell, 'base')
   }
+} catch (e) {
+  ok(false, 'trocr-base recognition failed: ' + e.message)
+}
+
+// ── Case D (informational): the real handwritten ledger, both models ─────────
+if (ledger && errs.length === 0) {
+  console.log('\n=== Case D (informational): handwritten ledger, small vs base ===')
+  console.log(`  segmented ${ledger.seg.cells.length} cells across ${ledger.seg.rows} rows × ${ledger.seg.cols} cols`)
+  for (const r of ledger.readings)
+    console.log(`   r${r.cell.row} c${r.cell.col}: small=${JSON.stringify(r.small)}  base=${JSON.stringify(r.base)}`)
+  console.log('  (base should track the digits noticeably closer — Azure remains the accuracy pick)')
 }
 
 rmSync(entryPath, { force: true })
