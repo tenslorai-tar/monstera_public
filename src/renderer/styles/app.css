@@ -931,14 +931,31 @@
 }
 
 /* ── Text layer ──────────────────────────────────────────── */
+/* pdf.js v6 sizes the container itself as
+     round(down, var(--total-scale-factor) * <pageW>px, var(--scale-round-x))
+   and sizes each span from --font-height/--scale-x custom properties. Without
+   these variables and the font-size/transform rules below, the layer computes
+   to width 0, every span collapses to the page's left edge, and text selection
+   (plus highlight/underline/strikethrough, which read the selection) dies. */
 .text-layer {
+  --user-unit: 1;
+  --total-scale-factor: calc(var(--scale-factor) * var(--user-unit));
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+
   position: absolute;
   top: 0;
   left: 0;
   overflow: hidden;
   line-height: 1;
+  letter-spacing: normal;
+  word-spacing: normal;
   text-size-adjust: none;
   forced-color-adjust: none;
+  transform-origin: 0 0;
   pointer-events: auto;
   /* Explicitly opt into selection so it never depends on an ancestor that may
      set user-select:none (e.g. while a sibling tool is active). */
@@ -946,7 +963,7 @@
   -webkit-user-select: text;
 }
 
-.text-layer > span {
+.text-layer :is(span, br) {
   color: transparent;
   position: absolute;
   white-space: pre;
@@ -954,6 +971,30 @@
   transform-origin: 0% 0%;
   user-select: text;
   -webkit-user-select: text;
+}
+
+.text-layer > :not(.markedContent),
+.text-layer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.text-layer .markedContent {
+  display: contents;
+}
+
+.text-layer .endOfContent {
+  display: block;
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: 0;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* Markup tools (highlight/underline/strikethrough): show the I-beam over the

@@ -98,11 +98,9 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
       canvas.style.width = `${pageW * scale}px`
       canvas.style.height = `${pageH * scale}px`
     }
-    if (textDiv) {
-      textDiv.style.width = `${pageW * scale}px`
-      textDiv.style.height = `${pageH * scale}px`
-      textDiv.style.setProperty('--scale-factor', String(scale))
-    }
+    // pdf.js v6 owns the text layer's inline width/height (an expression in
+    // --total-scale-factor); we only steer --scale-factor and the spans track it.
+    if (textDiv) textDiv.style.setProperty('--scale-factor', String(scale))
   }, [scale, pageW, pageH])
 
   // Text layer pointer-events: allow selection for markup tools, passthrough otherwise
@@ -198,12 +196,8 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
       canvas.style.height = `${cssH}px`
 
       textDiv.innerHTML = ''
-      textDiv.style.width = `${pageW * liveScale}px`
-      textDiv.style.height = `${pageH * liveScale}px`
-      // pdf.js positions every text span with percentages and sizes them with
-      // calc(var(--scale-factor)*…). Without this custom property the text layer
-      // collapses to width:0 and the spans land nowhere near the visible text —
-      // which makes the page unselectable and breaks highlight/underline/strike.
+      // pdf.js v6 sizes the container and every span through CSS custom
+      // properties rooted at --scale-factor (see .text-layer in app.css).
       textDiv.style.setProperty('--scale-factor', String(liveScale))
       const textLayer = new TextLayer({
         textContentSource: page.streamTextContent(),
