@@ -678,33 +678,6 @@ ipcMain.handle('pdfium:editTextAt', async (
   return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength)
 })
 
-ipcMain.handle('pdfium:paragraphAt', async (
-  _e, bytes: ArrayBuffer, pageIndex: number, x: number, y: number,
-) => {
-  const h = pdfium.getParagraphAt(Buffer.from(bytes), pageIndex, x, y)
-  const { fontData, ...rest } = h
-  return { ...rest, fontData: toAb(fontData) }
-})
-
-ipcMain.handle('pdfium:replaceParagraph', async (
-  _e, bytes: ArrayBuffer, pageIndex: number, x: number, y: number, newText: string,
-) => {
-  const buf = Buffer.from(bytes)
-  // Prefer a complete installed font matching the paragraph's face: embedded
-  // fonts are usually subsets that lack glyphs for newly typed characters.
-  let substitute: Buffer | null = null
-  try {
-    const h = pdfium.getParagraphAt(buf, pageIndex, x, y)
-    if (h.found && h.fontName) {
-      const bold = /bold|black|heavy|semibold/i.test(h.fontName)
-      const italic = /italic|oblique/i.test(h.fontName)
-      substitute = resolveSystemFont(h.fontName, bold, italic)?.data ?? null
-    }
-  } catch { /* reflow falls back to the document font */ }
-  const r = pdfium.replaceParagraphAt(buf, pageIndex, x, y, newText, substitute)
-  return { bytes: toAb(r.bytes), lineCount: r.lineCount }
-})
-
 ipcMain.handle('pdfa:convert', async (_e, bytes: ArrayBuffer) => {
   const r = await convertToPdfA(Buffer.from(bytes))
   return { bytes: toAb(r.bytes), report: r.report, ok: r.ok }

@@ -198,8 +198,6 @@ export function installBrowserApi() {
     pdfiumReplaceText: async () => ({ bytes: EMPTY, count: 0 }),
     pdfiumEditText: emptyBuf,
     pdfiumEditTextAt: emptyBuf,
-    pdfiumParagraphAt: async () => ({ found: false, editable: false, text: '', x1: 0, y1: 0, x2: 0, y2: 0, fontSize: 0, color: '#000000', leading: 0, lineCount: 0, align: 'left', fontName: '', fontData: EMPTY, fontLoadable: false }),
-    pdfiumReplaceParagraph: async () => ({ bytes: EMPTY, lineCount: 0 }),
     pdfaConvert: async (bytes: ArrayBuffer) => ({ bytes, report: [{ level: 'warning', message: 'PDF/A conversion runs in the desktop app, not the browser preview.' }], ok: false }),
 
     // ── MuPDF (native WASM in main) — passthrough so save stays valid ──────────
