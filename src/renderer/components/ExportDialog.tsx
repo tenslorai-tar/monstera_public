@@ -2,12 +2,17 @@ import { useState, useRef, useEffect } from 'react'
 import StatusText from './StatusText'
 import { Upload, Image as ImageIcon, FileText, FileType, Table, MessageSquare, Download, FileJson, Ruler, Link, Presentation, CheckCircle2, Sparkles, Download as DownloadIcon, ShieldCheck, AlertTriangle, XCircle, Wrench } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
+import { useSettingsStore } from '../store/useSettingsStore'
+import { OCR_LANGUAGES } from '../utils/ocrUtils'
+import type { OcrWord } from '../utils/ocrUtils'
+import type { PageGrid } from '../utils/extractTables'
 
 interface Props { onClose: () => void }
 
 type ExportTab = 'images' | 'text' | 'docx' | 'xlsx' | 'pdfa' | 'annotations'
 type ImageFormat = 'png' | 'jpeg' | 'webp'
 type DocxMode = 'rich' | 'layout' | 'text'
+type XlsxEngine = 'auto' | 'ocr' | 'azure'
 
 export default function ExportDialog({ onClose }: Props) {
   const pdfDoc = usePdfStore(s => s.pdfDoc)
@@ -30,6 +35,12 @@ export default function ExportDialog({ onClose }: Props) {
   const [pdfaReport, setPdfaReport] = useState<Array<{ level: string; message: string }> | null>(null)
   const pdfaBytesRef = useRef<ArrayBuffer | null>(null)
   const cancelRef = useRef(false)
+  const settings = useSettingsStore(s => s.settings)
+  const updateSettings = useSettingsStore(s => s.updateSettings)
+  const [xlsxEngine, setXlsxEngine] = useState<XlsxEngine>('auto')
+  const [xlsxLang, setXlsxLang] = useState(settings.ocrLanguage || 'eng')
+  const [grids, setGrids] = useState<PageGrid[] | null>(null)
+  const [gridIdx, setGridIdx] = useState(0)
 
   useEffect(() => {
     window.electronAPI.pdf2docxStatus().then(s => {
@@ -165,20 +176,119 @@ export default function ExportDialog({ onClose }: Props) {
     setBusy(false)
   }
 
-  // ── Export XLSX ───────────────────────────────────────────────────────────
+  // ── Export XLSX: detect (text / OCR / Azure) → review grid → save ─────────
+
+  async function rulingSeps(pageNum: number, ex: typeof import('../utils/extractTables')): Promise<number[] | null> {
+    if (!pdfDoc) return null
+    const page = await pdfDoc.getPage(pageNum)
+    const scale = 1.5
+    const vp = page.getViewport({ scale })
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.ceil(vp.width)
+    canvas.height = Math.ceil(vp.height)
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })!
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    await page.render({ canvas, viewport: vp, annotationMode: 0 }).promise
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height)
+    return ex.detectRuledColumnSeparators({ data: img.data, width: img.width, height: img.height, channels: 4 }, scale)
+  }
+
+  const detectTables = async () => {
+    if (!pdfDoc || !pdfBytes) return
+    const pages = parsePageNums()
+    if (pages.length === 0) { setStatus('No valid pages.'); return }
+    setBusy(true)
+    setGrids(null)
+    setGridIdx(0)
+    cancelRef.current = false
+    try {
+      const ex = await import('../utils/extractTables')
+
+      if (xlsxEngine === 'azure') {
+        const endpoint = settings.azureDiEndpoint.trim()
+        const key = settings.azureDiKey.trim()
+        if (!endpoint || !key) { setStatus('Error: enter your Azure endpoint and key first.'); setBusy(false); return }
+        setStatus('Analyzing with Azure Document Intelligence (reads handwriting)…')
+        const ab = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength) as ArrayBuffer
+        const result = await window.electronAPI.azureLayoutAnalyze(ab, endpoint, key, pages.join(','))
+        const gs = ex.azureResultToGrids(result, pages)
+        setGrids(gs)
+        const n = gs.filter(g => g.grid.length > 0).length
+        setStatus(n > 0
+          ? `✓ ${n} page${n !== 1 ? 's' : ''} analyzed — click any cell below to correct it, then export.`
+          : 'Azure found no readable content on the selected pages.')
+        setBusy(false)
+        return
+      }
+
+      const ocrData = usePdfStore.getState().ocrData
+      const out: PageGrid[] = []
+      const ocrPages: number[] = []
+      for (const p of pages) {
+        if (cancelRef.current) break
+        if (xlsxEngine === 'auto') {
+          setStatus(`Reading text on page ${p}…`)
+          const items = await ex.nativeItems(pdfDoc, p)
+          if (items.reduce((s, i) => s + i.str.length, 0) >= 15) {
+            out.push({ page: p, grid: ex.itemsToGrid(items), source: 'text' })
+            continue
+          }
+        }
+        const cached = ocrData.get(p)
+        if (cached?.length) out.push({ page: p, grid: ex.itemsToGrid(ex.ocrWordsToItems(cached), await rulingSeps(p, ex)), source: 'ocr' })
+        else ocrPages.push(p)
+      }
+
+      if (ocrPages.length > 0 && !cancelRef.current) {
+        const { runOcrOnPages } = await import('../utils/ocrUtils')
+        const collected = new Map<number, OcrWord[]>()
+        const ac = new AbortController()
+        let idx = 0
+        await runOcrOnPages(pdfDoc, pageSizes, ocrPages, xlsxLang,
+          (pn, words) => { collected.set(pn, words); idx++ },
+          (_done, total, pageProgress) => {
+            if (cancelRef.current) ac.abort()
+            setStatus(`OCR page ${Math.min(idx + 1, total)} / ${total} — ${Math.round(pageProgress * 100)}%`)
+          }, ac.signal)
+        for (const p of ocrPages) {
+          if (cancelRef.current) break
+          const words = collected.get(p) ?? []
+          out.push({ page: p, grid: ex.itemsToGrid(ex.ocrWordsToItems(words), await rulingSeps(p, ex)), source: 'ocr' })
+        }
+      }
+
+      if (cancelRef.current) { setStatus('Cancelled.'); setBusy(false); return }
+      out.sort((a, b) => a.page - b.page)
+      setGrids(out)
+      const n = out.filter(g => g.grid.length > 0).length
+      setStatus(n > 0
+        ? `✓ Tables detected on ${n} page${n !== 1 ? 's' : ''} — click any cell below to correct it, then export.`
+        : 'No table content found on the selected pages. Scanned handwriting needs the Azure AI engine.')
+    } catch (e: any) {
+      setStatus(`Error: ${e?.message ?? 'table detection failed'}`)
+    }
+    setBusy(false)
+  }
+
+  const updateCell = (ri: number, ci: number, val: string) => {
+    setGrids(gs => {
+      if (!gs) return gs
+      return gs.map((g, i) => i !== gridIdx ? g
+        : { ...g, grid: g.grid.map((r, rj) => rj !== ri ? r : r.map((c, cj) => cj === ci ? val : c)) })
+    })
+  }
 
   const exportXlsx = async () => {
-    if (!pdfBytes || !pdfDoc) return
+    if (!grids) return
     setBusy(true)
-    setStatus('Detecting tables…')
     try {
-      // Heuristic table reconstruction from text positions (rows × columns).
-      const { extractTablesToXlsx } = await import('../utils/extractTables')
-      const result = await extractTablesToXlsx(pdfDoc, numPages)
+      const { gridsToXlsx } = await import('../utils/extractTables')
+      const result = gridsToXlsx(grids)
       const savePath = await window.electronAPI.saveFileDialog(`${baseName}.xlsx`)
       if (savePath) {
         await window.electronAPI.writeFile(savePath, result.buffer.slice(result.byteOffset, result.byteOffset + result.byteLength) as ArrayBuffer)
-        setStatus('✓ Excel workbook saved (one sheet per page, columns auto-detected).')
+        setStatus('✓ Excel workbook saved.')
       } else {
         setStatus('Cancelled.')
       }
@@ -269,7 +379,7 @@ export default function ExportDialog({ onClose }: Props) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal-box" style={{ width: 480 }}>
+      <div className="modal-box" style={{ width: tab === 'xlsx' && grids ? 760 : 480, maxWidth: '94vw' }}>
         <div className="modal-title"><Upload size={18} /> Export</div>
 
         {/* tabs */}
@@ -436,13 +546,122 @@ export default function ExportDialog({ onClose }: Props) {
         {/* ── XLSX tab ─────────────────────────────────────── */}
         {tab === 'xlsx' && (
           <div>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
-              Reconstructs tables by detecting rows and columns from text positions, one sheet per page.
-              Works best on grid-like/tabular content; free-flowing prose won't map to neat columns.
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>
+              Reconstructs tables into a spreadsheet, one sheet per page. Detect first, fix any
+              misread cell in the preview, then export.
             </p>
-            <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-              {numPages} page{numPages !== 1 ? 's' : ''} → {numPages} sheet{numPages !== 1 ? 's' : ''} in workbook.
-            </p>
+            <div className="modal-field">
+              <label className="modal-label">Pages</label>
+              <input className="modal-input" value={pageRange}
+                onChange={e => { setPageRange(e.target.value); setGrids(null) }}
+                placeholder={`all  or  1-3, 5  (1–${numPages})`} />
+            </div>
+
+            <label className="modal-label" style={{ display: 'block', marginBottom: 6 }}>Reading engine</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+              {([
+                { id: 'auto',  title: 'Automatic',              desc: 'Uses the PDF’s own text; scanned pages are read with OCR (printed text).' },
+                { id: 'ocr',   title: 'Force OCR',              desc: 'Re-reads every page with OCR — use when the embedded text layer is wrong.' },
+                { id: 'azure', title: 'Azure AI (handwriting)', desc: 'Cloud analysis that reads handwriting and detects table cells precisely. Needs a free Azure Document Intelligence key.' },
+              ] as const).map(opt => (
+                <label key={opt.id}
+                  style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
+                    padding: '7px 11px', borderRadius: 8,
+                    border: `1px solid ${xlsxEngine === opt.id ? 'var(--accent)' : 'var(--border)'}`,
+                    background: xlsxEngine === opt.id ? 'var(--accent-dim)' : 'transparent',
+                  }}>
+                  <input type="radio" name="xlsxEngine" checked={xlsxEngine === opt.id}
+                    onChange={() => { setXlsxEngine(opt.id); setGrids(null) }} style={{ marginTop: 2 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: xlsxEngine === opt.id ? 'var(--accent)' : 'var(--text-primary)' }}>{opt.title}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1, lineHeight: 1.4 }}>{opt.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            {xlsxEngine !== 'azure' && (
+              <div className="modal-field">
+                <label className="modal-label">OCR language</label>
+                <select className="annot-select" value={xlsxLang} onChange={e => setXlsxLang(e.target.value)}>
+                  {OCR_LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
+                </select>
+              </div>
+            )}
+
+            {xlsxEngine === 'azure' && (
+              <>
+                <div className="modal-field">
+                  <label className="modal-label">Endpoint</label>
+                  <input className="modal-input" style={{ width: 280 }}
+                    placeholder="https://<resource>.cognitiveservices.azure.com"
+                    value={settings.azureDiEndpoint}
+                    onChange={e => updateSettings({ azureDiEndpoint: e.target.value })} />
+                </div>
+                <div className="modal-field">
+                  <label className="modal-label">Key</label>
+                  <input className="modal-input" type="password" style={{ width: 280 }}
+                    value={settings.azureDiKey}
+                    onChange={e => updateSettings({ azureDiKey: e.target.value })} />
+                </div>
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 10px' }}>
+                  Create a free “Document Intelligence” resource in the Azure portal and copy its key and
+                  endpoint. The free tier analyzes 500 pages per month (first 2 pages per call).
+                </p>
+              </>
+            )}
+
+            {grids && (() => {
+              const g = grids[Math.min(gridIdx, grids.length - 1)]
+              return (
+                <div style={{ marginTop: 4 }}>
+                  {grids.length > 1 && (
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+                      {grids.map((gg, i) => (
+                        <button key={gg.page} onClick={() => setGridIdx(i)}
+                          style={{
+                            padding: '3px 10px', fontSize: 11, cursor: 'pointer', borderRadius: 999,
+                            border: `1px solid ${i === gridIdx ? 'var(--accent)' : 'var(--border)'}`,
+                            background: i === gridIdx ? 'var(--accent)' : 'transparent',
+                            color: i === gridIdx ? '#fff' : 'var(--text-muted)',
+                          }}>
+                          Page {gg.page}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {g && g.grid.length > 0 ? (
+                    <div style={{ overflow: 'auto', maxHeight: 280, border: '1px solid var(--border)', borderRadius: 8 }}>
+                      <table style={{ borderCollapse: 'collapse', fontSize: 12, minWidth: '100%' }}>
+                        <tbody>
+                          {g.grid.map((row, ri) => (
+                            <tr key={ri}>
+                              {row.map((cell, ci) => (
+                                <td key={ci} contentEditable suppressContentEditableWarning
+                                  onBlur={e => updateCell(ri, ci, e.currentTarget.textContent ?? '')}
+                                  style={{
+                                    border: '1px solid var(--border)', padding: '3px 8px', minWidth: 36,
+                                    whiteSpace: 'nowrap', color: 'var(--text-primary)', outline: 'none',
+                                  }}>
+                                  {cell}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>No table content found on this page.</p>
+                  )}
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '6px 0 0' }}>
+                    {g?.source === 'ocr' ? 'Read with OCR — ' : g?.source === 'azure' ? 'Read with Azure AI — ' : ''}
+                    click any cell to correct it before exporting.
+                  </p>
+                </div>
+              )
+            })()}
           </div>
         )}
 
@@ -576,9 +795,22 @@ export default function ExportDialog({ onClose }: Props) {
             </>
           )}
           {tab === 'xlsx' && (
-            <button className="modal-btn-primary" onClick={exportXlsx} disabled={busy}>
-              {busy ? 'Exporting…' : <><Download size={15} /> Export to Excel</>}
-            </button>
+            <>
+              {grids && (
+                <button className="modal-btn-secondary" onClick={detectTables} disabled={busy}>
+                  {busy ? 'Working…' : 'Re-detect'}
+                </button>
+              )}
+              {!grids ? (
+                <button className="modal-btn-primary" onClick={detectTables} disabled={busy || !pdfDoc}>
+                  {busy ? 'Detecting…' : <><Table size={15} /> Detect Tables</>}
+                </button>
+              ) : (
+                <button className="modal-btn-primary" onClick={exportXlsx} disabled={busy}>
+                  {busy ? 'Exporting…' : <><Download size={15} /> Export to Excel</>}
+                </button>
+              )}
+            </>
           )}
           {tab === 'pdfa' && (
             <>

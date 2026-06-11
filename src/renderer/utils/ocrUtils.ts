@@ -26,7 +26,39 @@ export const OCR_LANGUAGES = [
 ]
 
 const SCANNED_CHAR_THRESHOLD = 15
-const RENDER_SCALE = 2.0
+export const OCR_RENDER_SCALE = 2.0
+
+interface RecognizedBlocks {
+  blocks?: Array<{
+    paragraphs?: Array<{
+      lines?: Array<{
+        words?: Array<{ text: string; confidence: number; bbox: { x0: number; y0: number; x1: number; y1: number } }>
+      }>
+    }>
+  }> | null
+}
+
+export function wordsFromRecognition(data: RecognizedBlocks, scaleX: number, scaleY: number, pageH: number): OcrWord[] {
+  const words: OcrWord[] = []
+  for (const block of (data.blocks ?? [])) {
+    for (const para of (block.paragraphs ?? [])) {
+      for (const line of (para.lines ?? [])) {
+        for (const word of (line.words ?? [])) {
+          if (!word.text.trim() || word.confidence < 20) continue
+          const { x0, y0, x1, y1 } = word.bbox
+          words.push({
+            text: word.text,
+            x: x0 * scaleX,
+            y: pageH - y1 * scaleY,       // flip Y: Tesseract y=0 top → PDF y=0 bottom
+            w: (x1 - x0) * scaleX,
+            h: (y1 - y0) * scaleY,
+          })
+        }
+      }
+    }
+  }
+  return words
+}
 
 export async function isPageScanned(pdfDoc: PDFDocumentProxy, pageNum: number): Promise<boolean> {
   const page = await pdfDoc.getPage(pageNum)
@@ -78,7 +110,7 @@ export async function runOcrOnPages(
       onProgress(i, pageNums.length, 0)
 
       const page = await pdfDoc.getPage(pageNum)
-      const viewport = page.getViewport({ scale: RENDER_SCALE })
+      const viewport = page.getViewport({ scale: OCR_RENDER_SCALE })
       const canvas = document.createElement('canvas')
       canvas.width = viewport.width
       canvas.height = viewport.height
@@ -88,27 +120,7 @@ export async function runOcrOnPages(
       // request the blocks tree and flatten it ourselves.
       const { data } = await worker.recognize(canvas, {}, { blocks: true })
 
-      const scaleX = pageW / canvas.width
-      const scaleY = pageH / canvas.height
-
-      const words: OcrWord[] = []
-      for (const block of (data.blocks ?? [])) {
-        for (const para of (block.paragraphs ?? [])) {
-          for (const line of (para.lines ?? [])) {
-            for (const word of (line.words ?? [])) {
-              if (!word.text.trim() || word.confidence < 20) continue
-              const { x0, y0, x1, y1 } = word.bbox
-              words.push({
-                text: word.text,
-                x: x0 * scaleX,
-                y: pageH - y1 * scaleY,       // flip Y: Tesseract y=0 top → PDF y=0 bottom
-                w: (x1 - x0) * scaleX,
-                h: (y1 - y0) * scaleY,
-              })
-            }
-          }
-        }
-      }
+      const words = wordsFromRecognition(data, pageW / canvas.width, pageH / canvas.height, pageH)
 
       onPageDone(pageNum, words)
       onProgress(i + 1, pageNums.length, 1)

@@ -220,6 +220,8 @@ declare global {
       pdf2docxConvert: (bytes: ArrayBuffer) => Promise<ArrayBuffer>
       pdf2docxInstall: () => Promise<{ ok: boolean; version: string; log: string }>
 
+      azureLayoutAnalyze: (bytes: ArrayBuffer, endpoint: string, key: string, pages: string) => Promise<unknown>
+
       spellCheck: (text: string) => Promise<Array<{ word: string; suggestions: string[] }>>
       emailToPdf: (filePath: string) => Promise<ArrayBuffer>
 

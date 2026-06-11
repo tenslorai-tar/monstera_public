@@ -1570,6 +1570,38 @@ ipcMain.handle('export:toXlsx', async (_event, bytes: ArrayBuffer): Promise<Arra
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
 })
 
+// ── Azure Document Intelligence: layout analysis (tables + handwriting OCR) ──
+// Runs in the main process to avoid CORS; the renderer maps the raw result.
+
+ipcMain.handle('azure:layoutAnalyze', async (_event, bytes: ArrayBuffer, endpoint: string, key: string, pages: string): Promise<unknown> => {
+  const base = endpoint.trim().replace(/\/+$/, '')
+  if (!/^https:\/\//i.test(base)) throw new Error('Azure endpoint must be an https:// URL (copy it from the Azure portal, "Keys and Endpoint").')
+  const pagesQ = pages ? `&pages=${encodeURIComponent(pages)}` : ''
+  const body = JSON.stringify({ base64Source: Buffer.from(bytes).toString('base64') })
+  const headers = { 'Content-Type': 'application/json', 'Ocp-Apim-Subscription-Key': key }
+
+  let res = await fetch(`${base}/documentintelligence/documentModels/prebuilt-layout:analyze?api-version=2024-11-30${pagesQ}`,
+    { method: 'POST', headers, body })
+  if (res.status === 404) {
+    // Older Form Recognizer resources expose the same model on the v3.1 path.
+    res = await fetch(`${base}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31${pagesQ}`,
+      { method: 'POST', headers, body })
+  }
+  if (res.status === 401 || res.status === 403) throw new Error('Azure rejected the key — check the key and that the endpoint matches the resource region.')
+  if (res.status !== 202) throw new Error(`Azure error ${res.status}: ${(await res.text()).slice(0, 300)}`)
+  const opLoc = res.headers.get('operation-location')
+  if (!opLoc) throw new Error('Azure did not return an Operation-Location header.')
+
+  for (let i = 0; i < 80; i++) {
+    await new Promise(r => setTimeout(r, 1500))
+    const poll = await fetch(opLoc, { headers: { 'Ocp-Apim-Subscription-Key': key } })
+    const j = await poll.json() as { status: string; analyzeResult?: unknown; error?: unknown }
+    if (j.status === 'succeeded') return j.analyzeResult ?? {}
+    if (j.status === 'failed') throw new Error(`Azure analysis failed: ${JSON.stringify(j.error ?? {}).slice(0, 300)}`)
+  }
+  throw new Error('Azure analysis timed out after 2 minutes.')
+})
+
 // ── Open/Save file dialog accepting multiple types (for Office import) ────────
 
 ipcMain.handle('dialog:openAnyFile', async (_event, filters: Array<{ name: string; extensions: string[] }>) => {

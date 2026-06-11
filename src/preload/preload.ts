@@ -350,6 +350,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   pdf2docxInstall: (): Promise<{ ok: boolean; version: string; log: string }> =>
     ipcRenderer.invoke('pdf2docx:install'),
 
+  azureLayoutAnalyze: (bytes: ArrayBuffer, endpoint: string, key: string, pages: string): Promise<unknown> =>
+    ipcRenderer.invoke('azure:layoutAnalyze', bytes, endpoint, key, pages),
+
   spellCheck: (text: string): Promise<Array<{ word: string; suggestions: string[] }>> =>
     ipcRenderer.invoke('dict:spellCheck', text),
 

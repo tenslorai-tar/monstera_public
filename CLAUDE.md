@@ -323,9 +323,11 @@ npm run build
 - Unpacked:  `release\win-unpacked\Monstera PDF Editor.exe`
 
 ### Phase 11 — Export ✅
-- [x] Export pages to PNG or JPEG — choose pages (range or "all"), DPI (72–300), format, quality; each page saved as separate file to a chosen folder
-- [x] Extract all text to .txt — uses PDF.js getTextContent; one section per page; scanned pages without OCR produce no text
-- [x] PDF → Word (.docx) — best-effort text extraction via MuPDF + `docx` npm package. **Quality limitation:** layout, images, tables, columns, and exact fonts are NOT preserved. Output is a readable paragraph-per-paragraph text copy. For layout-faithful conversion, use Adobe Acrobat or a dedicated service.
+- [x] Export pages to PNG / JPEG / WebP — choose pages (range or "all"), DPI (72–300), format, quality; each page saved as separate file to a chosen folder
+- [x] Extract all text to .txt — Poppler layout-preserving extraction when available, PDF.js getTextContent fallback; scanned pages without OCR produce no text
+- [x] PDF → Word (.docx) — three modes: **rich** (optional pdf2docx engine via system Python, editable + layout), **layout** (page snapshots), **text** (editable paragraphs)
+- [x] PDF → PowerPoint (.pptx) — one slide per page (page snapshots)
+- [x] **PDF → Excel (.xlsx)** — detect → review → export flow in the Export dialog (`src/renderer/utils/extractTables.ts`). Rows clustered by baseline (adaptive tolerance), columns from whitespace-gap projection across rows; numeric cells stored as real numbers. Three reading engines: **Automatic** (native text; scanned pages auto-OCR'd with Tesseract + ruled-line column detection from rendered pixels), **Force OCR**, and **Azure AI** (Document Intelligence prebuilt-layout via `azure:layoutAnalyze` IPC in main — reads handwriting and returns table cells directly; endpoint+key in settings, key safeStorage-encrypted). An editable review grid (contentEditable cells, per-page tabs) lets the user fix misreads before saving. Proof: `scripts/prove-excel-export.mjs`. Local Tesseract cannot read handwriting — that's what the Azure engine is for.
 
 **How to test:**
 | Feature | Steps |
@@ -335,6 +337,8 @@ npm run build
 | **JPEG quality** | Set Format to JPEG → Quality slider → smaller files at lower quality |
 | **Extract text** | Export → Text tab → Save as .txt → open file → text from each page |
 | **DOCX export** | Export → Word tab → read quality warning → Export to Word → open in Word → readable text, no layout |
+| **Excel export** | Export → Excel tab → pick engine (Automatic / Force OCR / Azure AI) → Detect Tables → fix any cell in the review grid → Export to Excel → open in Excel: one sheet per page, numbers as numbers |
+| **Excel from scan** | Open a scanned PDF → Export → Excel → Automatic → Detect → OCR runs, grid appears; for handwriting use Azure AI (endpoint+key from Azure portal) |
 | **Typewriter** | Annotation toolbar → Ꭲ button → click anywhere on page → type → Enter or click away → text placed |
 | **Text-edit** | Annotation toolbar → ab→cd button → drag over existing text region → type replacement → blur → white rect covers original, new text on top |
 | **Insert image** | Annotation toolbar → 🖼 button → pick PNG/JPEG → image appears at page center |

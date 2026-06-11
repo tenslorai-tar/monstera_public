@@ -40,6 +40,8 @@ export interface AppSettings {
   docusignKey: string     // DocuSign integration key
   docusignAccountId: string
   docusignBasePath: string
+  azureDiEndpoint: string // Azure Document Intelligence resource endpoint
+  azureDiKey: string      // Azure Document Intelligence API key
 }
 
 const STORAGE_KEY = 'monstera-settings'
@@ -49,7 +51,7 @@ const STORAGE_KEY = 'monstera-settings'
 // (e.g. the browser dev preview), so settings never break.
 const SECRET_KEYS: (keyof AppSettings)[] = [
   'anthropicApiKey', 'gdToken', 'dropboxToken', 'onedriveToken',
-  'boxToken', 'sharepointToken', 'docusignKey',
+  'boxToken', 'sharepointToken', 'docusignKey', 'azureDiKey',
 ]
 
 function encSecret(v: string): string {
@@ -131,6 +133,8 @@ function defaults(): AppSettings {
     docusignKey: '',
     docusignAccountId: '',
     docusignBasePath: 'https://demo.docusign.net/restapi',
+    azureDiEndpoint: '',
+    azureDiKey: '',
   }
 }
 

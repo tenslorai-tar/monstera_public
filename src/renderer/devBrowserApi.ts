@@ -250,6 +250,7 @@ export function installBrowserApi() {
     formsIdentify: emptyArr,
     spellCheck: emptyArr,
     aiQuery: async () => '',
+    azureLayoutAnalyze: async () => { throw new Error('Azure analysis runs in the desktop app, not the browser preview') },
 
     // ── Native binaries (unavailable in browser) ───────────────────────────────
     binsGetStatus: async () => ({
