@@ -338,6 +338,16 @@ function createWindow(): void {
     },
   })
 
+  // Permissions: the only capability the app legitimately requests is the
+  // camera/microphone for the Webcam Capture tool. Deny everything else
+  // (geolocation, notifications, USB/serial/HID, etc.) so a compromised or
+  // hostile page can't reach those device APIs.
+  const ses = mainWin.webContents.session
+  ses.setPermissionRequestHandler((_wc, permission, callback) => {
+    callback(permission === 'media')
+  })
+  ses.setPermissionCheckHandler((_wc, permission) => permission === 'media')
+
   if (isDev) {
     mainWin.loadURL('http://localhost:5173')
     // mainWin.webContents.openDevTools()   // uncomment to debug renderer
@@ -780,7 +790,11 @@ ipcMain.handle('file:writeBytesToDir', async (
   files: Array<{ name: string; bytes: ArrayBuffer }>
 ) => {
   for (const { name, bytes } of files) {
-    fs.writeFileSync(path.join(dirPath, name), Buffer.from(bytes))
+    // Collapse any path components in the caller-supplied name so a crafted
+    // "..\..\evil" can never escape the folder the user actually chose.
+    const safeName = path.basename(name)
+    if (!safeName || safeName === '.' || safeName === '..') continue
+    fs.writeFileSync(path.join(dirPath, safeName), Buffer.from(bytes))
   }
 })
 
@@ -1368,10 +1382,14 @@ ipcMain.handle('mupdf:optimize', (_event, bytes: ArrayBuffer) =>
 
 // Block private / loopback / link-local destinations (SSRF guard).
 function isBlockedAddress(ip: string): boolean {
+  // Normalise an IPv4-mapped IPv6 form (::ffff:127.0.0.1) to its IPv4 tail so
+  // the v4 rules below still catch it.
+  const v4 = ip.replace(/^::ffff:/i, '')
   return (
-    /^127\./.test(ip) || /^10\./.test(ip) || /^192\.168\./.test(ip) ||
-    /^169\.254\./.test(ip) || /^172\.(1[6-9]|2\d|3[01])\./.test(ip) ||
-    ip === '0.0.0.0' || ip === '::1' || ip === '::' ||
+    /^127\./.test(v4) || /^10\./.test(v4) || /^192\.168\./.test(v4) ||
+    /^169\.254\./.test(v4) || /^172\.(1[6-9]|2\d|3[01])\./.test(v4) ||
+    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(v4) ||   // 100.64.0.0/10 CGNAT
+    v4 === '0.0.0.0' || ip === '::1' || ip === '::' ||
     /^f[cd][0-9a-f]{2}:/i.test(ip) || /^fe80:/i.test(ip)
   )
 }
@@ -1399,11 +1417,28 @@ ipcMain.handle('file:openFromUrl', async (_event, url: string): Promise<ArrayBuf
     throw new Error('Refusing to fetch a private or loopback address.')
   }
 
+  // Defeat DNS rebinding: the pre-flight check above and the address the socket
+  // actually connects to must be the SAME resolution. Pin the connection to a
+  // lookup that re-validates every returned address, so a second resolution
+  // can't swap in a private/loopback IP after the check passed.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dnsLookup = require('dns').lookup as (...a: any[]) => void
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const safeLookup = (hostname: string, options: any, cb: any): void => {
+    const handler = (err: Error | null, address: string, family: number) => {
+      if (err) { cb(err); return }
+      if (isBlockedAddress(address)) { cb(new Error('Refusing to fetch a private or loopback address.')); return }
+      cb(null, address, family)
+    }
+    if (typeof options === 'function') dnsLookup(hostname, handler)
+    else dnsLookup(hostname, options, handler)
+  }
+
   const client = urlObj.protocol === 'https:' ? https : http
   const MAX_BYTES = 100 * 1024 * 1024
   return new Promise((resolve, reject) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const req = client.get(url, { headers: { 'User-Agent': 'Monstera PDF Editor/1.0' }, timeout: 30_000 }, (res: any) => {
+    const req = client.get(url, { headers: { 'User-Agent': 'Monstera PDF Editor/1.0' }, timeout: 30_000, lookup: safeLookup }, (res: any) => {
       if (res.statusCode !== 200) { res.resume(); reject(new Error(`HTTP ${res.statusCode}`)); return }
       const chunks: Buffer[] = []
       let total = 0
@@ -1484,19 +1519,48 @@ ipcMain.handle('file:importDocx', async (_event, bytes: ArrayBuffer): Promise<Ar
 
 ipcMain.handle('file:importXlsx', async (_event, bytes: ArrayBuffer): Promise<ArrayBuffer> => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const XLSX = require('xlsx')
+  const ExcelJS = require('exceljs')
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { PDFDocument, rgb, StandardFonts } = require('pdf-lib')
 
-  const workbook = XLSX.read(new Uint8Array(bytes), { type: 'array' })
+  // exceljs cell values can be primitives, Dates, or objects (formula/hyperlink/
+  // rich text). Flatten each to a display string the same way a sheet reader would.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cellText = (v: any): string => {
+    if (v == null) return ''
+    if (v instanceof Date) return v.toISOString().slice(0, 10)
+    if (typeof v === 'object') {
+      if (Array.isArray(v.richText)) return v.richText.map((t: { text: string }) => t.text).join('')
+      if (v.result !== undefined) return String(v.result)   // formula → cached result
+      if (v.text !== undefined) return String(v.text)       // hyperlink
+      if (v.error) return String(v.error)
+      return ''
+    }
+    return String(v)
+  }
+
+  const workbook = new ExcelJS.Workbook()
+  await workbook.xlsx.load(Buffer.from(bytes))
   const pdfDoc = await PDFDocument.create()
   const font     = await pdfDoc.embedFont(StandardFonts.Helvetica)
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
 
-  for (const sheetName of workbook.SheetNames) {
-    const sheet = workbook.Sheets[sheetName]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const ws of workbook.worksheets as any[]) {
+    const sheetName: string = ws.name
+    const data: string[][] = []
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1 })
+    ws.eachRow({ includeEmpty: true }, (row: any) => {
+      const arr: string[] = []
+      let maxCol = 0
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      row.eachCell({ includeEmpty: true }, (cell: any, colNumber: number) => {
+        arr[colNumber - 1] = cellText(cell.value)
+        maxCol = Math.max(maxCol, colNumber)
+      })
+      for (let i = 0; i < maxCol; i++) if (arr[i] === undefined) arr[i] = ''
+      data.push(arr)
+    })
     if (data.length === 0) continue
 
     const pageW = 841.89, pageH = 595.28   // A4 landscape in pts
@@ -1545,12 +1609,12 @@ ipcMain.handle('file:importXlsx', async (_event, bytes: ArrayBuffer): Promise<Ar
 
 ipcMain.handle('export:toXlsx', async (_event, bytes: ArrayBuffer): Promise<ArrayBuffer> => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const XLSX = require('xlsx')
+  const ExcelJS = require('exceljs')
   const mupdf = await getMupdf()
   const doc = mupdf.PDFDocument.openDocument(new Uint8Array(bytes), 'application/pdf')
   const numPages = doc.countPages()
 
-  const workbook = XLSX.utils.book_new()
+  const workbook = new ExcelJS.Workbook()
   for (let i = 0; i < numPages; i++) {
     const page = doc.loadPage(i)
     let text = ''
@@ -1561,12 +1625,13 @@ ipcMain.handle('export:toXlsx', async (_event, bytes: ArrayBuffer): Promise<Arra
       .map((l: string) => l.trim())
       .filter((l: string) => l.length > 0)
       .map((l: string) => [l])
-    const ws = XLSX.utils.aoa_to_sheet(rows.length > 0 ? rows : [['(no text)']])
-    XLSX.utils.book_append_sheet(workbook, ws, `Page ${i + 1}`.slice(0, 31))
+    const ws = workbook.addWorksheet(`Page ${i + 1}`.slice(0, 31))
+    if (rows.length > 0) for (const r of rows) ws.addRow(r)
+    else ws.addRow(['(no text)'])
     freeMupdf(page)
   }
 
-  const buf: Buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
+  const buf = Buffer.from(await workbook.xlsx.writeBuffer())
   freeMupdf(doc)
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
 })
@@ -1650,35 +1715,70 @@ ipcMain.handle('mupdf:findTextRects', (_event, bytes: ArrayBuffer, term: string)
 ipcMain.handle('bins:getStatus', () => nativeBins.getBinStatus())
 
 ipcMain.handle('bins:openUrl', async (_event, url: string) => {
-  await shell.openExternal(url)
+  // Only ever hand a plain web URL to the OS. shell.openExternal will launch
+  // ANY registered protocol (file:, smb:, ms-msdt:, custom handlers), so an
+  // unvalidated string here would be an arbitrary-launch primitive.
+  let u: URL
+  try { u = new URL(url) } catch { return }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return
+  await shell.openExternal(u.href).catch(() => {})
 })
 
 ipcMain.handle('bins:downloadMutool', async (event) => {
   const https = require('https') as typeof import('https')
-  const http  = require('http')  as typeof import('http')
-  const os    = require('os')    as typeof import('os')
 
-  function dlFile(url: string, dest: string): Promise<void> {
+  // Supply-chain guard: only ever talk to GitHub's official release hosts, and
+  // only over HTTPS. Enforced on the API call, on EVERY redirect hop, and on the
+  // final asset URL, so a tampered redirect can't divert the fetch elsewhere.
+  function isGitHubHost(host: string): boolean {
+    return host === 'github.com' || host === 'api.github.com' || host.endsWith('.githubusercontent.com')
+  }
+  function assertSafeUrl(u: string): URL {
+    const parsed = new URL(u)
+    if (parsed.protocol !== 'https:') throw new Error('Refusing a non-HTTPS download URL.')
+    if (!isGitHubHost(parsed.hostname)) throw new Error(`Refusing a download from an untrusted host: ${parsed.hostname}`)
+    return parsed
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function getJson(url: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const parsed = assertSafeUrl(url)
+      const req = https.get(parsed.href, { headers: { 'User-Agent': 'monstera-pdf-editor/1.0' } }, res => {
+        let data = ''
+        res.on('data', (d: Buffer) => { data += d.toString() })
+        res.on('end', () => { try { resolve(JSON.parse(data)) } catch (e) { reject(e) } })
+        res.on('error', reject)
+      })
+      req.on('error', reject)
+      req.setTimeout(8000, () => req.destroy(new Error('GitHub API timed out')))
+    })
+  }
+
+  function dlBuffer(url: string): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       function follow(u: string, hops = 0): void {
         if (hops > 8) { reject(new Error('Too many redirects')); return }
-        const mod = u.startsWith('https') ? https : http
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const req = (mod as any).get(u, { headers: { 'User-Agent': 'monstera-pdf-editor/1.0' } }, (res: import('http').IncomingMessage) => {
-          if ([301,302,303,307,308].includes(res.statusCode ?? 0)) { follow(res.headers.location!, hops+1); return }
-          if ((res.statusCode ?? 0) !== 200) { reject(new Error(`HTTP ${res.statusCode}`)); return }
+        let parsed: URL
+        try { parsed = assertSafeUrl(u) } catch (e) { reject(e); return }
+        const req = https.get(parsed.href, { headers: { 'User-Agent': 'monstera-pdf-editor/1.0' } }, res => {
+          if ([301,302,303,307,308].includes(res.statusCode ?? 0)) { res.resume(); follow(res.headers.location!, hops + 1); return }
+          if ((res.statusCode ?? 0) !== 200) { res.resume(); reject(new Error(`HTTP ${res.statusCode}`)); return }
           const total = parseInt(String(res.headers['content-length'] ?? '0'))
+          const MAX = 200 * 1024 * 1024
           let received = 0
-          const file = fs.createWriteStream(dest)
+          const chunks: Buffer[] = []
           res.on('data', (chunk: Buffer) => {
             received += chunk.length
-            if (total > 0) event.sender.send('bins:downloadProgress', { pct: Math.round(received/total*100), mb: (received/1024/1024).toFixed(1) })
+            if (received > MAX) { req.destroy(new Error('Download exceeds the size limit.')); return }
+            chunks.push(chunk)
+            if (total > 0) event.sender.send('bins:downloadProgress', { pct: Math.round(received / total * 100), mb: (received / 1024 / 1024).toFixed(1) })
           })
-          res.pipe(file)
-          file.on('finish', () => { file.close(); resolve() })
-          res.on('error', reject); file.on('error', reject)
+          res.on('end', () => resolve(Buffer.concat(chunks)))
+          res.on('error', reject)
         })
         req.on('error', reject)
+        req.setTimeout(120_000, () => req.destroy(new Error('Download timed out')))
       }
       follow(url)
     })
@@ -1686,58 +1786,41 @@ ipcMain.handle('bins:downloadMutool', async (event) => {
 
   let downloadUrl = 'https://github.com/ArtifexSoftware/mupdf/releases/download/1.24.11/mupdf-1.24.11-windows.zip'
   try {
-    downloadUrl = await new Promise<string>((resolve) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const req = (https as any).get('https://api.github.com/repos/ArtifexSoftware/mupdf/releases/latest',
-        { headers: { 'User-Agent': 'monstera-pdf-editor/1.0' } },
-        (res: import('http').IncomingMessage) => {
-          let data = ''
-          res.on('data', (d: Buffer) => { data += d.toString() })
-          res.on('end', () => {
-            try {
-              const release = JSON.parse(data)
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const asset = (release.assets || []).find((a: any) => a.name.toLowerCase().includes('windows') && a.name.endsWith('.zip'))
-              resolve(asset ? asset.browser_download_url : downloadUrl)
-            } catch { resolve(downloadUrl) }
-          })
-          res.on('error', () => resolve(downloadUrl))
-        })
-      req.on('error', () => resolve(downloadUrl))
-      req.setTimeout(8000, () => { req.destroy(); resolve(downloadUrl) })
-    })
-  } catch { /* use default */ }
+    const release = await getJson('https://api.github.com/repos/ArtifexSoftware/mupdf/releases/latest')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const asset = (release.assets || []).find((a: any) => a.name.toLowerCase().includes('windows') && a.name.endsWith('.zip'))
+    if (asset?.browser_download_url) downloadUrl = asset.browser_download_url
+  } catch { /* fall back to the pinned URL */ }
 
   event.sender.send('bins:downloadProgress', { pct: 0, status: 'Connecting…' })
-  const zipPath = path.join(os.tmpdir(), `mupdf-${Date.now()}.zip`)
-  try {
-    await dlFile(downloadUrl, zipPath)
-    event.sender.send('bins:downloadProgress', { pct: 100, status: 'Extracting…' })
+  const zipBuf = await dlBuffer(downloadUrl)
+  event.sender.send('bins:downloadProgress', { pct: 100, status: 'Extracting…' })
 
-    const extractDir = path.join(os.tmpdir(), `mupdf-extract-${Date.now()}`)
-    fs.mkdirSync(extractDir, { recursive: true })
-    const { execSync } = require('child_process') as typeof import('child_process')
-    execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${extractDir}' -Force"`)
+  // Extract in-process with jszip — no shell at all, so a quote or space in any
+  // temp path can never become the command-injection vector the old
+  // PowerShell Expand-Archive call was.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const JSZip = require('jszip')
+  const zip = await JSZip.loadAsync(zipBuf)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let entry: any = null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  zip.forEach((relPath: string, file: any) => {
+    if (!file.dir && /(^|\/)mutool\.exe$/i.test(relPath)) entry = file
+  })
+  if (!entry) throw new Error('mutool.exe not found in archive')
+  const exeBuf: Buffer = await entry.async('nodebuffer')
 
-    function findExe(dir: string, name: string): string | null {
-      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-        const full = path.join(dir, e.name)
-        if (e.isDirectory()) { const f = findExe(full, name); if (f) return f }
-        else if (e.name.toLowerCase() === name) return full
-      }
-      return null
-    }
-
-    const src = findExe(extractDir, 'mutool.exe')
-    if (!src) throw new Error('mutool.exe not found in archive')
-    const dest = path.join(nativeBins.BIN_DIR, 'mutool.exe')
-    fs.mkdirSync(nativeBins.BIN_DIR, { recursive: true })
-    fs.copyFileSync(src, dest)
-    try { fs.rmSync(extractDir, { recursive: true, force: true }) } catch {}
-    return dest
-  } finally {
-    try { if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath) } catch {}
+  // Only install something that is actually a Windows executable (MZ/PE header)
+  // before it is ever copied into the app folder and run.
+  if (exeBuf.length < 2 || exeBuf[0] !== 0x4d || exeBuf[1] !== 0x5a) {
+    throw new Error('Downloaded mutool.exe is not a valid Windows executable.')
   }
+
+  const dest = path.join(nativeBins.BIN_DIR, 'mutool.exe')
+  fs.mkdirSync(nativeBins.BIN_DIR, { recursive: true })
+  fs.writeFileSync(dest, exeBuf)
+  return dest
 })
 
 // ── Ghostscript ───────────────────────────────────────────────────────────────
@@ -1891,13 +1974,31 @@ ipcMain.handle('email:toPdf', async (_e, filePath: string): Promise<ArrayBuffer>
 
 // ── CSV → PDF ─────────────────────────────────────────────────────────────────
 
+// Minimal RFC-4180 delimited-text parser (quoted fields, escaped "" quotes,
+// delimiters/newlines inside quotes). Replaces SheetJS, which carried a
+// prototype-pollution CVE, on this untrusted-text path. Sniffs tab vs comma.
+function parseDelimited(text: string): string[][] {
+  const firstLine = text.split(/\r?\n/, 1)[0] ?? ''
+  const delim = (firstLine.split('\t').length - 1) > (firstLine.split(',').length - 1) ? '\t' : ','
+  const rows: string[][] = []
+  let row: string[] = [], field = '', inQ = false
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]
+    if (inQ) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++ } else inQ = false }
+      else field += c
+    } else if (c === '"') inQ = true
+    else if (c === delim) { row.push(field); field = '' }
+    else if (c === '\n') { row.push(field); rows.push(row); row = []; field = '' }
+    else if (c !== '\r') field += c
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row) }
+  return rows
+}
+
 ipcMain.handle('convert:csvToPdf', async (_event, csvText: string): Promise<ArrayBuffer> => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const XLSX = require('xlsx')
-  const wb = XLSX.read(csvText, { type: 'string' })
-  const ws = wb.Sheets[wb.SheetNames[0]]
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const data: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 })
+  const data: any[][] = parseDelimited(csvText).filter(r => r.some(c => String(c).trim() !== ''))
 
   const rows = data.map((row, ri) => {
     const cells = row.map((cell: unknown) =>

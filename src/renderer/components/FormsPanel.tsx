@@ -4,6 +4,27 @@ import { usePdfStore } from '../store/usePdfStore'
 import type { FormField } from '../types/forms'
 import { exportFormAsJson, exportFormAsFdf, applyValueToField, parseFormDataFile } from '../utils/formPdfLib'
 
+// Minimal RFC-4180 CSV parser (handles quoted fields, escaped "" quotes, commas
+// and newlines inside quotes). Replaces a SheetJS dependency that carried a
+// prototype-pollution CVE; for name/value form data this is all that's needed.
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = []
+  let row: string[] = [], field = '', inQ = false
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]
+    if (inQ) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++ } else inQ = false
+      } else field += c
+    } else if (c === '"') inQ = true
+    else if (c === ',') { row.push(field); field = '' }
+    else if (c === '\n') { row.push(field); rows.push(row); row = []; field = '' }
+    else if (c !== '\r') field += c
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row) }
+  return rows
+}
+
 const TYPE_LABEL: Record<FormField['type'], string> = {
   text: 'Text',
   checkbox: 'Checkbox',
@@ -70,9 +91,7 @@ export default function FormsPanel() {
       if (!path) return
       const buf = await window.electronAPI.readFileBytes(path)
       const text = new TextDecoder().decode(buf)
-      const XLSX = await import('xlsx')
-      const wb = XLSX.read(text, { type: 'string' })
-      const rows = XLSX.utils.sheet_to_json<string[]>(wb.Sheets[wb.SheetNames[0]], { header: 1, blankrows: false })
+      const rows = parseCsv(text).filter(r => r.some(c => c.trim() !== ''))
       const map: Record<string, string> = {}
       if (rows.length >= 2 && rows[0].length > 2) {
         // header row = field names, second row = values

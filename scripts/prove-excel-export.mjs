@@ -2,8 +2,8 @@
 //
 // Case 1 — digital PDF: native text items cluster into the exact table grid
 //   (whitespace-gap column detection, right-aligned numeric columns included).
-// Case 2 — xlsx round-trip: gridsToXlsx output re-opens with the same cells,
-//   numeric strings stored as real numbers.
+// Case 2 — workbook round-trip: gridsToXlsxStyled (exceljs, the real export
+//   path) re-opens with the same cells, numeric strings stored as real numbers.
 // Case 3 — scanned printed table: Tesseract words + ruled-line column detection
 //   reproduce the same grid from pixels alone (no native text used).
 // Case 4 — Azure Document Intelligence mapping: canned layout results (tables
@@ -26,12 +26,13 @@ const entryPath = join(ROOT, 'scripts/_tablesEntry.gen.ts')
 const bundlePath = join(ROOT, 'scripts/_tables.bundle.gen.mjs')
 writeFileSync(entryPath, [
   "export * from '../src/renderer/utils/extractTables'",
+  "export { gridsToXlsxStyled } from '../src/renderer/utils/styledExcel'",
   "export { wordsFromRecognition, OCR_RENDER_SCALE } from '../src/renderer/utils/ocrUtils'",
 ].join('\n'))
 const esbuild = await import('esbuild')
 esbuild.buildSync({
   entryPoints: [entryPath], bundle: true, format: 'esm', platform: 'node',
-  external: ['tesseract.js', 'pdfjs-dist', 'xlsx'], outfile: bundlePath,
+  external: ['tesseract.js', 'pdfjs-dist', 'exceljs'], outfile: bundlePath,
 })
 const ex = await import(pathToFileURL(bundlePath).href)
 
@@ -83,17 +84,19 @@ ok(grid1.every(r => r.length === 4), `4 columns in every row (got ${grid1.map(r 
 ok(JSON.stringify(grid1[0]) === JSON.stringify(HEADERS), `header row exact (got ${JSON.stringify(grid1[0])})`)
 ok(JSON.stringify(grid1[2]) === JSON.stringify(ROWS[1]), `data row exact (got ${JSON.stringify(grid1[2])})`)
 
-// ── Case 2: xlsx round-trip with numeric cells ───────────────────────────────
+// ── Case 2: workbook round-trip with numeric cells (exceljs, no SheetJS) ─────
 console.log('\n=== Case 2: workbook round-trip ===')
-const XLSX = (await import('xlsx')).default ?? await import('xlsx')
-const wbBytes = ex.gridsToXlsx([{ page: 1, grid: grid1, source: 'text' }])
-const wb = XLSX.read(wbBytes, { type: 'array' })
-ok(wb.SheetNames[0] === 'Page 1', `sheet named "Page 1" (got ${wb.SheetNames[0]})`)
-const back = XLSX.utils.sheet_to_json(wb.Sheets['Page 1'], { header: 1 })
-ok(back.length === 5, `5 rows back from xlsx (got ${back.length})`)
-ok(back[1][0] === 'Monstera plant', `text cell survives (got ${JSON.stringify(back[1]?.[0])})`)
-ok(back[1][2] === 24.5 && typeof back[1][2] === 'number', `"24.50" stored as the number 24.5 (got ${JSON.stringify(back[1]?.[2])})`)
-ok(back[2][1] === 12 && typeof back[2][1] === 'number', `"12" stored as the number 12 (got ${JSON.stringify(back[2]?.[1])})`)
+const ExcelJS = (await import('exceljs')).default ?? await import('exceljs')
+const wbBytes = await ex.gridsToXlsxStyled([{ page: 1, grid: grid1, source: 'text' }], false)
+const wb = new ExcelJS.Workbook()
+await wb.xlsx.load(Buffer.from(wbBytes))
+const ws = wb.getWorksheet('Page 1')
+ok(!!ws, `sheet named "Page 1" present (got ${wb.worksheets.map(w => w.name).join(',')})`)
+// exceljs is 1-indexed: row 1 = header, row 2 = first data row.
+ok(ws.rowCount === 5, `5 rows back from workbook (got ${ws?.rowCount})`)
+ok(ws.getCell(2, 1).value === 'Monstera plant', `text cell survives (got ${JSON.stringify(ws?.getCell(2, 1).value)})`)
+ok(ws.getCell(2, 3).value === 24.5 && typeof ws.getCell(2, 3).value === 'number', `"24.50" stored as the number 24.5 (got ${JSON.stringify(ws?.getCell(2, 3).value)})`)
+ok(ws.getCell(3, 2).value === 12 && typeof ws.getCell(3, 2).value === 'number', `"12" stored as the number 12 (got ${JSON.stringify(ws?.getCell(3, 2).value)})`)
 writeFileSync(join(tmp, 'roundtrip.xlsx'), wbBytes)
 
 // ── Case 3: scanned render → ruled lines + OCR words → grid ──────────────────
@@ -197,6 +200,6 @@ rmSync(entryPath, { force: true })
 rmSync(bundlePath, { force: true })
 
 console.log('\n=== RESULT ===')
-if (errs.length === 0) console.log('  PASS — table extraction, OCR feed, ruled columns, Azure mapping, xlsx round-trip all verified.')
+if (errs.length === 0) console.log('  PASS — table extraction, OCR feed, ruled columns, Azure mapping, workbook round-trip all verified.')
 else { errs.forEach(e => console.log('  FAIL - ' + e)); process.exitCode = 1 }
 console.log('  artifacts:', tmp)

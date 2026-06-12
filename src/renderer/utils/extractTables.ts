@@ -1,11 +1,10 @@
 /**
  * Heuristic table extraction: cluster a page's text items into rows (by baseline)
  * and columns (whitespace-gap projection, ruled-line detection, or x-start
- * clustering) to reconstruct a grid, then build an XLSX workbook (one sheet per
- * page). Items can come from native PDF text, Tesseract OCR words, or Azure
- * Document Intelligence layout results.
+ * clustering) to reconstruct a grid. The styled workbook is then assembled by
+ * styledExcel.ts (exceljs). Items can come from native PDF text, Tesseract OCR
+ * words, or Azure Document Intelligence layout results.
  */
-import * as XLSX from 'xlsx'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import type { OcrWord } from './ocrUtils'
 
@@ -518,15 +517,3 @@ export function toCellValue(s: string): string | number {
   return s
 }
 
-export function gridsToXlsx(grids: PageGrid[]): Uint8Array {
-  const wb = XLSX.utils.book_new()
-  let any = false
-  for (const g of grids) {
-    if (g.grid.length === 0) continue
-    const aoa = g.grid.map(row => row.map(toCellValue))
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), `Page ${g.page}`.slice(0, 31))
-    any = true
-  }
-  if (!any) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['(no extractable text)']]), 'Empty')
-  return new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }))
-}
