@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Crop } from 'lucide-react'
+import { toast } from '../store/useToastStore'
 import { usePdfStore } from '../store/usePdfStore'
 import type { CropConfig } from '../utils/documentEnhance'
 
@@ -43,7 +44,7 @@ export default function CropDialog({ onApply, onClose }: Props) {
   const valid = cropW > 10 && cropH > 10
 
   const handleApply = () => {
-    if (!valid) { alert('Crop margins are too large — nothing would remain visible'); return }
+    if (!valid) { toast.error('Crop margins are too large — nothing would remain visible'); return }
     let pages: 'all' | number[]
     if (scope === 'all') pages = 'all'
     else if (scope === 'selected') pages = [...selectedPages].filter(p => p >= 1 && p <= numPages)

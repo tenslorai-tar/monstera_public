@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Open dialogs
@@ -109,7 +109,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     x: number,
     y: number,
     newText: string,
-  ): Promise<ArrayBuffer> =>
+  ): Promise<{ bytes: ArrayBuffer; outcome: 'in-place' | 'substituted' | 'cleared' | 'unchanged'; substituteFamily: string }> =>
     ipcRenderer.invoke('pdfium:replaceLine', bytes, pageIndex, x, y, newText),
   pdfaConvert: (
     bytes: ArrayBuffer,
@@ -171,6 +171,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   pdfVerifySignatures: (bytes: ArrayBuffer): Promise<Array<{
     signerName: string; signerOrg: string; reason: string; location: string;
     contactInfo: string; certValidFrom: string; certValidTo: string; certCurrentlyValid: boolean;
+    hashMatches: boolean; signatureValid: boolean;
+    integrity: 'valid' | 'modified' | 'unknown'; coversWholeDocument: boolean;
   }>> => ipcRenderer.invoke('pdf:verifySignatures', bytes),
 
   exportToDocx: (bytes: ArrayBuffer, fileName: string, mode?: 'text' | 'layout'): Promise<ArrayBuffer> =>
@@ -273,6 +275,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // The app's build version (e.g. "0.1.3"), so the UI can show which build is running.
   getAppVersion: (): Promise<string> =>
     ipcRenderer.invoke('app:getVersion'),
+
+  // Real on-disk path for a dropped/File-picked File (Electron removed File.path
+  // in v32+; this is the supported replacement, used by drag-and-drop-to-open).
+  getPathForFile: (file: File): string => {
+    try { return webUtils.getPathForFile(file) } catch { return '' }
+  },
+
+  // ── Crash-recovery sidecars ──────────────────────────────────────────────────
+  recoverySave: (id: string, fileName: string, filePath: string, bytes: ArrayBuffer): Promise<void> =>
+    ipcRenderer.invoke('recovery:save', id, fileName, filePath, bytes),
+  recoveryList: (): Promise<Array<{ id: string; fileName: string; filePath: string; savedAt: number }>> =>
+    ipcRenderer.invoke('recovery:list'),
+  recoveryRead: (id: string): Promise<ArrayBuffer | null> =>
+    ipcRenderer.invoke('recovery:read', id),
+  recoveryDiscard: (id: string): Promise<void> =>
+    ipcRenderer.invoke('recovery:discard', id),
 
   // ── Native binary management ─────────────────────────────────────────────────
 

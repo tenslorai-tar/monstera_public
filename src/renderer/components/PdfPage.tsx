@@ -4,6 +4,7 @@ import { usePdfStore, getOcgConfig } from '../store/usePdfStore'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { textCache } from '../utils/textCache'
 import { hdRenderPage } from '../utils/pdfiumRender'
+import { logger } from '../utils/logger'
 import {
   highlightApiAvailable, buildMatchRanges,
   setPageSearchRanges, clearPageSearchRanges,
@@ -70,6 +71,7 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const textLayerRef = useRef<HTMLDivElement>(null)
   const renderGenRef = useRef(0)
+  const renderTaskRef = useRef<{ cancel: () => void } | null>(null)
 
   // Zoom is two-tier: the wrapper, overlays, text layer and the existing
   // canvas bitmap track `scale` instantly (cheap CSS), while the expensive
@@ -128,6 +130,7 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
     let cancelled = false
 
     ;(async () => {
+     try {
       const page = await pdfDoc.getPage(pageNum)
       if (cancelled || gen !== renderGenRef.current) return
 
@@ -170,13 +173,18 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
         canvas.width = Math.round(rvp.width)
         canvas.height = Math.round(rvp.height)
         const ocgConfig = getOcgConfig()
-        // annotationMode: 0 = DISABLE — our overlay handles annotation rendering
-        await page.render({
+        // annotationMode: 0 = DISABLE — our overlay handles annotation rendering.
+        // Hold the RenderTask so cleanup can cancel() it; without that, a superseded
+        // render keeps the canvas registered and the next render() on it rejects
+        // ("Cannot use the same canvas during multiple render() operations").
+        const task = page.render({
           canvas,
           viewport: rvp,
           annotationMode: 0,
           ...(ocgConfig ? { optionalContentConfigPromise: Promise.resolve(ocgConfig) } : {}),
-        }).promise
+        })
+        renderTaskRef.current = task
+        await task.promise
         if (cancelled || gen !== renderGenRef.current) return
       }
 
@@ -211,9 +219,22 @@ export default function PdfPage({ pageNum, scrollRoot }: Props) {
       const activeMatch = activeMatchIndex >= 0 ? searchMatches[activeMatchIndex] : null
       const activeOnPage = activeMatch?.pageNum === pageNum ? activeMatch : null
       applyHighlights(textDiv, pageNum, pageMatches, activeOnPage)
+     } catch (err) {
+       // A cancelled/superseded render (RenderingCancelledException, or a canvas
+       // reuse race) is expected and harmless — the stale result is discarded.
+       // Only a live, current render failing is worth surfacing.
+       if (!cancelled && gen === renderGenRef.current) {
+         const msg = err instanceof Error ? err.message : String(err)
+         if (!/cancel|same canvas|multiple render/i.test(msg)) logger.error(`Page ${pageNum} render failed:`, err)
+       }
+     }
     })()
 
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      try { renderTaskRef.current?.cancel() } catch { /* already settled */ }
+      renderTaskRef.current = null
+    }
   }, [inView, pdfDoc, pageNum, renderScale, layerRevision, settings.pdfiumRender, settings.renderQuality]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {

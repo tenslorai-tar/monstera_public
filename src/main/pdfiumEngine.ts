@@ -586,13 +586,32 @@ function rasterise(L: Lib, page: unknown, scale: number): { data: Buffer; width:
   const stride = L.BitmapGetStride(bmp)
   const ptr = L.BitmapGetBuffer(bmp)
   const raw = Buffer.from(koffi.decode(ptr, koffi.array('uint8_t', height * stride)) as number[])
-  // PDFium gives BGRA; convert to tight RGBA rows for ImageData.
+  // PDFium gives BGRA; convert to tight RGBA rows for ImageData. Doing this a
+  // byte at a time blocks the main thread (all IPC) during every HD render. A
+  // 32-bit view swaps R/B in one operation per pixel — same result, ~3-4× faster.
+  // BGRA(mem)=A<<24|R<<16|G<<8|B  →  RGBA(mem)=A<<24|B<<16|G<<8|R (keep G+A, swap R↔B).
+  const swap32 = (w: number): number => (w & 0xFF00FF00) | ((w >>> 16) & 0xFF) | ((w & 0xFF) << 16)
+  const tight = width * 4
   const out = Buffer.allocUnsafe(width * height * 4)
-  for (let y = 0; y < height; y++) {
-    const srow = y * stride, drow = y * width * 4
-    for (let x = 0; x < width; x++) {
-      const s = srow + x * 4, d = drow + x * 4
-      out[d] = raw[s + 2]; out[d + 1] = raw[s + 1]; out[d + 2] = raw[s]; out[d + 3] = raw[s + 3]
+  const aligned = ((raw.byteOffset & 3) === 0) && ((out.byteOffset & 3) === 0) && ((stride & 3) === 0)
+  if (aligned && stride === tight) {
+    const px = width * height
+    const s32 = new Uint32Array(raw.buffer, raw.byteOffset, px)
+    const d32 = new Uint32Array(out.buffer, out.byteOffset, px)
+    for (let i = 0; i < px; i++) d32[i] = swap32(s32[i])
+  } else if (aligned) {
+    for (let y = 0; y < height; y++) {
+      const s32 = new Uint32Array(raw.buffer, raw.byteOffset + y * stride, width)
+      const d32 = new Uint32Array(out.buffer, out.byteOffset + y * tight, width)
+      for (let x = 0; x < width; x++) d32[x] = swap32(s32[x])
+    }
+  } else {
+    for (let y = 0; y < height; y++) {
+      const srow = y * stride, drow = y * tight
+      for (let x = 0; x < width; x++) {
+        const s = srow + x * 4, d = drow + x * 4
+        out[d] = raw[s + 2]; out[d + 1] = raw[s + 1]; out[d + 2] = raw[s]; out[d + 3] = raw[s + 3]
+      }
     }
   }
   L.BitmapDestroy(bmp)
@@ -1257,6 +1276,65 @@ function fontCoversAll(data: Buffer, text: string): boolean {
   }
 }
 
+// Like fontCoversAll, but a character is ALSO considered covered if it already
+// appears in `existing` — the text the line renders right now in this exact font.
+// The document proves the font can encode those characters (spaces included),
+// even when fontkit's stricter subset-cmap read reports "no glyph". This is the
+// single biggest rescue: editing a word using letters/spaces the line already
+// contains stays in the perfect in-place path instead of falling to a substitute.
+function fontCoversAllOrExisting(data: Buffer, text: string, existing: Set<string>): boolean {
+  try {
+    let f = fontkit.create(data) as unknown as {
+      fonts?: Array<{ hasGlyphForCodePoint(cp: number): boolean }>
+      hasGlyphForCodePoint(cp: number): boolean
+    }
+    if (f.fonts && f.fonts.length) f = f.fonts[0] as typeof f
+    for (const ch of new Set(text)) {
+      if (ch === String.fromCharCode(9) || ch === String.fromCharCode(13) || ch === String.fromCharCode(10)) continue
+      if (existing.has(ch)) continue
+      if (!f.hasGlyphForCodePoint(ch.codePointAt(0)!)) return false
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+// Resolve the REAL font family + weight/style out of an embedded font program.
+// PDF base names are frequently anonymised (CIDFont+F1), so a name-based system
+// lookup lands on Helvetica; the program's own name/OS2 tables carry the truth.
+export function resolveEmbeddedFontMeta(
+  fontData: Buffer, fontName: string,
+): { family: string; bold: boolean; italic: boolean } {
+  let family = ''
+  let bold = /bold|black|heavy|semibold/i.test(fontName)
+  let italic = /italic|oblique/i.test(fontName)
+  try {
+    if (fontData && fontData.length > 0) {
+      let fk = fontkit.create(fontData) as unknown as {
+        fonts?: Array<unknown>
+        familyName?: string | null
+        subfamilyName?: string | null
+        'OS/2'?: { usWeightClass?: number }
+        italicAngle?: number
+      }
+      if (fk.fonts && fk.fonts.length) fk = fk.fonts[0] as typeof fk
+      family = (fk.familyName ?? '').trim()
+      const sub = (fk.subfamilyName ?? '').toLowerCase()
+      const weight = fk['OS/2']?.usWeightClass ?? 0
+      bold = bold || /bold|black|heavy/.test(sub) || weight >= 600
+      italic = italic || /italic|oblique/.test(sub) || Math.abs(fk.italicAngle ?? 0) > 4
+    }
+  } catch { /* fall back to base-name heuristics */ }
+  if (!family) family = fontName.replace(/^[A-Z]{6}\+/, '').replace(/^CIDFont\+/i, '').split(/[-,]/)[0]
+  return { family, bold, italic }
+}
+
+// What the line editor actually did — surfaced to the user so a silent
+// substitution/overlay fallback is no longer invisible.
+export type LineEditOutcome = 'in-place' | 'substituted' | 'cleared' | 'unchanged'
+export interface LineEditResult { bytes: Buffer; outcome: LineEditOutcome }
+
 export function getLineAt(bytes: Buffer, pageIndex: number, x: number, y: number): LineHit {
   const L = load()
   const doc = L.LoadMemDocument(bytes, bytes.length, null)
@@ -1295,7 +1373,7 @@ export function getLineAt(bytes: Buffer, pageIndex: number, x: number, y: number
 export function replaceLineAt(
   bytes: Buffer, pageIndex: number, x: number, y: number, newTextRaw: string,
   substituteFont?: Buffer | null,
-): Buffer {
+): LineEditResult {
   const L = load()
   const doc = L.LoadMemDocument(bytes, bytes.length, null)
   if (!doc) throw new Error('PDFium could not open the document')
@@ -1316,9 +1394,9 @@ export function replaceLineAt(
       L.GenerateContent(page)
       const cleared = saveDoc(L, doc)
       L.ClosePage(page)
-      return cleared
+      return { bytes: cleared, outcome: 'cleared' }
     }
-    if (newText === oldText) { L.ClosePage(page); return Buffer.from(bytes) }
+    if (newText === oldText) { L.ClosePage(page); return { bytes: Buffer.from(bytes), outcome: 'unchanged' } }
 
     // Common prefix/suffix → smallest changed region. Only the run(s) that
     // region touches get rewritten; every other run keeps its bytes, which is
@@ -1357,16 +1435,22 @@ export function replaceLineAt(
     L.GetFillColor(target.obj, rr0, gg0, bb0, aa0)
 
     const embedded = extractFont(L, target.obj)
+    // Characters the TARGET run already renders in this exact font — provably
+    // encodable (see fontCoversAllOrExisting). Must be scoped to the target run's
+    // own text, NOT the whole line: SetText re-encodes `merged` through the target
+    // run's font only, so a glyph that exists in a SIBLING run's subset font (but
+    // not this run's) would otherwise be wrongly whitelisted and render .notdef.
+    const existingChars = new Set(target.text)
     // In-place SetText is the high-fidelity path: the run keeps its own font
-    // object, so the face is preserved exactly. Allowed when the embedded
-    // program PROVABLY covers the new text, or — for font programs fontkit
-    // cannot parse (bare CFF / standard 14) — when the text is plain WinAnsi,
-    // which those charmaps always carry. Never SetText through an unverified
-    // subset: missing glyphs render as .notdef boxes.
+    // object, so the face is preserved exactly. Allowed when the embedded program
+    // covers the new text (or the chars already appear on the line), or — for font
+    // programs fontkit cannot parse (bare CFF / standard 14) — when the text is
+    // plain WinAnsi or made only of characters the line already renders.
     const canInPlace = embedded.loadable
-      ? fontCoversAll(embedded.data, merged)
-      : isWinAnsiText(merged)
+      ? fontCoversAllOrExisting(embedded.data, merged, existingChars)
+      : (isWinAnsiText(merged) || [...merged].every(c => existingChars.has(c)))
 
+    let outcome: LineEditOutcome = 'in-place'
     let newRight = oldRight
     let loadedFont: unknown = null
     if (canInPlace) {
@@ -1377,6 +1461,7 @@ export function replaceLineAt(
       const l = [0], b = [0], r = [0], t = [0]
       if (L.GetBounds(target.obj, l, b, r, t)) newRight = r[0]
     } else {
+      outcome = 'substituted'
       if (substituteFont && substituteFont.length > 4 && fontCoversAll(substituteFont, merged)) {
         try { loadedFont = L.LoadFontData(doc, substituteFont, substituteFont.length, FPDF_FONT_TRUETYPE, 1) } catch { loadedFont = null }
       }
@@ -1408,7 +1493,7 @@ export function replaceLineAt(
     const out = saveDoc(L, doc)
     if (loadedFont) { try { L.FontClose(loadedFont) } catch { /* handle already gone */ } }
     L.ClosePage(page)
-    return out
+    return { bytes: out, outcome }
   } finally {
     L.CloseDocument(doc)
   }

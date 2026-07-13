@@ -7,6 +7,8 @@ interface Props { onClose: () => void }
 interface SigInfo {
   signerName: string; signerOrg: string; reason: string; location: string
   contactInfo: string; certValidFrom: string; certValidTo: string; certCurrentlyValid: boolean
+  hashMatches: boolean; signatureValid: boolean
+  integrity: 'valid' | 'modified' | 'unknown'; coversWholeDocument: boolean
 }
 
 type Tab = 'sign' | 'certify' | 'verify'
@@ -266,14 +268,36 @@ export default function DigitalSignDialog({ onClose }: Props) {
             )}
             {sigInfos !== null && sigInfos.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {sigInfos.map((s, i) => (
-                  <div key={i} style={{ border: `1px solid ${s.certCurrentlyValid ? '#4caf50' : '#ff9800'}`, borderRadius: 6, padding: '10px 12px', fontSize: 13 }}>
-                    <div style={{ fontWeight: 600, marginBottom: 6 }}>{s.certCurrentlyValid ? '✅' : '⚠️'} Signature {i + 1}</div>
-                    <div><strong>Signer:</strong> {s.signerName}{s.signerOrg ? ` (${s.signerOrg})` : ''}</div>
-                    <div><strong>Certificate valid:</strong> {fmtDate(s.certValidFrom)} – {fmtDate(s.certValidTo)}</div>
-                    {!s.certCurrentlyValid && <div style={{ color: '#ff9800', marginTop: 4 }}>Certificate is expired or not yet valid</div>}
-                  </div>
-                ))}
+                {sigInfos.map((s, i) => {
+                  const color = s.integrity === 'valid' ? '#4caf50' : s.integrity === 'modified' ? '#e53935' : '#ff9800'
+                  const icon  = s.integrity === 'valid' ? '✅' : s.integrity === 'modified' ? '⛔' : '⚠️'
+                  const headline = s.integrity === 'valid'
+                    ? 'Signature is valid — document is unmodified'
+                    : s.integrity === 'modified'
+                      ? 'Document has been MODIFIED since it was signed'
+                      : 'Signature present — integrity could not be confirmed'
+                  return (
+                    <div key={i} style={{ border: `1px solid ${color}`, borderRadius: 6, padding: '10px 12px', fontSize: 13 }}>
+                      <div style={{ fontWeight: 600, marginBottom: 6, color }}>{icon} Signature {i + 1}: {headline}</div>
+                      <div><strong>Signer:</strong> {s.signerName}{s.signerOrg ? ` (${s.signerOrg})` : ''}</div>
+                      <div><strong>Certificate valid:</strong> {fmtDate(s.certValidFrom)} – {fmtDate(s.certValidTo)}</div>
+                      <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12.5 }}>
+                        <div style={{ color: s.hashMatches ? '#4caf50' : '#e53935' }}>
+                          {s.hashMatches ? '✓' : '✗'} Document content {s.hashMatches ? 'matches' : 'does NOT match'} what was signed
+                        </div>
+                        <div style={{ color: s.signatureValid ? '#4caf50' : '#ff9800' }}>
+                          {s.signatureValid ? '✓' : '✗'} Cryptographic signature {s.signatureValid ? 'verified' : 'not verified'}
+                        </div>
+                        <div style={{ color: s.certCurrentlyValid ? 'var(--text-muted)' : '#ff9800' }}>
+                          {s.certCurrentlyValid ? '✓ Certificate currently within validity dates' : '⚠ Certificate is expired or not yet valid'}
+                        </div>
+                        {!s.coversWholeDocument && (
+                          <div style={{ color: '#ff9800' }}>⚠ Signature does not cover the entire file (content exists outside the signed range)</div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )}
             <button className="modal-btn-primary" style={{ marginTop: 14 }} onClick={handleVerify} disabled={verifying}>

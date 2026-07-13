@@ -365,8 +365,83 @@ function createWindow(): void {
 
   mainWin.on('closed', () => { mainWin = null })
 
+  // Crash recovery: if the renderer process dies (OOM on a huge file, a native
+  // module fault, etc.) the user's unsaved work would otherwise vanish silently.
+  // We can't recover the in-memory bytes here, but the renderer writes a recovery
+  // sidecar to userData as it works; on reload it offers to restore from it.
+  mainWin.webContents.on('render-process-gone', (_e, details) => {
+    console.error('[main] Renderer gone:', details.reason, details.exitCode)
+    if (details.reason === 'clean-exit' || appCloseConfirmed) return
+    const win = mainWin
+    if (!win || win.isDestroyed()) return
+    dialog.showMessageBox(win, {
+      type: 'error',
+      title: 'Monstera — Editor stopped responding',
+      message: 'The editor process stopped unexpectedly.',
+      detail: 'Your document window will be reloaded. If you had unsaved changes, '
+        + 'Monstera will offer to restore them from its recovery copy.',
+      buttons: ['Reload'],
+      defaultId: 0,
+    }).then(() => { if (!win.isDestroyed()) win.reload() }).catch(() => {})
+  })
+  mainWin.webContents.on('unresponsive', () => {
+    console.warn('[main] Renderer became unresponsive')
+  })
+
   Menu.setApplicationMenu(buildAppMenu(mainWin))
 }
+
+// ── Crash-recovery sidecars ────────────────────────────────────────────────────
+// The renderer periodically writes the working document here while it is dirty,
+// and clears it on a clean save/close. Anything left over on next launch is the
+// residue of a crash and is offered back to the user.
+const recoveryDir = path.join(app.getPath('userData'), 'recovery')
+interface RecoveryMeta { id: string; fileName: string; filePath: string; savedAt: number }
+
+function ensureRecoveryDir(): void {
+  try { fs.mkdirSync(recoveryDir, { recursive: true }) } catch { /* ignore */ }
+}
+
+ipcMain.handle('recovery:save', (_e, id: string, fileName: string, filePath: string, bytes: ArrayBuffer) => {
+  ensureRecoveryDir()
+  const safe = id.replace(/[^a-zA-Z0-9_-]/g, '')
+  if (!safe) return
+  const meta: RecoveryMeta = { id: safe, fileName, filePath, savedAt: Date.now() }
+  try {
+    fs.writeFileSync(path.join(recoveryDir, `${safe}.pdf`), Buffer.from(bytes))
+    fs.writeFileSync(path.join(recoveryDir, `${safe}.json`), JSON.stringify(meta))
+  } catch (err) { console.error('[main] recovery:save failed', err) }
+})
+
+ipcMain.handle('recovery:list', (): RecoveryMeta[] => {
+  ensureRecoveryDir()
+  const out: RecoveryMeta[] = []
+  try {
+    for (const f of fs.readdirSync(recoveryDir)) {
+      if (!f.endsWith('.json')) continue
+      try {
+        const meta = JSON.parse(fs.readFileSync(path.join(recoveryDir, f), 'utf8')) as RecoveryMeta
+        if (fs.existsSync(path.join(recoveryDir, `${meta.id}.pdf`))) out.push(meta)
+      } catch { /* skip corrupt sidecar */ }
+    }
+  } catch { /* dir unreadable */ }
+  return out.sort((a, b) => b.savedAt - a.savedAt)
+})
+
+ipcMain.handle('recovery:read', (_e, id: string): ArrayBuffer | null => {
+  const safe = id.replace(/[^a-zA-Z0-9_-]/g, '')
+  try {
+    const buf = fs.readFileSync(path.join(recoveryDir, `${safe}.pdf`))
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+  } catch { return null }
+})
+
+ipcMain.handle('recovery:discard', (_e, id: string) => {
+  const safe = id.replace(/[^a-zA-Z0-9_-]/g, '')
+  for (const ext of ['.pdf', '.json']) {
+    try { fs.unlinkSync(path.join(recoveryDir, `${safe}${ext}`)) } catch { /* already gone */ }
+  }
+})
 
 app.whenReady().then(() => {
   createWindow()
@@ -652,17 +727,28 @@ ipcMain.handle('pdfium:replaceLine', async (
   const buf = Buffer.from(bytes)
   // Substitution is the LAST resort and only ever touches the changed run; the
   // engine prefers the run's own embedded font whenever it covers the new text.
+  // When we DO substitute, resolve the installed font by the font program's REAL
+  // family (out of the embedded bytes) rather than the often-anonymised PDF base
+  // name — so "CIDFont+F1" that is really Calibri Bold lands on Calibri Bold, not
+  // Helvetica.
   let substitute: Buffer | null = null
+  let substituteFamily = ''
   try {
     const h = pdfium.getLineAt(buf, pageIndex, x, y)
-    if (h.found && h.fontName) {
-      const bold = /bold|black|heavy|semibold/i.test(h.fontName)
-      const italic = /italic|oblique/i.test(h.fontName)
-      substitute = resolveSystemFont(h.fontName, bold, italic)?.data ?? null
+    if (h.found && (h.fontName || h.fontData.length > 0)) {
+      const meta = pdfium.resolveEmbeddedFontMeta(h.fontData, h.fontName)
+      substitute = resolveSystemFont(meta.family, meta.bold, meta.italic)?.data
+        ?? resolveSystemFont(h.fontName, meta.bold, meta.italic)?.data ?? null
+      substituteFamily = meta.family
     }
   } catch { /* substitution is best-effort */ }
-  const out = pdfium.replaceLineAt(buf, pageIndex, x, y, newText, substitute)
-  return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength)
+  const res = pdfium.replaceLineAt(buf, pageIndex, x, y, newText, substitute)
+  const out = res.bytes
+  return {
+    bytes: out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength),
+    outcome: res.outcome,
+    substituteFamily: res.outcome === 'substituted' ? substituteFamily : '',
+  }
 })
 
 // Resolve the closest installed system font for an edited run, so cover-and-replace
@@ -755,7 +841,28 @@ ipcMain.handle('file:writeBytes', async (_event, filePath: string, bytes: ArrayB
     if (isPdf && fs.existsSync(filePath)) {
       try { fs.copyFileSync(filePath, filePath + '.bak') } catch { /* best-effort */ }
     }
-    fs.renameSync(tmp, filePath)
+    // On Windows a rename can fail transiently while antivirus, a sync client, or
+    // another viewer holds a lock on the target. Retry with backoff rather than
+    // failing the save outright.
+    const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
+    let lastErr: unknown = null
+    for (let attempt = 0; attempt < 6; attempt++) {
+      try { fs.renameSync(tmp, filePath); lastErr = null; break }
+      catch (err) {
+        lastErr = err
+        const code = (err as { code?: string })?.code
+        if (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES') throw err
+        // eslint-disable-next-line no-await-in-loop
+        await sleep(120 * (attempt + 1))
+      }
+    }
+    if (lastErr) {
+      throw new Error(
+        `Could not save "${path.basename(filePath)}" — the file appears to be locked by ` +
+        `another program (antivirus, a sync client, or a PDF viewer). Close it and try again. ` +
+        `Your original file was left untouched.`
+      )
+    }
   } catch (e) {
     try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp) } catch { /* ignore */ }
     throw e
@@ -930,6 +1037,14 @@ interface SignerInfo { name: string; reason: string; location: string; contactIn
 interface SignatureVerifyResult {
   signerName: string; signerOrg: string; reason: string; location: string
   contactInfo: string; certValidFrom: string; certValidTo: string; certCurrentlyValid: boolean
+  // Cryptographic integrity: whether the bytes covered by /ByteRange still hash
+  // to the digest signed into the CMS (hashMatches) and whether the CMS signature
+  // itself verifies against the signer's public key (signatureValid). Together
+  // they detect tampering — a modified signed PDF fails hashMatches.
+  hashMatches: boolean
+  signatureValid: boolean
+  integrity: 'valid' | 'modified' | 'unknown'
+  coversWholeDocument: boolean
 }
 
 ipcMain.handle('pdf:sign', async (
@@ -1081,39 +1196,135 @@ ipcMain.handle('pdf:verifySignatures', async (
   bytes: ArrayBuffer
 ): Promise<SignatureVerifyResult[]> => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { extractSignature } = require('@signpdf/utils')
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const forge = require('node-forge')
 
   const pdfBuf = Buffer.from(bytes)
   const results: SignatureVerifyResult[] = []
-  try {
-    const extracted = extractSignature(pdfBuf)
-    if (!extracted?.signature) return results
 
-    const sigBuf = Buffer.from(extracted.signature, 'binary')
-    // Determine actual DER sequence length to strip null padding
-    let derLen = sigBuf.length
-    if (sigBuf[0] === 0x30) {
-      let li = sigBuf[1], off = 2
-      if (li & 0x80) { const n = li & 0x7f; li = 0; for (let i = 0; i < n; i++) li = (li << 8) | sigBuf[off++] }
-      derLen = off + li
+  // One entry per /ByteRange in the file. Each signature carries its own byte
+  // range (the spans of the file it covers) plus its /Contents hex (the CMS
+  // blob). Reading the ranges directly — rather than @signpdf's single-signature
+  // extractor — lets us verify EVERY signature and, crucially, hash the covered
+  // bytes ourselves so tampering is detected.
+  interface RawSig { byteRange: [number, number, number, number]; contents: Buffer }
+  const rawSigs: RawSig[] = []
+  const latin = pdfBuf.toString('latin1')
+  const brRe = /\/ByteRange\s*\[\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*\]/g
+  let bm: RegExpExecArray | null
+  while ((bm = brRe.exec(latin))) {
+    const br: [number, number, number, number] = [+bm[1], +bm[2], +bm[3], +bm[4]]
+    // The /Contents <...> hex string lives in the gap the ByteRange skips over:
+    // from the end of the first span to the start of the second.
+    const gap = pdfBuf.subarray(br[0] + br[1], br[2]).toString('latin1')
+    const lt = gap.indexOf('<'); const gt = lt >= 0 ? gap.indexOf('>', lt) : -1
+    if (lt < 0 || gt < 0) continue
+    const hexStr = gap.slice(lt + 1, gt).replace(/[^0-9A-Fa-f]/g, '')
+    if (!hexStr) continue
+    rawSigs.push({ byteRange: br, contents: Buffer.from(hexStr, 'hex') })
+  }
+
+  const derLength = (buf: Buffer): number => {
+    // Strip the zero-padding PDF appends to /Contents by reading the real
+    // outer SEQUENCE length from the DER header.
+    if (buf[0] !== 0x30) return buf.length
+    let li = buf[1], off = 2
+    if (li & 0x80) { const n = li & 0x7f; li = 0; for (let i = 0; i < n; i++) li = (li << 8) | buf[off++] }
+    return off + li
+  }
+
+  const findAttr = (attrs: Array<{ value: Array<{ value: unknown }> }>, oid: string): string | null => {
+    for (const a of attrs) {
+      try {
+        // Each attribute is SEQUENCE { OID, SET { value } }
+        const attrOid = forge.asn1.derToOid((a.value[0] as { value: string }).value)
+        if (attrOid === oid) {
+          const setVal = (a.value[1] as { value: Array<{ value: string }> }).value[0]
+          return setVal.value
+        }
+      } catch { /* skip malformed attribute */ }
     }
-    const p7 = forge.pkcs7.messageFromAsn1(forge.asn1.fromDer(sigBuf.slice(0, derLen).toString('binary')))
-    for (const cert of (p7.certificates ?? [])) {
-      const now = new Date()
-      results.push({
-        signerName:         cert.subject.getField('CN')?.value ?? 'Unknown',
-        signerOrg:          cert.subject.getField('O')?.value  ?? '',
-        reason:             '',
-        location:           '',
-        contactInfo:        '',
-        certValidFrom:      cert.validity.notBefore.toISOString(),
-        certValidTo:        cert.validity.notAfter.toISOString(),
-        certCurrentlyValid: now >= cert.validity.notBefore && now <= cert.validity.notAfter,
-      })
-    }
-  } catch { /* not signed or unrecognised format */ }
+    return null
+  }
+
+  for (const sig of rawSigs) {
+    const now = new Date()
+    let signerName = 'Unknown', signerOrg = '', certValidFrom = '', certValidTo = ''
+    let certCurrentlyValid = false, hashMatches = false, signatureValid = false
+    const br = sig.byteRange
+    const coversWholeDocument = br[0] === 0 && (br[2] + br[3]) === pdfBuf.length
+
+    try {
+      const der = sig.contents.subarray(0, derLength(sig.contents))
+      const p7 = forge.pkcs7.messageFromAsn1(forge.asn1.fromDer(der.toString('binary')))
+      const raw = p7.rawCapture ?? {}
+
+      // The bytes the signature actually covers: the two /ByteRange spans concatenated.
+      const signedContent = Buffer.concat([
+        pdfBuf.subarray(br[0], br[0] + br[1]),
+        pdfBuf.subarray(br[2], br[2] + br[3]),
+      ])
+
+      const digestOid = raw.digestAlgorithm ? forge.asn1.derToOid(raw.digestAlgorithm) : null
+      const hashName: string = (digestOid && forge.pki.oids[digestOid]) || 'sha256'
+      const attrs = raw.authenticatedAttributes as Array<{ value: Array<{ value: unknown }> }> | undefined
+      const signature: string | undefined = raw.signature
+
+      if (attrs && attrs.length && signature) {
+        // 1) The messageDigest signed-attribute must equal hash(signedContent).
+        //    This is the tamper check: change one byte of the covered range and
+        //    the recomputed digest no longer matches the value that was signed.
+        const mdAttr = findAttr(attrs, forge.pki.oids.messageDigest)
+        if (mdAttr != null) {
+          const md = forge.md[hashName].create()
+          md.update(signedContent.toString('binary'))
+          hashMatches = md.digest().getBytes() === mdAttr
+        }
+        // 2) The CMS signature must verify over the DER-encoded SET of signed
+        //    attributes, using the signer's public key.
+        const set = forge.asn1.create(forge.asn1.Class.UNIVERSAL, forge.asn1.Type.SET, true, attrs)
+        const attrDer = forge.asn1.toDer(set).getBytes()
+        for (const cert of (p7.certificates ?? [])) {
+          try {
+            const vmd = forge.md[hashName].create(); vmd.update(attrDer)
+            if (cert.publicKey.verify(vmd.digest().bytes(), signature)) { signatureValid = true; break }
+          } catch { /* try next certificate */ }
+        }
+      } else if (signature) {
+        // No signed attributes — signature is directly over the content.
+        for (const cert of (p7.certificates ?? [])) {
+          try {
+            const vmd = forge.md[hashName].create(); vmd.update(signedContent.toString('binary'))
+            if (cert.publicKey.verify(vmd.digest().bytes(), signature)) { signatureValid = true; break }
+          } catch { /* try next certificate */ }
+        }
+        hashMatches = signatureValid
+      }
+
+      // Report the end-entity (signer) certificate. Prefer the one that isn't a CA.
+      const certs = (p7.certificates ?? []) as Array<{
+        subject: { getField: (n: string) => { value?: string } | null }
+        validity: { notBefore: Date; notAfter: Date }
+        getExtension?: (n: string) => { cA?: boolean } | undefined
+      }>
+      const signer = certs.find(c => { try { return !c.getExtension?.('basicConstraints')?.cA } catch { return true } }) ?? certs[0]
+      if (signer) {
+        signerName = signer.subject.getField('CN')?.value ?? 'Unknown'
+        signerOrg = signer.subject.getField('O')?.value ?? ''
+        certValidFrom = signer.validity.notBefore.toISOString()
+        certValidTo = signer.validity.notAfter.toISOString()
+        certCurrentlyValid = now >= signer.validity.notBefore && now <= signer.validity.notAfter
+      }
+    } catch { /* unrecognised CMS format — leave defaults (unknown) */ }
+
+    const integrity: SignatureVerifyResult['integrity'] =
+      hashMatches && signatureValid ? 'valid' : (!hashMatches ? 'modified' : 'unknown')
+
+    results.push({
+      signerName, signerOrg, reason: '', location: '', contactInfo: '',
+      certValidFrom, certValidTo, certCurrentlyValid,
+      hashMatches, signatureValid, integrity, coversWholeDocument,
+    })
+  }
   return results
 })
 

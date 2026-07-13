@@ -63,7 +63,10 @@ import OcrRegionDialog from './components/OcrRegionDialog'
 import DeskewDialog from './components/DeskewDialog'
 import SplitViewPanel from './components/SplitViewPanel'
 import SideBySidePanel from './components/SideBySidePanel'
+import ToastHost from './components/ToastHost'
 import { useTabsStore } from './store/useTabsStore'
+import { toast } from './store/useToastStore'
+import { snapshotActiveTab } from './utils/tabSnapshot'
 import * as docEnhance from './utils/documentEnhance'
 import { usePdfStore } from './store/usePdfStore'
 import { useSettingsStore } from './store/useSettingsStore'
@@ -85,8 +88,6 @@ export default function App() {
   const setActiveTool        = usePdfStore(s => s.setActiveTool)
   const isDirty              = usePdfStore(s => s.isDirty)
   const fileName             = usePdfStore(s => s.fileName)
-  const currentFilePath      = usePdfStore(s => s.filePath)
-  const bookmarks            = usePdfStore(s => s.bookmarks)
   const setZoomMode          = usePdfStore(s => s.setZoomMode)
   const setScale             = usePdfStore(s => s.setScale)
   const save                 = usePdfStore(s => s.save)
@@ -193,6 +194,11 @@ export default function App() {
   const [passwordInput,     setPasswordInput]      = useState('')
   const [openError,         setOpenError]          = useState('')
   const [autosaveError,     setAutosaveError]      = useState('')
+  type RecoveryMeta = { id: string; fileName: string; filePath: string; savedAt: number }
+  const [recoveryPrompt,    setRecoveryPrompt]     = useState<RecoveryMeta[] | null>(null)
+  const [dragOver,          setDragOver]           = useState(false)
+  const recoverySavingRef    = useRef(false)
+  const dragDepthRef         = useRef(0)
 
   const pendingRedactCount = annotations.filter(a => a.type === 'redact').length
 
@@ -207,18 +213,9 @@ export default function App() {
       const bytes = await window.electronAPI.readFileBytes(resolvedPath)
       const name = resolvedPath.split(/[\\/]/).pop() ?? resolvedPath
 
-      // Snapshot current PDF into its tab (if any tab is open)
+      // Snapshot current PDF into its tab (if any tab is open) — cheap, no bake.
       const tabsState = useTabsStore.getState()
-      if (tabsState.activeTabId && currentFilePath) {
-        try {
-          const currentBytes = await getBakedBytes()
-          tabsState.updateTab(tabsState.activeTabId, {
-            pdfBytes: currentBytes, annotations, formFields: usePdfStore.getState().formFields,
-            bookmarks, isDirty, currentPage: usePdfStore.getState().currentPage,
-            scale: usePdfStore.getState().scale,
-          })
-        } catch { /* ignore snapshot errors */ }
-      }
+      snapshotActiveTab()
 
       await loadPdf(bytes, resolvedPath, name, password)
       addRecentFile(resolvedPath, name)
@@ -314,6 +311,43 @@ export default function App() {
     return () => { if (autosaveRef.current) clearInterval(autosaveRef.current) }
   }, [settings.autosaveIntervalMinutes, numPages, save])
 
+  // ── Crash recovery ────────────────────────────────────────────────────────────
+  // Independent of file autosave: every 25s, while the active document is dirty,
+  // write a self-contained recovery copy to userData (even for untitled docs and
+  // even when file autosave is off). A clean save/close discards it, so anything
+  // left on next launch is the residue of a crash.
+  const recoveryId = useCallback(
+    () => 'rec-' + (useTabsStore.getState().activeTabId ?? 'session'),
+    [],
+  )
+  useEffect(() => {
+    const write = async () => {
+      const s = usePdfStore.getState()
+      if (!s.isDirty || s.numPages === 0 || recoverySavingRef.current) return
+      recoverySavingRef.current = true
+      try {
+        const b = await s.getBakedBytes()
+        const ab = b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer
+        await window.electronAPI.recoverySave?.(recoveryId(), s.fileName, s.filePath, ab)
+      } catch { /* best-effort */ } finally { recoverySavingRef.current = false }
+    }
+    const iv = setInterval(write, 25_000)
+    return () => clearInterval(iv)
+  }, [recoveryId])
+
+  // Discard the recovery sidecar ONLY when the active document actually becomes
+  // clean — i.e. a real save (dirty → not-dirty). It must NOT fire on mount (that
+  // would delete a tab-less doc's sidecar before the launch prompt can offer it)
+  // or on a tab switch (that would delete a still-dirty background tab's sidecar,
+  // because isDirty briefly reflects the other tab during the async load).
+  const prevDirtyRef = useRef(false)
+  useEffect(() => {
+    if (prevDirtyRef.current && !isDirty) {
+      window.electronAPI.recoveryDiscard?.(recoveryId()).catch(() => {})
+    }
+    prevDirtyRef.current = isDirty
+  }, [isDirty, recoveryId])
+
   // ── First-launch: default annotation colour + optional session restore ────────
 
   const didInitRef = useRef(false)
@@ -321,10 +355,59 @@ export default function App() {
     if (didInitRef.current) return
     didInitRef.current = true
     if (settings.defaultToolColor) usePdfStore.getState().setToolColor(settings.defaultToolColor)
-    if (settings.restoreLastSession && usePdfStore.getState().numPages === 0 && recentFiles.length > 0) {
-      openFile(recentFiles[0].filePath)
+    const restoreSession = () => {
+      if (settings.restoreLastSession && usePdfStore.getState().numPages === 0 && recentFiles.length > 0)
+        openFile(recentFiles[0].filePath)
     }
+    // A leftover recovery sidecar means the app crashed with unsaved work; offer
+    // it before doing the normal last-session restore.
+    Promise.resolve(window.electronAPI.recoveryList?.())
+      .then(list => { if (list && list.length) setRecoveryPrompt(list); else restoreSession() })
+      .catch(restoreSession)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Recovery restore/discard ──────────────────────────────────────────────────
+  const restoreRecovery = useCallback(async (meta: RecoveryMeta) => {
+    let restored = false
+    try {
+      const ab = await window.electronAPI.recoveryRead?.(meta.id)
+      if (ab && ab.byteLength > 0) {
+        const name = meta.fileName || 'Recovered.pdf'
+        snapshotActiveTab()
+        await loadPdf(ab, meta.filePath || name, name)
+        usePdfStore.setState({ isDirty: true })   // unsaved until re-written to disk
+        const tabsState = useTabsStore.getState()
+        const existing = meta.filePath ? tabsState.tabs.find(t => t.filePath === meta.filePath) : null
+        if (existing) tabsState.setActiveTab(existing.id)
+        else tabsState.addTab({
+          id: Math.random().toString(36).slice(2),
+          fileName: name, filePath: meta.filePath || '',
+          pdfBytes: new Uint8Array(ab), annotations: [], formFields: [], bookmarks: [],
+          isDirty: true, currentPage: 1, scale: usePdfStore.getState().scale,
+        })
+        restored = true
+      }
+    } catch { restored = false }
+    // Only delete the recovery copy after a SUCCESSFUL restore. A transient read
+    // failure (e.g. the file momentarily locked by antivirus) must keep the copy
+    // so the user can retry, not silently lose it.
+    if (!restored) {
+      toast.error(`Couldn't restore "${meta.fileName || 'document'}" right now — the recovery copy was kept. Try again.`)
+      return
+    }
+    await window.electronAPI.recoveryDiscard?.(meta.id).catch(() => {})
+    setRecoveryPrompt(cur => {
+      const next = (cur ?? []).filter(m => m.id !== meta.id)
+      return next.length ? next : null
+    })
+  }, [loadPdf])
+
+  const discardAllRecovery = useCallback(async () => {
+    for (const m of (recoveryPrompt ?? [])) await window.electronAPI.recoveryDiscard?.(m.id).catch(() => {})
+    setRecoveryPrompt(null)
+    if (settings.restoreLastSession && usePdfStore.getState().numPages === 0 && recentFiles.length > 0)
+      openFile(recentFiles[0].filePath)
+  }, [recoveryPrompt, settings.restoreLastSession, recentFiles, openFile])
 
   // ── Window title sync ────────────────────────────────────────────────────────
 
@@ -373,6 +456,22 @@ export default function App() {
         case 'toggleLayersPanel':      s.toggleLayersPanel(); break
         case 'toggleNamedDestsPanel':  s.toggleNamedDestsPanel(); break
         case 'compare':        setCompareOpen(true); break
+        case 'readAloud': {
+          // Read the current page's selectable text aloud via the Web Speech API.
+          if (!s.pdfDoc || s.numPages === 0) break
+          window.speechSynthesis?.cancel()
+          s.pdfDoc.getPage(s.currentPage).then(async (pg) => {
+            const tc = await pg.getTextContent()
+            const text = tc.items
+              .map(it => ('str' in it ? (it as { str: string }).str : ''))
+              .join(' ').replace(/\s+/g, ' ').trim()
+            if (!text) { toast.info('No selectable text on this page to read.'); return }
+            window.speechSynthesis.speak(new SpeechSynthesisUtterance(text))
+            toast.info('Reading this page aloud — run "Stop Reading Aloud" to cancel.')
+          }).catch(() => toast.error('Could not read this page aloud.'))
+          break
+        }
+        case 'stopReading': window.speechSynthesis?.cancel(); break
         case 'accessibility':  setAccessOpen(true); break
         case 'aiAssistant':    setAiAssistantOpen(true); break
         case 'officeImport':   setOfficeImportOpen(true); break
@@ -464,6 +563,36 @@ export default function App() {
 
   const hasPdf = numPages > 0
 
+  // ── Drag-and-drop to open ─────────────────────────────────────────────────────
+  const onDragEnter = useCallback((e: React.DragEvent) => {
+    if (!Array.from(e.dataTransfer?.types ?? []).includes('Files')) return
+    e.preventDefault()
+    dragDepthRef.current += 1
+    setDragOver(true)
+  }, [])
+  const onDragOver = useCallback((e: React.DragEvent) => {
+    if (Array.from(e.dataTransfer?.types ?? []).includes('Files')) e.preventDefault()
+  }, [])
+  const onDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
+    if (dragDepthRef.current === 0) setDragOver(false)
+  }, [])
+  const onDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault()
+    dragDepthRef.current = 0
+    setDragOver(false)
+    const files = Array.from(e.dataTransfer?.files ?? [])
+    const paths = files
+      .map(f => window.electronAPI.getPathForFile?.(f) || '')
+      .filter(p => /\.pdf$/i.test(p))
+    if (files.length > 0 && paths.length === 0) { toast.error('Only PDF files can be opened by dropping.'); return }
+    for (const p of paths) {
+      // eslint-disable-next-line no-await-in-loop
+      await openFile(p)
+    }
+  }, [openFile])
+
   const handleRedactConfirm = async () => {
     setRedactConfirmOpen(false)
     await applyRedactions()
@@ -477,7 +606,21 @@ export default function App() {
   const opPages = selList.length > 0 ? selList : (numPages > 0 ? [currentPage] : [])
 
   return (
-    <div className="app">
+    <div className="app" onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+      {dragOver && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 150000, pointerEvents: 'none',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(20, 40, 70, 0.55)',
+          border: '4px dashed var(--accent, #4a90d9)', borderRadius: 8,
+        }}>
+          <div style={{
+            background: 'var(--bg-primary, #1e1e1e)', color: 'var(--text-primary, #eee)',
+            padding: '20px 32px', borderRadius: 10, fontSize: 16, fontWeight: 600,
+            boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
+          }}>Drop PDF{` `}files to open</div>
+        </div>
+      )}
       {autosaveError && (
         <div role="alert" style={{
           position: 'fixed', top: 8, left: '50%', transform: 'translateX(-50%)',
@@ -539,7 +682,7 @@ export default function App() {
             const b = await s.getBakedBytes()
             const ab = b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer
             const imgs = await window.electronAPI.popplerExtractImages(ab)
-            if (imgs.length === 0) { alert('No embedded images found in this document.'); return }
+            if (imgs.length === 0) { toast.info('No embedded images found in this document.'); return }
             const dir = await window.electronAPI.chooseDirectory()
             if (!dir) return
             const files = imgs.map(im => ({
@@ -547,9 +690,9 @@ export default function App() {
               bytes: Uint8Array.from(atob(im.dataBase64), c => c.charCodeAt(0)).buffer as ArrayBuffer,
             }))
             await window.electronAPI.writeBytesToDir(dir, files)
-            alert(`Extracted ${imgs.length} image${imgs.length !== 1 ? 's' : ''} to the chosen folder.`)
+            toast.success(`Extracted ${imgs.length} image${imgs.length !== 1 ? 's' : ''} to the chosen folder.`)
           } catch (e: any) {
-            alert(`Extract images failed: ${e?.message ?? 'requires Poppler'}`)
+            toast.error(`Extract images failed: ${e?.message ?? 'requires Poppler'}`)
           }
         }}
         onScan={() => setScanOpen(true)}
@@ -564,7 +707,7 @@ export default function App() {
               addRecentFile(name, name)
             }
           } catch (e: any) {
-            alert(`Email import failed: ${e?.message ?? 'could not convert .eml'}`)
+            toast.error(`Email import failed: ${e?.message ?? 'could not convert .eml'}`)
           }
         }}
         onSanitize={async () => {
@@ -574,8 +717,9 @@ export default function App() {
             const ab = b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer
             const out = await window.electronAPI.mutoolClean(ab, { sanitize: true, garbage: 4, compress: true })
             await s.applyEdit(new Uint8Array(out))
+            toast.success('Document sanitized.')
           } catch (e: any) {
-            alert(`Sanitize failed: ${e?.message ?? 'mutool unavailable'}\n\nInstall native tools via Tools → Native Tools → Setup.`)
+            toast.error(`Sanitize failed: ${e?.message ?? 'mutool unavailable'}. Install native tools via Tools → Native Tools → Setup.`)
           }
         }}
         onTranslate={() => setTranslateOpen(true)}
@@ -816,6 +960,43 @@ export default function App() {
       )}
 
       <LoupeOverlay />
+      <ToastHost />
+
+      {/* ── Crash-recovery prompt ─────────────────────────────────────────── */}
+      {recoveryPrompt && recoveryPrompt.length > 0 && (
+        <div className="modal-overlay">
+          <div className="modal-box" style={{ width: 460 }}>
+            <div className="modal-title">↺ Recover unsaved work</div>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+              Monstera found {recoveryPrompt.length} document{recoveryPrompt.length !== 1 ? 's' : ''} with
+              unsaved changes from a session that ended unexpectedly.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 260, overflowY: 'auto' }}>
+              {recoveryPrompt.map(m => (
+                <div key={m.id} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                  border: '1px solid var(--border)', borderRadius: 6, padding: '8px 10px',
+                }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {m.fileName || 'Untitled.pdf'}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                      {new Date(m.savedAt).toLocaleString()}
+                    </div>
+                  </div>
+                  <button className="modal-btn-primary" style={{ flexShrink: 0 }} onClick={() => restoreRecovery(m)}>
+                    Restore
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="modal-actions">
+              <button className="modal-btn-secondary" onClick={discardAllRecovery}>Discard all</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Password prompt ───────────────────────────────────────────────── */}
       {passwordPrompt && (

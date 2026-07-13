@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { usePdfStore } from '../store/usePdfStore'
 import { useSettingsStore } from '../store/useSettingsStore'
+import { toast } from '../store/useToastStore'
 import ContextMenu, { type ContextMenuEntry } from './ContextMenu'
 import { canvasToPdf, pdfToCanvas, newId } from '../utils/annotationUtils'
 import { loadPdfFont, bytesToBase64 } from '../utils/pdfFonts'
@@ -292,6 +293,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
   const annotationClipboard = usePdfStore(s => s.annotationClipboard)
 
   const svgRef = useRef<SVGSVGElement>(null)
+  const lastNudgeRef = useRef(0)   // groups an arrow-key nudge burst into one undo step
   const cancelEditRef = useRef(false)
   const [draw, setDraw] = useState<DrawPhase>({ k: 'idle' })
   const [imgDrag, setImgDrag] = useState<ImageDrag>({ k: 'idle' })
@@ -1331,8 +1333,12 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
         const bytes = store.pdfBytes
         if (bytes && await pdfiumReady()) {
           const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
-          const edited = await window.electronAPI.pdfiumReplaceLine(ab, pageNum - 1, d.linePoint.x, d.linePoint.y, text)
-          await store.applyContentEdit(new Uint8Array(edited), pageNum)
+          const res = await window.electronAPI.pdfiumReplaceLine(ab, pageNum - 1, d.linePoint.x, d.linePoint.y, text)
+          await store.applyContentEdit(new Uint8Array(res.bytes), pageNum)
+          // Tell the user which fidelity the edit landed on — a silent substitution
+          // used to look like "nothing happened but the font changed".
+          if (res.outcome === 'in-place') toast.success('Edited in the original font')
+          else if (res.outcome === 'substituted') toast.info(`Original font couldn't render the new text — substituted ${res.substituteFamily || 'a matching font'}`)
           return
         }
       } catch { /* fall through to the cover-and-replace overlay */ }
@@ -1359,10 +1365,11 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
       } catch { /* fall through to the cover-and-replace overlay */ }
     }
 
-    // Fallback (PDFium unavailable): cover-and-replace overlay, redrawn in the
-    // document's OWN embedded font (fontDataB64) at the original baseline, or a
-    // base-14 match when the font can't be embedded. Never rewrites existing
-    // page content, so it can't corrupt other fonts.
+    // Fallback (PDFium unavailable or in-place rejected): cover-and-replace
+    // overlay, redrawn in the document's OWN embedded font (fontDataB64) at the
+    // original baseline, or a base-14 match when the font can't be embedded.
+    // Never rewrites existing page content, so it can't corrupt other fonts.
+    if (d.linePoint || d.editPoint || d.editRect) toast.info('Edited with an overlay (the engine could not edit this text in place)')
     const [x, y_top] = toPdf(d.x, d.y)
     const [, y_bot] = toPdf(d.x, d.y + d.h)
     const [x2] = toPdf(d.x + d.w, d.y)
@@ -1397,11 +1404,29 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const tag = document.activeElement?.tagName
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA'
       if (e.key === 'Delete' || e.key === 'Backspace') {
         const { selectedAnnotationId: sid, deleteAnnotation: del, setSelectedAnnotation: setSel } = usePdfStore.getState()
-        if (sid && document.activeElement?.tagName !== 'INPUT' &&
-            document.activeElement?.tagName !== 'TEXTAREA') {
+        if (sid && !typing) {
           del(sid); setSel(null)
+        }
+      }
+      // Arrow-key nudge of the selected annotation: 1 pt, or 10 pt with Shift.
+      // Only the page that owns the selection acts (each page has its own listener).
+      if (!typing && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        const st = usePdfStore.getState()
+        const sid = st.selectedAnnotationId
+        const ann = sid ? st.annotations.find(a => a.id === sid) : null
+        if (ann && ann.pageNum === pageNum) {
+          e.preventDefault()
+          const now = Date.now()
+          if (now - lastNudgeRef.current > 800) st.pushUndo()   // group a burst into one undo step
+          lastNudgeRef.current = now
+          const step = e.shiftKey ? 10 : 1
+          const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0
+          const dy = e.key === 'ArrowUp' ? step : e.key === 'ArrowDown' ? -step : 0   // PDF y is up
+          st.updateAnnotation(sid!, translatePatch(ann, dx, dy))
         }
       }
       if (e.key === 'Escape') {

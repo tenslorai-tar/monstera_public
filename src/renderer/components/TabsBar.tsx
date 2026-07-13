@@ -1,5 +1,6 @@
 import { useTabsStore } from '../store/useTabsStore'
 import { usePdfStore } from '../store/usePdfStore'
+import { snapshotActiveTab, tabRestoreState } from '../utils/tabSnapshot'
 
 export default function TabsBar() {
   const tabs        = useTabsStore(s => s.tabs)
@@ -8,35 +9,18 @@ export default function TabsBar() {
 
   if (tabs.length === 0) return null
 
-  // Snapshot the live PDF store into whichever tab is currently active.
-  // Reads fresh state from the stores so it stays correct when called
-  // multiple times in one handler (e.g. switching twice while closing a tab).
-  const snapshotActive = async () => {
-    const st = useTabsStore.getState()
-    const ps = usePdfStore.getState()
-    if (st.activeTabId && ps.filePath) {
-      try {
-        const bytes = await ps.getBakedBytes()
-        st.updateTab(st.activeTabId, {
-          pdfBytes: bytes,
-          annotations: ps.annotations, formFields: ps.formFields, bookmarks: ps.bookmarks,
-          isDirty: ps.isDirty, currentPage: ps.currentPage, scale: ps.scale,
-          fileName: ps.fileName, filePath: ps.filePath,
-        })
-      } catch { /* ignore */ }
-    }
-  }
-
   const switchTo = async (tabId: string) => {
     if (tabId === useTabsStore.getState().activeTabId) return
-    await snapshotActive()
+    snapshotActiveTab()
     const target = useTabsStore.getState().tabs.find(t => t.id === tabId)
     if (!target) return
     useTabsStore.getState().setActiveTab(tabId)
     await usePdfStore.getState().loadPdf(
       target.pdfBytes.buffer.slice(target.pdfBytes.byteOffset, target.pdfBytes.byteOffset + target.pdfBytes.byteLength) as ArrayBuffer,
       target.filePath,
-      target.fileName
+      target.fileName,
+      undefined,
+      tabRestoreState(target),
     )
   }
 
@@ -64,6 +48,10 @@ export default function TabsBar() {
         if (usePdfStore.getState().isDirty) return
       }
     }
+
+    // A cleanly-closed tab has nothing to recover — drop its recovery sidecar so
+    // it isn't offered on next launch.
+    window.electronAPI.recoveryDiscard?.('rec-' + tabId).catch(() => {})
 
     const remaining = useTabsStore.getState().tabs.filter(t => t.id !== tabId)
     if (tabId === useTabsStore.getState().activeTabId && remaining.length > 0) {

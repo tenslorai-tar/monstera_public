@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { usePdfStore } from '../store/usePdfStore'
+import { toast } from '../store/useToastStore'
 import { flattenAllLayers, removeLayer, renameLayer } from '../utils/layerOps'
 
 export default function LayersPanel() {
@@ -19,7 +20,7 @@ export default function LayersPanel() {
       const out = await fn(bytes)
       await applyEdit(out)
     } catch (e: any) {
-      alert(`Layer operation failed: ${e?.message ?? 'unknown error'}`)
+      toast.error(`Layer operation failed: ${e?.message ?? 'unknown error'}`)
     }
     setBusy(false)
   }

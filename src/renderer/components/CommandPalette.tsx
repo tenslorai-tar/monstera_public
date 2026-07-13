@@ -7,6 +7,7 @@ import {
   FileSignature, EyeOff, FilePlus2, Trash2, RotateCw, RotateCcw, FileOutput,
   ArrowDownUp, PanelTop, Droplets, Hash, Crop, Highlighter, Underline,
   Strikethrough, Pen, Type, Square, Circle, StickyNote, CornerDownLeft,
+  Volume2, VolumeX,
 } from 'lucide-react'
 
 type IconCmp = React.ComponentType<{ size?: number | string; className?: string }>
@@ -73,6 +74,8 @@ const COMMANDS: Cmd[] = [
   { id: 'translate', label: 'Translate…', action: 'translate', icon: Languages, group: 'Tools', needsPdf: true },
   { id: 'compare', label: 'Compare Documents…', action: 'compare', icon: GitCompare, group: 'Tools', needsPdf: true },
   { id: 'ai', label: 'AI Assistant…', action: 'aiAssistant', icon: Bot, group: 'Tools', needsPdf: true },
+  { id: 'readAloud', label: 'Read Page Aloud', action: 'readAloud', icon: Volume2, group: 'Tools', keywords: 'tts speech voice accessibility narrate', needsPdf: true },
+  { id: 'stopReading', label: 'Stop Reading Aloud', action: 'stopReading', icon: VolumeX, group: 'Tools', keywords: 'tts speech stop silence', needsPdf: true },
   // Protect
   { id: 'props', label: 'Document Properties…', action: 'metadata', icon: Info, group: 'Protect', needsPdf: true },
   { id: 'security', label: 'Password & Permissions…', action: 'security', icon: Lock, group: 'Protect', needsPdf: true },

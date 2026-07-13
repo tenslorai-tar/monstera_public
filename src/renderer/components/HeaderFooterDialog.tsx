@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { PanelTop } from 'lucide-react'
+import { toast } from '../store/useToastStore'
 import type { HeaderFooterConfig } from '../utils/documentEnhance'
 
 interface Props {
@@ -25,7 +26,7 @@ export default function HeaderFooterDialog({ numPages, fileName, onApply, onClos
 
   const handleApply = () => {
     const pages = pagesInput.trim() === 'all' ? 'all' : parsePages(pagesInput, numPages)
-    if (pages === null) { alert('Invalid page range'); return }
+    if (pages === null) { toast.error('Invalid page range'); return }
     onApply({
       topLeft, topCenter, topRight,
       bottomLeft, bottomCenter, bottomRight,

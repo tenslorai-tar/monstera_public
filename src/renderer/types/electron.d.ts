@@ -84,7 +84,7 @@ declare global {
         x: number,
         y: number,
         newText: string,
-      ) => Promise<ArrayBuffer>
+      ) => Promise<{ bytes: ArrayBuffer; outcome: 'in-place' | 'substituted' | 'cleared' | 'unchanged'; substituteFamily: string }>
       pdfaConvert: (
         bytes: ArrayBuffer,
       ) => Promise<{ bytes: ArrayBuffer; report: Array<{ level: string; message: string }>; ok: boolean }>
@@ -118,6 +118,8 @@ declare global {
       pdfVerifySignatures: (bytes: ArrayBuffer) => Promise<Array<{
         signerName: string; signerOrg: string; reason: string; location: string;
         contactInfo: string; certValidFrom: string; certValidTo: string; certCurrentlyValid: boolean;
+        hashMatches: boolean; signatureValid: boolean;
+        integrity: 'valid' | 'modified' | 'unknown'; coversWholeDocument: boolean;
       }>>
 
       exportToDocx: (bytes: ArrayBuffer, fileName: string, mode?: 'text' | 'layout') => Promise<ArrayBuffer>
@@ -158,6 +160,11 @@ declare global {
       removeOpenFileListener: () => void
       getPendingOpenPath: () => Promise<string | null>
       getAppVersion: () => Promise<string>
+      getPathForFile: (file: File) => string
+      recoverySave: (id: string, fileName: string, filePath: string, bytes: ArrayBuffer) => Promise<void>
+      recoveryList: () => Promise<Array<{ id: string; fileName: string; filePath: string; savedAt: number }>>
+      recoveryRead: (id: string) => Promise<ArrayBuffer | null>
+      recoveryDiscard: (id: string) => Promise<void>
 
       aiQuery: (apiKey: string, messages: Array<{ role: 'user' | 'assistant'; content: string }>, systemPrompt: string) => Promise<string>
 

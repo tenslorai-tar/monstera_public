@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Hash } from 'lucide-react'
+import { toast } from '../store/useToastStore'
 import type { BatesConfig, BatesPosition } from '../utils/documentEnhance'
 
 interface Props {
@@ -32,7 +33,7 @@ export default function BatesDialog({ numPages, onApply, onClose }: Props) {
 
   const handleApply = () => {
     const pages = pagesInput.trim() === 'all' ? 'all' : parsePages(pagesInput, numPages)
-    if (pages === null) { alert('Invalid page range'); return }
+    if (pages === null) { toast.error('Invalid page range'); return }
     onApply({ prefix, suffix, startNumber, digits, position, fontSize, color, margin, pages })
     onClose()
   }

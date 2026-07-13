@@ -14,6 +14,9 @@ export interface PdfTab {
   isDirty: boolean
   currentPage: number
   scale: number
+  // Deferred password/permissions (applied at save time, not baked into bytes),
+  // so a set-and-switch-tabs doesn't silently drop the encryption.
+  encryptionSettings?: { userPassword: string; ownerPassword: string; permissions: number } | null
 }
 
 interface TabsStore {

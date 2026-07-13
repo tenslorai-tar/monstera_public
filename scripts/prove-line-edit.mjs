@@ -83,7 +83,7 @@ ok(hit3.found && hit3.text === 'Project Monstera is ready today.', 'same full li
 console.log('\n=== Case 2: mixed-style line, untouched runs preserved exactly ===')
 let out2 = null
 try {
-  out2 = engine.replaceLineAt(full, 0, 120, 255, 'Project Monstera is ready now.', null)
+  out2 = engine.replaceLineAt(full, 0, 120, 255, 'Project Monstera is ready now.', null).bytes
 } catch (e) { errs.push('replaceLineAt threw: ' + e.message) }
 if (out2) {
   writeFileSync(join(tmp, 'after-mixed.pdf'), out2)
@@ -100,7 +100,7 @@ if (out2) {
 console.log('\n=== Case 3: trailing runs shift right when a word grows ===')
 let out3 = null
 try {
-  out3 = engine.replaceLineAt(full, 0, 105, 215, 'AAA bbbbbbbb CCC', null)
+  out3 = engine.replaceLineAt(full, 0, 105, 215, 'AAA bbbbbbbb CCC', null).bytes
 } catch (e) { errs.push('[shift] replaceLineAt threw: ' + e.message) }
 if (out3) {
   writeFileSync(join(tmp, 'after-shift.pdf'), out3)
@@ -115,7 +115,7 @@ if (out3) {
 console.log('\n=== Case 4: single-run line keeps face and colour in place ===')
 let out4 = null
 try {
-  out4 = engine.replaceLineAt(full, 0, 120, 175, 'The quick brown fox jumps higher.', null)
+  out4 = engine.replaceLineAt(full, 0, 120, 175, 'The quick brown fox jumps higher.', null).bytes
 } catch (e) { errs.push('[single] replaceLineAt threw: ' + e.message) }
 if (out4) {
   writeFileSync(join(tmp, 'after-single.pdf'), out4)
@@ -130,12 +130,59 @@ console.log('\n=== Case 5: subset font, uncovered chars, no substitute ===')
 const sub = await makeDoc({ subset: true })
 let threw = false, out5 = null
 try {
-  out5 = engine.replaceLineAt(sub, 0, 120, 175, 'Zebras & ZIGZAG @ #1!', null)  // chars absent from the subset
+  out5 = engine.replaceLineAt(sub, 0, 120, 175, 'Zebras & ZIGZAG @ #1!', null).bytes  // chars absent from the subset
 } catch { threw = true }
 if (threw) console.log('  PASS - threw (caller falls back to overlay editing)')
 else if (out5) {
   const line5 = engine.getLineAt(out5, 0, 120, 175)
   ok(line5.text.includes('ZIGZAG'), 'WinAnsi text written via standard-font fallback (readable, not boxes)')
+}
+
+// ── Case 6: subset font, edit uses only chars/spaces already on the line ─────
+// The old gate demanded fontkit prove a glyph for EVERY char (space included);
+// subset fonts routinely fail that even for glyphs they render. Editing with
+// characters the line already shows must now stay in the perfect in-place path.
+console.log('\n=== Case 6: subset font, existing-char edit stays in-place ===')
+{
+  const doc = await PDFDocument.create()
+  doc.registerFontkit(fontkit)
+  const g = await doc.embedFont(readFileSync('C:/Windows/Fonts/georgia.ttf'), { subset: true })
+  const page = doc.addPage([400, 120])
+  page.drawText('total value data', { x: 40, y: 60, size: 16, font: g, color: rgb(0.1, 0.1, 0.6) })
+  const subDoc = Buffer.from(await doc.save())
+  // Rearrange the words — every character and the spaces already appear on the line.
+  const res6 = engine.replaceLineAt(subDoc, 0, 100, 65, 'data value total', null)
+  ok(res6.outcome === 'in-place', `existing-char edit stayed in-place (outcome: ${res6.outcome})`)
+  const line6 = engine.getLineAt(res6.bytes, 0, 100, 65)
+  ok(line6.text === 'data value total', `text updated (got: ${JSON.stringify(line6.text)})`)
+  ok(line6.fontName.includes('Georgia'), `original subset font kept (got ${line6.fontName})`)
+  ok(/^#1[0-9a-f]1[0-9a-f]9[0-9a-f]$/.test(line6.color) || line6.color !== '#000000', `blue colour preserved (got ${line6.color})`)
+}
+
+// ── Case 7: sibling-font safety (regression guard) ───────────────────────────
+// Two adjacent runs with INDEPENDENT subset fonts. Editing run B with a char that
+// only exists in run A's subset must NOT stay in-place (that would SetText the
+// char through run B's font, which lacks the glyph → .notdef box). existingChars
+// must be scoped to the target run's own text, not the whole line.
+console.log('\n=== Case 7: char present only in a sibling run is not wrongly kept in-place ===')
+{
+  const doc = await PDFDocument.create()
+  doc.registerFontkit(fontkit)
+  // Two SEPARATE embeds → two separate subsets (run B's subset has 1,2,3 but no 'a').
+  const gA = await doc.embedFont(readFileSync('C:/Windows/Fonts/georgia.ttf'), { subset: true })
+  const gB = await doc.embedFont(readFileSync('C:/Windows/Fonts/georgia.ttf'), { subset: true })
+  const page = doc.addPage([400, 120])
+  const wA = gA.widthOfTextAtSize('abc', 16)
+  page.drawText('abc', { x: 40, y: 60, size: 16, font: gA })
+  page.drawText('123', { x: 40 + wA, y: 60, size: 16, font: gB })   // adjacent, no inter-run space
+  const subDoc = Buffer.from(await doc.save())
+  const line = engine.getLineAt(subDoc, 0, 40 + wA + 8, 65)
+  console.log('  line text:', JSON.stringify(line.text))
+  // Edit "…123" → "…1a3": the 'a' exists only in run A's subset, never run B's.
+  const res7 = engine.replaceLineAt(subDoc, 0, 40 + wA + 8, 65, line.text.replace('123', '1a3'), null)
+  ok(res7.outcome !== 'in-place', `did NOT stay in-place through run B's font (outcome: ${res7.outcome})`)
+  const line7 = engine.getLineAt(res7.bytes, 0, 40 + wA + 8, 65)
+  ok(line7.text.includes('1a3'), `edited text present and readable (got: ${JSON.stringify(line7.text)})`)
 }
 
 // keep a render of every artifact for visual inspection

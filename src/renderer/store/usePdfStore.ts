@@ -68,6 +68,24 @@ export interface EditSnapshot {
 
 export interface SearchMatch { pageNum: number; matchStart: number; matchLen: number }
 
+// Restore payload passed to loadPdf when switching back to an already-open tab.
+// Lets the load reuse the tab's live overlay state + scroll position instead of
+// re-reading annotations from the bytes and resetting to page 1 / default zoom —
+// and it means the snapshot no longer has to bake the whole document.
+export type EncryptionSettings = { userPassword: string; ownerPassword: string; permissions: number } | null
+
+export interface TabRestoreState {
+  annotations: Annotation[]
+  formFields: FormField[]
+  bookmarks: BookmarkItem[]
+  currentPage: number
+  scale: number
+  isDirty: boolean
+  // Password/permissions are applied at SAVE time, not baked into the bytes, so
+  // they must ride along with the tab or a switch-and-back silently drops them.
+  encryptionSettings: EncryptionSettings
+}
+
 const WORD_CHAR = /[\p{L}\p{N}_]/u
 function isWholeWordMatch(text: string, start: number, len: number): boolean {
   const before = start > 0 ? text[start - 1] : ''
@@ -78,6 +96,12 @@ function isWholeWordMatch(text: string, start: number, len: number): boolean {
 // Background text-extraction generation token: bumping it cancels any
 // in-flight indexing loop from a previous document state.
 let textIndexGen = 0
+
+// Bumped on every loadPdf. Background loads (outline, layers, destinations)
+// capture the value at kick-off and only commit if it still matches, so a slow
+// load resolving after the user switched to another document can never write its
+// results into the now-active (different) document's state.
+let docLoadGen = 0
 
 // True when the bytes contain a digital-signature dictionary (/ByteRange).
 // Saving rewrites the whole file, which invalidates such signatures — the
@@ -228,6 +252,10 @@ interface PdfStore {
 
   // ── Bookmarks ────────────────────────────────────────────────────────────────
   bookmarks: BookmarkItem[]
+  // True once the document's outline has actually been read (or restored). Save
+  // must NOT rewrite the outline before this — an unloaded empty list would wipe
+  // the file's real bookmarks.
+  bookmarksLoaded: boolean
   bookmarksPanelOpen: boolean
 
   // ── Layers (Optional Content Groups) ─────────────────────────────────────────
@@ -249,7 +277,7 @@ interface PdfStore {
   encryptionSettings: { userPassword: string; ownerPassword: string; permissions: number } | null
 
   // ── Actions ─────────────────────────────────────────────────────────────────
-  loadPdf: (bytes: ArrayBuffer, filePath: string, fileName: string, password?: string) => Promise<void>
+  loadPdf: (bytes: ArrayBuffer, filePath: string, fileName: string, password?: string, restore?: TabRestoreState) => Promise<void>
   reloadWithBytes: (bytes: Uint8Array) => Promise<void>
   getBakedBytes: () => Promise<Uint8Array>
 
@@ -435,6 +463,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
 
   // ── Bookmark defaults ────────────────────────────────────────────────────
   bookmarks: [],
+  bookmarksLoaded: false,
   bookmarksPanelOpen: false,
 
   // ── Layer defaults ───────────────────────────────────────────────────────
@@ -457,34 +486,51 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
 
   // ── Loaders ──────────────────────────────────────────────────────────────
 
-  loadPdf: async (bytes, filePath, fileName, password?) => {
+  loadPdf: async (bytes, filePath, fileName, password?, restore?) => {
     clearTextCache()
+    const myLoadGen = ++docLoadGen
     const uint8 = new Uint8Array(bytes)
     const { pdfDoc, numPages, pageSizes } = await buildPdfDoc(uint8, password)
     const { containerWidth, containerHeight, zoomMode } = get()
-    const scale = zoomMode === 'custom'
-      ? get().scale
-      : computeFitScale(zoomMode, pageSizes, containerWidth, containerHeight)
-    let annotations: Annotation[] = []
-    let formFields: FormField[] = []
-    try { annotations = await readAnnotationsFromPdf(pdfDoc, numPages) } catch {}
-    try { formFields = await readFormFieldsFromPdf(pdfDoc, numPages) } catch {}
+    const scale = restore
+      ? restore.scale
+      : zoomMode === 'custom'
+        ? get().scale
+        : computeFitScale(zoomMode, pageSizes, containerWidth, containerHeight)
+    // When restoring an already-open tab, reuse its live overlay state — the tab
+    // holds the un-baked bytes + the annotation/form arrays, so re-reading them
+    // from the PDF would (a) be wasted work and (b) return nothing (the overlay
+    // markup isn't baked into the tab's bytes).
+    let annotations: Annotation[] = restore ? restore.annotations : []
+    let formFields: FormField[] = restore ? restore.formFields : []
+    if (!restore) {
+      try { annotations = await readAnnotationsFromPdf(pdfDoc, numPages) } catch {}
+      try { formFields = await readFormFieldsFromPdf(pdfDoc, numPages) } catch {}
+    }
     set({
       pdfDoc, pdfBytes: uint8, numPages, filePath, fileName, pageSizes, annotations, formFields,
-      isDirty: false, undoStack: [], redoStack: [], selectedPages: new Set(),
-      scale, currentPage: 1, navBack: [], navForward: [],
+      isDirty: restore ? restore.isDirty : false, undoStack: [], redoStack: [], selectedPages: new Set(),
+      scale, currentPage: restore ? Math.min(Math.max(1, restore.currentPage), numPages) : 1,
+      navBack: [], navForward: [],
       searchOpen: false, searchQuery: '', searchMatches: [], activeMatchIndex: -1,
       selectedAnnotationId: null, openStickyNoteId: null, activeTool: null,
-      formMode: false, formCreationTool: null, encryptionSettings: null,
-      ocrData: new Map(), bookmarks: [], bookmarksPanelOpen: false,
+      formMode: false, formCreationTool: null,
+      encryptionSettings: restore ? restore.encryptionSettings : null,
+      ocrData: new Map(), bookmarks: restore ? restore.bookmarks : [],
+      bookmarksLoaded: restore ? restore.bookmarks.length > 0 : false,
+      bookmarksPanelOpen: false,
       layers: [], namedDests: [], layerRevision: 0,
       signatureWarningAccepted: false,
     })
     get().startTextIndexing(pdfDoc)
-    // Load bookmarks (outline) from PDF in background
-    if (uint8.length > 0) {
+    // Load the outline (bookmarks) in the background. Fetch on a fresh open, and
+    // also when RESTORING a tab whose snapshot captured an empty list (the outline
+    // may not have resolved before the snapshot was taken) — otherwise a tab could
+    // permanently lose its bookmarks. A non-empty restored list is authoritative
+    // (it may include the user's unsaved edits) and is left untouched.
+    if (uint8.length > 0 && (!restore || restore.bookmarks.length === 0)) {
       window.electronAPI.mupdfGetOutline(uint8.buffer as ArrayBuffer)
-        .then(items => set({ bookmarks: items }))
+        .then(items => { if (docLoadGen === myLoadGen) set({ bookmarks: items, bookmarksLoaded: true }) })
         .catch(() => {})
     }
     // Load layers (OCG) from PDF.js
@@ -495,7 +541,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
       for (const [id, group] of (ocgConfig as Iterable<[string, { name?: string; visible?: boolean }]>)) {
         layerItems.push({ id, name: group?.name ?? id, visible: group?.visible !== false })
       }
-      set({ layers: layerItems })
+      if (docLoadGen === myLoadGen) set({ layers: layerItems })
     }).catch(() => { _ocgConfig = null })
     // Load named destinations from PDF.js
     pdfDoc.getDestinations().then(async (dests) => {
@@ -509,7 +555,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
           }
         } catch { /* skip unresolvable */ }
       }
-      set({ namedDests: namedItems })
+      if (docLoadGen === myLoadGen) set({ namedDests: namedItems })
     }).catch(() => {})
   },
 
@@ -673,10 +719,12 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     }
 
     saveInFlight = (async () => {
-      const { filePath, pdfBytes, annotations, formFields, encryptionSettings, bookmarks, getBakedBytes } = get()
+      const { filePath, pdfBytes, annotations, formFields, encryptionSettings, bookmarks, bookmarksLoaded, getBakedBytes } = get()
       if (!pdfBytes || !filePath) return
       let baked = await getBakedBytes()
-      baked = new Uint8Array(await window.electronAPI.mupdfWriteOutline(baked.buffer as ArrayBuffer, bookmarks))
+      // Only rewrite the outline once it has actually been read/restored — writing
+      // an unloaded empty list would delete the file's real bookmarks.
+      if (bookmarksLoaded) baked = new Uint8Array(await window.electronAPI.mupdfWriteOutline(baked.buffer as ArrayBuffer, bookmarks))
       if (encryptionSettings) {
         baked = new Uint8Array(await window.electronAPI.mupdfEncrypt(baked.buffer as ArrayBuffer, encryptionSettings))
       }
@@ -693,7 +741,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   },
 
   saveAs: async () => {
-    const { fileName, pdfBytes, annotations, formFields, encryptionSettings, bookmarks, getBakedBytes } = get()
+    const { fileName, pdfBytes, annotations, formFields, encryptionSettings, bookmarks, bookmarksLoaded, getBakedBytes } = get()
     if (!pdfBytes) return
     if (!get().signatureWarningAccepted && hasDigitalSignature(pdfBytes)) {
       const ok = await window.electronAPI.confirmSignatureInvalidation()
@@ -703,7 +751,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     const newPath = await window.electronAPI.saveFileDialog(fileName || 'document.pdf')
     if (!newPath) return
     let baked = await getBakedBytes()
-    baked = new Uint8Array(await window.electronAPI.mupdfWriteOutline(baked.buffer as ArrayBuffer, bookmarks))
+    if (bookmarksLoaded) baked = new Uint8Array(await window.electronAPI.mupdfWriteOutline(baked.buffer as ArrayBuffer, bookmarks))
     if (encryptionSettings) {
       baked = new Uint8Array(await window.electronAPI.mupdfEncrypt(baked.buffer as ArrayBuffer, encryptionSettings))
     }
@@ -867,6 +915,10 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
       isDirty: true,
     }))
   },
+  // NOTE: selecting an annotation must NOT overwrite the tool defaults, or a plain
+  // move/resize (which also selects) would silently change the style of every
+  // annotation drawn afterwards. The Style controls still EDIT the current
+  // selection (see setToolColor/… below); they just no longer read from it.
   setSelectedAnnotation: (id) => set({ selectedAnnotationId: id }),
 
   copyAnnotation: (id) => {
@@ -907,11 +959,15 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
     set(s => ({ annotations: [a, ...s.annotations.filter(x => x.id !== id)], isDirty: true }))
   },
 
-  setToolColor: (c) => set({ toolColor: c }),
-  setToolOpacity: (o) => set({ toolOpacity: o }),
-  setToolLineWidth: (w) => set({ toolLineWidth: w }),
-  setToolFontSize: (s) => set({ toolFontSize: s }),
-  setToolFont: (f) => set({ toolFont: f }),
+  // Style controls double as an editor for the current selection: when an
+  // annotation is selected, changing colour/opacity/width/size edits it in place
+  // (previously these only set the default for the NEXT annotation, so recolouring
+  // an existing highlight meant delete-and-redraw).
+  setToolColor: (c) => { set({ toolColor: c }); const sid = get().selectedAnnotationId; if (sid) get().updateAnnotation(sid, { color: c } as Partial<Annotation>) },
+  setToolOpacity: (o) => { set({ toolOpacity: o }); const sid = get().selectedAnnotationId; if (sid) get().updateAnnotation(sid, { opacity: o } as Partial<Annotation>) },
+  setToolLineWidth: (w) => { set({ toolLineWidth: w }); const sid = get().selectedAnnotationId; if (sid) get().updateAnnotation(sid, { lineWidth: w } as Partial<Annotation>) },
+  setToolFontSize: (s) => { set({ toolFontSize: s }); const sid = get().selectedAnnotationId; if (sid) get().updateAnnotation(sid, { fontSize: s } as Partial<Annotation>) },
+  setToolFont: (f) => { set({ toolFont: f }); const sid = get().selectedAnnotationId; if (sid) get().updateAnnotation(sid, { font: f } as Partial<Annotation>) },
   setStampName: (n) => set({ stampName: n }),
   setCustomStampDataUrl: (url) => set({ customStampDataUrl: url }),
   toggleAnnotationsPanel: () => set(s => ({ annotationsPanelOpen: !s.annotationsPanelOpen })),
@@ -1105,19 +1161,21 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
   },
 
   // ── Bookmark actions ──────────────────────────────────────────────────────────
+  // Any explicit edit marks the outline "loaded" — the store list is now
+  // authoritative and must be written on save (even if it ends up empty).
   addBookmark: (pageNum, title) => set(s => ({
     bookmarks: [...s.bookmarks, { id: Math.random().toString(36).slice(2), title, pageNum }],
-    isDirty: true,
+    bookmarksLoaded: true, isDirty: true,
   })),
   deleteBookmark: (id) => set(s => ({
     bookmarks: s.bookmarks.filter(b => b.id !== id),
-    isDirty: true,
+    bookmarksLoaded: true, isDirty: true,
   })),
   renameBookmark: (id, title) => set(s => ({
     bookmarks: s.bookmarks.map(b => b.id === id ? { ...b, title } : b),
-    isDirty: true,
+    bookmarksLoaded: true, isDirty: true,
   })),
-  setBookmarks: (items) => set({ bookmarks: items, isDirty: true }),
+  setBookmarks: (items) => set({ bookmarks: items, bookmarksLoaded: true, isDirty: true }),
   toggleBookmarksPanel: () => set(s => ({ bookmarksPanelOpen: !s.bookmarksPanelOpen })),
 
   // ── Layer actions ─────────────────────────────────────────────────────────────
@@ -1186,7 +1244,7 @@ export const usePdfStore = create<PdfStore>((set, get) => ({
       searchRegexError: '', searchIndexing: false,
       annotations: [], activeTool: null, selectedAnnotationId: null, openStickyNoteId: null,
       formFields: [], formMode: false, formCreationTool: null, formsPanelOpen: false,
-      bookmarks: [], bookmarksPanelOpen: false, annotationsPanelOpen: false,
+      bookmarks: [], bookmarksLoaded: false, bookmarksPanelOpen: false, annotationsPanelOpen: false,
       layers: [], layersPanelOpen: false, layerRevision: 0,
       namedDests: [], namedDestsPanelOpen: false, linksPanelOpen: false,
       encryptionSettings: null, ocrData: new Map(),

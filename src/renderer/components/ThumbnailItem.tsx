@@ -32,6 +32,8 @@ export default function ThumbnailItem({
   const wrapperRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const renderedScaleRef = useRef<number | null>(null)
+  const genRef = useRef(0)
+  const renderTaskRef = useRef<{ cancel: () => void } | null>(null)
 
   const pageSize = pageSizes[pageNum - 1]
   const thumbScale = pageSize ? THUMB_WIDTH / pageSize.width : 0.2
@@ -55,13 +57,33 @@ export default function ThumbnailItem({
     if (!canvas) return
     renderedScaleRef.current = thumbScale
 
+    // Generation guard: after an edit the whole list re-renders, so several
+    // async renders can be in flight for the same canvas. Cancel the previous
+    // task and bail if a newer render superseded this one before it drew.
+    const myGen = ++genRef.current
+    let cancelled = false
     ;(async () => {
-      const page = await pdfDoc.getPage(pageNum)
-      const viewport = page.getViewport({ scale: thumbScale })
-      canvas.width = viewport.width
-      canvas.height = viewport.height
-      await page.render({ canvas, viewport }).promise
+      try {
+        const page = await pdfDoc.getPage(pageNum)
+        if (cancelled || myGen !== genRef.current) return
+        const viewport = page.getViewport({ scale: thumbScale })
+        canvas.width = viewport.width
+        canvas.height = viewport.height
+        const task = page.render({ canvas, viewport })
+        renderTaskRef.current = task
+        await task.promise
+      } catch {
+        // RenderingCancelledException (superseded) is expected — ignore. On a
+        // real failure the previous thumbnail/placeholder simply remains, and we
+        // clear the cache flag so it can be retried.
+        if (!cancelled && myGen === genRef.current) renderedScaleRef.current = null
+      }
     })()
+    return () => {
+      cancelled = true
+      try { renderTaskRef.current?.cancel() } catch { /* already settled */ }
+      renderTaskRef.current = null
+    }
   }, [inView, pdfDoc, pageNum, thumbScale])
 
   // Re-render thumbnail when pdfDoc changes (after an edit)

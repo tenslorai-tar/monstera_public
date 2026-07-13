@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { Sparkles, Check, Combine, Replace } from 'lucide-react'
 import { usePdfStore } from '../store/usePdfStore'
+import { toast } from '../store/useToastStore'
 import type { BookmarkItem } from '../types/bookmarks'
 
 export default function BookmarksPanel() {
@@ -55,7 +56,7 @@ export default function BookmarksPanel() {
     const valid = bookmarks.filter(b => b.pageNum >= 1 && b.pageNum <= numPages)
     const removed = bookmarks.length - valid.length
     if (removed > 0) setBookmarks(valid)
-    window.alert(removed > 0 ? `Removed ${removed} bookmark(s) pointing outside the document.` : 'All bookmarks point to valid pages.')
+    toast.info(removed > 0 ? `Removed ${removed} bookmark(s) pointing outside the document.` : 'All bookmarks point to valid pages.')
   }
 
   const handleMergeDuplicates = () => {

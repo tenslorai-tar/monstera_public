@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Droplets } from 'lucide-react'
+import { toast } from '../store/useToastStore'
 import type { WatermarkConfig } from '../utils/documentEnhance'
 
 interface Props {
@@ -17,9 +18,9 @@ export default function WatermarkDialog({ numPages, onApply, onClose }: Props) {
   const [pagesInput, setPagesInput] = useState('all')
 
   const handleApply = () => {
-    if (!text.trim()) { alert('Watermark text cannot be empty'); return }
+    if (!text.trim()) { toast.error('Watermark text cannot be empty'); return }
     const pages = pagesInput.trim() === 'all' ? 'all' : parsePages(pagesInput, numPages)
-    if (pages === null) { alert('Invalid page range'); return }
+    if (pages === null) { toast.error('Invalid page range'); return }
     onApply({ text, fontSize, color, opacity, rotation, pages })
     onClose()
   }

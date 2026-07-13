@@ -1,6 +1,22 @@
 import { useCallback } from 'react'
 import { usePdfStore } from '../store/usePdfStore'
+import { toast } from '../store/useToastStore'
+import { logger } from '../utils/logger'
 import * as pdfEdits from '../utils/pdfEdits'
+
+// Wrap a void-returning page op so a failure surfaces as a toast + log instead of
+// an unhandled promise rejection with no user feedback (every op here previously
+// ran with zero error handling).
+function guard<A extends unknown[]>(label: string, fn: (...args: A) => Promise<void>) {
+  return async (...args: A): Promise<void> => {
+    try { await fn(...args) }
+    catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      logger.error(`${label} failed:`, e)
+      toast.error(`${label} failed: ${msg}`)
+    }
+  }
+}
 
 export function usePdfOperations() {
   const numPages = usePdfStore(s => s.numPages)
@@ -112,10 +128,20 @@ export function usePdfOperations() {
     applyEdit(await pdfEdits.resizePages(await requireBytes(), pageNums, width, height))
   }, [applyEdit, getBakedBytes])
 
-  const deleteEmptyPages = useCallback(async (): Promise<number[]> => {
-    const result = await pdfEdits.deleteEmptyPages(await requireBytes())
-    if (result.deleted.length > 0) applyEdit(result.bytes)
-    return result.deleted
+  // Returns the deleted page numbers ([] means genuinely none), or null on
+  // failure — the caller must NOT show the "no empty pages" dialog for null,
+  // since [] is the legitimate "none found" success value.
+  const deleteEmptyPages = useCallback(async (): Promise<number[] | null> => {
+    try {
+      const result = await pdfEdits.deleteEmptyPages(await requireBytes())
+      if (result.deleted.length > 0) applyEdit(result.bytes)
+      return result.deleted
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      logger.error('Delete empty pages failed:', e)
+      toast.error(`Delete empty pages failed: ${msg}`)
+      return null
+    }
   }, [applyEdit, getBakedBytes])
 
   const normalizePages = useCallback(async () => {
@@ -127,22 +153,22 @@ export function usePdfOperations() {
   }, [applyEdit, getBakedBytes])
 
   return {
-    deletePages,
-    rotatePages,
-    reorderPage,
-    duplicatePage,
-    insertBlankPage,
-    insertFromPdf,
-    insertFromImage,
-    extractPages,
-    mergePdfs,
-    splitByRanges,
-    splitOnePerPage,
-    reversePages,
-    swapPages,
-    resizePages,
-    deleteEmptyPages,
-    normalizePages,
-    replacePages,
+    deletePages:     guard('Delete pages', deletePages),
+    rotatePages:     guard('Rotate pages', rotatePages),
+    reorderPage:     guard('Reorder page', reorderPage),
+    duplicatePage:   guard('Duplicate page', duplicatePage),
+    insertBlankPage: guard('Insert blank page', insertBlankPage),
+    insertFromPdf:   guard('Insert pages from PDF', insertFromPdf),
+    insertFromImage: guard('Insert image page', insertFromImage),
+    extractPages:    guard('Extract pages', extractPages),
+    mergePdfs:       guard('Merge PDFs', mergePdfs),
+    splitByRanges:   guard('Split by ranges', splitByRanges),
+    splitOnePerPage: guard('Split into single pages', splitOnePerPage),
+    reversePages:    guard('Reverse pages', reversePages),
+    swapPages:       guard('Swap pages', swapPages),
+    resizePages:     guard('Resize pages', resizePages),
+    deleteEmptyPages,   // returns number[]; guards internally
+    normalizePages:  guard('Normalize pages', normalizePages),
+    replacePages:    guard('Replace page', replacePages),
   }
 }
