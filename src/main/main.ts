@@ -751,7 +751,9 @@ ipcMain.handle('pdfium:replaceLine', async (
         outcome: edited.outcome,
         substituteFamily: edited.substituteFamily ?? '',
       }
-    } catch { /* fall through to the standard engine path */ }
+    } catch (err) {
+      console.error('[edit] nested surgery fell through:', err instanceof Error ? err.message : err)
+    }
   }
 
   // Standard (non-nested) engine path. Substitution is the LAST resort and only ever

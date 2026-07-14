@@ -6,6 +6,7 @@ import { toast } from '../store/useToastStore'
 import ContextMenu, { type ContextMenuEntry } from './ContextMenu'
 import { canvasToPdf, pdfToCanvas, newId } from '../utils/annotationUtils'
 import { loadPdfFont, bytesToBase64 } from '../utils/pdfFonts'
+import { logger } from '../utils/logger'
 import type {
   Annotation, HighlightAnn, InkAnn,
   ShapeAnn, TextBoxAnn, StickyNoteAnn, StampAnn, RedactAnn,
@@ -816,27 +817,51 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
                 // Line-first (Adobe/PDF-XChange behaviour): a click selects the whole
                 // visual line for editing. On commit only the changed run(s) are
                 // rewritten, so every face/colour on the line survives the edit.
+                // Nested (editable=false) lines take this path too: the main process
+                // routes them to Form XObject content-stream surgery (in-place-form /
+                // extended / substituted). Gating on editable here made that whole
+                // pipeline unreachable from the UI.
+                const openLineEditor = async (line: Awaited<ReturnType<typeof window.electronAPI.pdfiumLineAt>>, atX: number, atY: number) => {
+                  let fontFamily: string | undefined
+                  let fontDataB64: string | undefined
+                  let sample = line.editable ? undefined : readTextSpanAt(sx, sy)?.sample
+                  if (!line.editable) {
+                    // Prepare cover-and-replace font info up front so the overlay
+                    // fallback keeps its fidelity when surgery has to bail out.
+                    const eff = await resolveEditFont(line.fontName, line.fontLoadable ? line.fontData : null, sample)
+                    fontFamily = eff.fontFamily; fontDataB64 = eff.fontDataB64; sample = eff.sample ?? sample
+                  } else if (line.fontLoadable && line.fontData.byteLength > 0) {
+                    fontFamily = (await loadPdfFont(line.fontData)) ?? undefined
+                  }
+                  const [lx1, ly2] = toSvg(line.x1, line.y2)
+                  const [lx2, ly1] = toSvg(line.x2, line.y1)
+                  setDraw({ k: 'text-edit-edit', x: lx1, y: ly2,
+                    w: Math.max(24, lx2 - lx1), h: Math.max(10, ly1 - ly2),
+                    text: line.text, fontSize: line.fontSize, color: line.color, fontFamily, fontDataB64, sample,
+                    linePoint: { x: atX, y: atY },
+                    // PDF page-space bbox of the clicked line — lets the main process
+                    // disambiguate byte-identical duplicate lines by position.
+                    lineBBox: { x1: line.x1, y1: line.y1, x2: line.x2, y2: line.y2 } })
+                }
                 try {
                   const line = await window.electronAPI.pdfiumLineAt(ab, pageNum - 1, px, py)
-                  if (line.found && line.editable) {
-                    let fontFamily: string | undefined
-                    if (line.fontLoadable && line.fontData.byteLength > 0) {
-                      fontFamily = (await loadPdfFont(line.fontData)) ?? undefined
-                    }
-                    const [lx1, ly2] = toSvg(line.x1, line.y2)
-                    const [lx2, ly1] = toSvg(line.x2, line.y1)
-                    setDraw({ k: 'text-edit-edit', x: lx1, y: ly2,
-                      w: Math.max(24, lx2 - lx1), h: Math.max(10, ly1 - ly2),
-                      text: line.text, fontSize: line.fontSize, color: line.color, fontFamily,
-                      linePoint: { x: px, y: py },
-                      // PDF page-space bbox of the clicked line — lets the main process
-                      // disambiguate byte-identical duplicate lines by position.
-                      lineBBox: { x1: line.x1, y1: line.y1, x2: line.x2, y2: line.y2 } })
-                    return
-                  }
-                } catch { /* fall through to the single-object path */ }
+                  if (line.found) { await openLineEditor(line, px, py); return }
+                } catch (err) {
+                  logger.warn('edit-click line probe threw, falling to single-object', err)
+                }
                 const obj = await window.electronAPI.pdfiumTextObjectAt(ab, pageNum - 1, px, py)
                 if (obj.found) {
+                  // The line hit-test is stricter than the object hit-test (a click
+                  // just off the glyph boxes misses it). The object was hit, so retry
+                  // the line probe at the object's centre — line-level editing must
+                  // stay the primary path or nested-text surgery never engages.
+                  try {
+                    const ocx = (obj.x1 + obj.x2) / 2, ocy = (obj.y1 + obj.y2) / 2
+                    const line2 = await window.electronAPI.pdfiumLineAt(ab, pageNum - 1, ocx, ocy)
+                    if (line2.found) { await openLineEditor(line2, ocx, ocy); return }
+                  } catch (err) {
+                    logger.warn('edit-click line re-probe threw', err)
+                  }
                   let fontFamily: string | undefined
                   let fontDataB64: string | undefined
                   let sample = obj.nested ? readTextSpanAt(sx, sy)?.sample : undefined
@@ -1347,7 +1372,9 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
           else if (res.outcome === 'substituted') toast.info(`Original font couldn't render the new text — substituted ${res.substituteFamily || 'a matching font'}`)
           return
         }
-      } catch { /* fall through to the cover-and-replace overlay */ }
+      } catch (err) {
+        logger.error('line edit fell back to overlay', err)
+      }
     }
 
     // Primary path: TRUE in-place edit via PDFium. FPDFText_SetText rewrites the
