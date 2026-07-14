@@ -1339,6 +1339,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
           // used to look like "nothing happened but the font changed".
           if (res.outcome === 'in-place') toast.success('Edited in the original font')
           else if (res.outcome === 'in-place-form') toast.success('Edited in place (inside form)')
+          else if (res.outcome === 'in-place-extended') toast.success('Edited in place (font extended)')
           else if (res.outcome === 'substituted') toast.info(`Original font couldn't render the new text — substituted ${res.substituteFamily || 'a matching font'}`)
           return
         }
