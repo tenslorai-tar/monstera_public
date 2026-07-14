@@ -241,6 +241,122 @@ else {
   }
 }
 
+// ── Cap 3: BBox clip growth on a lengthened line ───────────────────────────────
+// A Form XObject's /BBox is a hard clip. When an in-place edit makes the line WIDER
+// than the field's original bound, renderers that honour the clip (mupdf) truncate
+// the overflow even though text-extraction engines that ignore it (PDFium, PDF.js)
+// still read the codes — so the fix must grow the /BBox. Deterministic synthetic
+// fixture (no font-install dependency): "Ab" nested in a TIGHT-BBox form drawn under
+// an internal `cm` scale, edited to "AbAbAbAb" (reuses only subset glyphs → stays the
+// in-place-form tier). Proves the grown BBox composes through the internal CTM and
+// that mupdf now renders the FULL widened line (not just the pre-BBox prefix).
+console.log('\n=== Cap 3: form BBox grows so a lengthened line is not clipped ===')
+async function buildTightFixture(scale) {
+  const doc = await PDFDocument.create(); doc.registerFontkit(fontkit)
+  const f = await doc.embedFont(readFileSync('C:/Windows/Fonts/arial.ttf'), { subset: true })
+  const hex = f.encodeText('Ab ').toString().replace(/[<>]/g, '')
+  const A = hex.slice(0, 4), b = hex.slice(4, 8)
+  const advA = f.widthOfTextAtSize('A', 20)
+  const body = `q\n${scale} 0 0 ${scale} 0 0 cm\nBT\n/F1 20 Tf\n1 0 0 1 2 4 Tm\n<${A}> Tj\n${advA.toFixed(3)} 0 Td\n<${b}> Tj\nET\nQ\n`
+  const def = zlib.deflateSync(Buffer.from(body, 'latin1'))
+  const w = (2 + f.widthOfTextAtSize('Ab', 20)) * scale + 2
+  const fd = doc.context.obj({ Type: 'XObject', Subtype: 'Form', FormType: 1, BBox: [0, 0, w, 30 * scale], Resources: { Font: { F1: f.ref }, ProcSet: [PDFName.of('PDF'), PDFName.of('Text')] }, Filter: 'FlateDecode', Length: def.length })
+  const fref = doc.context.register(PDFRawStream.of(fd, def))
+  const pc = zlib.deflateSync(Buffer.from('q\n1 0 0 1 20 40 cm\n/Fm0 Do\nQ\n', 'latin1'))
+  const pcref = doc.context.register(PDFRawStream.of(doc.context.obj({ Filter: 'FlateDecode', Length: pc.length }), pc))
+  const page = doc.addPage([400, 120]); page.node.set(PDFName.of('Contents'), pcref); page.node.set(PDFName.of('Resources'), doc.context.obj({ XObject: { Fm0: fref } }))
+  return { bytes: Buffer.from(await doc.save()), bboxW: w }
+}
+async function fm0BBoxWidth(bytes) {
+  const d = await PDFDocument.load(bytes, { updateMetadata: false })
+  const xo = d.getPage(0).node.lookupMaybe(PDFName.of('Resources'), PDFDict).lookupMaybe(PDFName.of('XObject'), PDFDict)
+  const bb = xo.lookup(PDFName.of('Fm0')).dict.lookup(PDFName.of('BBox'))
+  return bb.get(2).asNumber() - bb.get(0).asNumber()
+}
+function mupdfLine(bytes, needle) {
+  const d = mupdf.Document.openDocument(bytes, 'application/pdf')
+  const st = JSON.parse(d.loadPage(0).toStructuredText().asJSON())
+  for (const b of st.blocks ?? []) for (const l of b.lines ?? []) if (l.text && l.text.replace(/\s/g, '').includes(needle)) return { text: l.text, bbox: l.bbox }
+  return null
+}
+for (const scale of [1, 2]) {
+  const { bytes, bboxW } = await buildTightFixture(scale)
+  let box = null, ht = null
+  for (const ln of engine.getAllTextLines(bytes, 0)) {
+    const h = engine.getLineAt(bytes, 0, (ln.x1 + ln.x2) / 2, (ln.y1 + ln.y2) / 2)
+    if (h.found && h.text.replace(/\s/g, '').startsWith('Ab')) { box = ln; ht = h.text }
+  }
+  const before = mupdfLine(bytes, 'Ab')
+  let out = null
+  try { out = await nested.replaceNestedLineAtEx(bytes, 0, ht, 'AbAbAbAb', { x1: box.x1, y1: box.y1, x2: box.x2, y2: box.y2 }) }
+  catch (e) { errs.push(`[bbox-grow scale ${scale}] threw: ${e.message}`) }
+  if (out) {
+    ok(out.outcome === 'in-place-form', `scale ${scale}: stays in-place-form (got ${out.outcome})`)
+    const newW = await fm0BBoxWidth(out.bytes)
+    ok(newW > bboxW + 0.5, `scale ${scale}: form BBox grew (${bboxW.toFixed(1)} → ${newW.toFixed(1)})`)
+    const after = mupdfLine(out.bytes, 'AbAbAbAb')
+    ok(!!after && after.text.replace(/\s/g, '') === 'AbAbAbAb', `scale ${scale}: mupdf renders the FULL widened line (got ${JSON.stringify(after?.text)})`)
+    // mupdf's line bbox width must grow with the glyphs — proves the tail is NOT
+    // clipped (a clipped line keeps the original narrow bbox).
+    ok(!!after && after.bbox.w > before.bbox.w * 1.8, `scale ${scale}: mupdf line width widened ${before.bbox.w.toFixed(1)} → ${after?.bbox.w.toFixed(1)} (tail not clipped)`)
+    ok(opensInMupdf(out.bytes) && (await opensInPdfjs(out.bytes)) !== null, `scale ${scale}: result opens in mupdf + pdfjs`)
+  }
+}
+
+// ── Cap 3 (real): the reported CV(4) substitute bug, tri-engine + full-extent ink ──
+// "Bucharest" → "Bucharest, Romania" on the nested InriaSerif info-bar line. Inria is
+// NOT installed → substitute tier (Constantia). The field's Form XObject BBox tightly
+// bounds "Bucharest"; the inserted ", Romania" used to be clipped so mupdf render +
+// structured-text dropped it while PDFium/PDF.js still read the codes. DoD: all three
+// engines read the full line AND mupdf ink covers the FULL widened extent.
+const CV4 = 'C:/Users/emiso/Downloads/Emem Ndon CV (4).pdf'
+console.log('\n=== Cap 3 (real): CV(4) Bucharest → Bucharest, Romania (substitute + BBox) ===')
+if (!existsSync(CV4)) { console.log('  SKIP - not present:', CV4) }
+else {
+  const bytes = readFileSync(CV4)
+  let box = null, out = null
+  for (const ln of engine.getAllTextLines(bytes, 0)) {
+    let h; try { h = engine.getLineAt(bytes, 0, (ln.x1 + ln.x2) / 2, (ln.y1 + ln.y2) / 2) } catch { continue }
+    if (h.found && h.text === 'Bucharest') { box = ln; break }
+  }
+  ok(!!box, 'found the nested "Bucharest" line')
+  if (box) {
+    try { out = await nested.replaceNestedLineAtEx(bytes, 0, 'Bucharest', 'Bucharest, Romania', { x1: box.x1, y1: box.y1, x2: box.x2, y2: box.y2 }) }
+    catch (e) { errs.push('[CV4] threw: ' + e.message) }
+  }
+  if (out) {
+    ok(out.outcome === 'in-place-substituted', `outcome is in-place-substituted (got ${out.outcome})`)
+    const FULL = 'Bucharest, Romania'
+    // (a) mupdf structured text — splits the info bar into per-field lines, so the
+    // edited field reads back as EXACTLY the full string.
+    const mu = mupdfLine(out.bytes, 'Bucharest')
+    ok(!!mu && mu.text.trim() === FULL, `(a) mupdf structured text reads the full line (got ${JSON.stringify(mu?.text)})`)
+    // (b) PDF.js getTextContent and (c) PDFium getLineAt read the whole visual row
+    // (all info-bar fields concatenated), so assert the full string is contained.
+    const pj = await opensInPdfjs(out.bytes)
+    ok(typeof pj === 'string' && pj.includes(FULL), '(b) PDF.js getTextContent contains the full edited line')
+    const pdfium = engine.getLineAt(out.bytes, 0, (box.x1 + box.x2) / 2, (box.y1 + box.y2) / 2)
+    ok(pdfium.found && pdfium.text.includes(FULL), '(c) PDFium getLineAt contains the full edited line')
+    // Full-extent INK: render the edited field's line band and confirm the substitute
+    // run's WHITE glyphs reach the far end of the new mupdf line bbox — not just "some
+    // ink somewhere" (the earlier weak proof passed while ' Romania' was blank).
+    const d = mupdf.Document.openDocument(out.bytes, 'application/pdf')
+    const pg = d.loadPage(0)
+    const s = 6
+    const pix = pg.toPixmap(mupdf.Matrix.scale(s, s), mupdf.ColorSpace.DeviceRGB, false)
+    const W = pix.getWidth(), src = Buffer.from(pix.getPixels())
+    const bx = mu.bbox
+    const y1 = Math.floor(bx.y * s), y2 = Math.ceil((bx.y + bx.h) * s)
+    const isWhite = (o) => src[o] > 230 && src[o + 1] > 230 && src[o + 2] > 230
+    let rightmost = -1
+    for (let x = Math.floor(bx.x * s); x < Math.ceil((bx.x + bx.w) * s) && x < W; x++) {
+      for (let y = y1; y < y2; y++) { if (isWhite((y * W + x) * 3)) { rightmost = x / s; break } }
+    }
+    // mupdf line bbox already grew to include ", Romania"; ink must reach ≥90% of it.
+    ok(rightmost >= bx.x + bx.w * 0.90, `white ink covers the FULL widened extent (rightmost ink x ${rightmost.toFixed(1)} of [${bx.x.toFixed(1)}..${(bx.x + bx.w).toFixed(1)}])`)
+  }
+}
+
 console.log('\n=== RESULT ===')
 if (errs.length === 0) console.log('  PASS — duplicate disambiguation + explicit substitute tier both hold.')
 else { errs.forEach(e => console.log('  FAIL - ' + e)); process.exitCode = 1 }

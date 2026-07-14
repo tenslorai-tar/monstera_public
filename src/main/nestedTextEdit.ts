@@ -261,6 +261,9 @@ interface Glyph {
   adv: { end: number; tx: number; ty: number } | null
   tjUnits?: TJUnit[]
   tjKernAfter?: Map<number, number>
+  // Text matrix in effect at this glyph (in the CTM space active at the block's BT).
+  // Used to map the edited run's extent into the form's BBox space for clip growth.
+  tm: Mat
 }
 // originX/originY: the first glyph's baseline origin in this form's CONTENT space
 // (from the text matrix in effect at that glyph). size: that glyph's font size.
@@ -350,12 +353,12 @@ function extractBlocks(toks: Tok[], fonts: Map<string, FontInfo>): Block[] {
       if (lastStr) {
         captureOrigin()
         const d = map ? decode2(lastStr.bytes ?? '', map.fwd) : { chars: '�', codes: [] }
-        glyphs.push({ chars: d.chars, codes: d.codes, tjStart: lastStr.start, tjEnd: t.end, font: curFont, size: curSize, usesTJ: false, adv: null })
+        glyphs.push({ chars: d.chars, codes: d.codes, tjStart: lastStr.start, tjEnd: t.end, font: curFont, size: curSize, usesTJ: false, adv: null, tm: tm.slice() as Mat })
       }
       resetOperands(); continue
     }
     if (op === 'TJ') {
-      const g = reconstructTJ(toks, k, fonts.get(curFont), curFont, curSize)
+      const g = reconstructTJ(toks, k, fonts.get(curFont), curFont, curSize, tm)
       if (g) { captureOrigin(); glyphs.push(g) }
       resetOperands(); continue
     }
@@ -367,7 +370,7 @@ function extractBlocks(toks: Tok[], fonts: Map<string, FontInfo>): Block[] {
 
 // Decode a TJ array into a single glyph carrying its per-unit codes/chars and the
 // kern number after each unit, so an in-array edit can preserve untouched kerns.
-function reconstructTJ(toks: Tok[], opIndex: number, map: FontInfo | undefined, font: string, size: number): Glyph | null {
+function reconstructTJ(toks: Tok[], opIndex: number, map: FontInfo | undefined, font: string, size: number, tm: Mat): Glyph | null {
   let j = opIndex - 1
   while (j >= 0 && toks[j].type !== 'arr_close') j--
   if (j < 0) return null
@@ -394,7 +397,7 @@ function reconstructTJ(toks: Tok[], opIndex: number, map: FontInfo | undefined, 
   }
   return {
     chars, codes, tjStart: toks[open].start, tjEnd: toks[opIndex].end,
-    font, size, usesTJ: true, adv: null, tjUnits: units, tjKernAfter: kernAfter,
+    font, size, usesTJ: true, adv: null, tjUnits: units, tjKernAfter: kernAfter, tm: tm.slice() as Mat,
   }
 }
 
@@ -461,6 +464,53 @@ function formMatrix(stream: PDFRawStream): Mat {
   const v: number[] = []
   for (let i = 0; i < 6; i++) { const n = m.get(i); v.push(n instanceof PDFNumber ? n.asNumber() : (i === 0 || i === 3 ? 1 : 0)) }
   return v as Mat
+}
+
+// The CTM in effect at byte `offset` within a form's content stream, from the q/Q/cm
+// operators before it. Text positions captured in Glyph.tm are relative to THIS CTM
+// (extractBlocks resets the text matrix at each BT but does not track cm), so mapping
+// a glyph's text-space point into the form's BBox space requires composing with it.
+function ctmAt(content: string, offset: number): Mat {
+  const toks = lex(content)
+  const stack: Mat[] = []
+  let cur: Mat = IDENT
+  const nums: number[] = []
+  for (const t of toks) {
+    if (t.start >= offset) break
+    if (t.type === 'num') { nums.push(parseFloat(t.text)); continue }
+    if (t.type !== 'op') { nums.length = 0; continue }
+    const op = t.text
+    if (op === 'q') stack.push(cur)
+    else if (op === 'Q') { const p = stack.pop(); if (p) cur = p }
+    else if (op === 'cm') { if (nums.length >= 6) cur = mul(cur, nums.slice(-6) as Mat) }
+    nums.length = 0
+  }
+  return cur
+}
+
+// Enlarge the form's /BBox (its clip rectangle) so every point in `extentPoints`
+// (given in the form's CTM-at-BT / Glyph.tm space, hence composed with `ctm`) lies
+// inside it. Only ever grows the box — never shrinks it — and is a no-op when the new
+// content already fits. When the form has no /BBox there is no clip to grow.
+function growBBoxToFit(
+  doc: PDFDocument, form: FormStream, ctm: Mat, extentPoints: Array<{ x: number; y: number }>,
+): void {
+  const bb = form.stream.dict.lookupMaybe(PDFName.of('BBox'), PDFArray)
+  if (!bb || bb.size() < 4) return
+  const at = (i: number): number => { const n = bb.get(i); return n instanceof PDFNumber ? n.asNumber() : 0 }
+  let minX = Math.min(at(0), at(2)), maxX = Math.max(at(0), at(2))
+  let minY = Math.min(at(1), at(3)), maxY = Math.max(at(1), at(3))
+  const pad = 1
+  let grew = false
+  for (const p of extentPoints) {
+    const q = applyMat(ctm, p.x, p.y)
+    if (!Number.isFinite(q.x) || !Number.isFinite(q.y)) continue
+    if (q.x > maxX) { maxX = q.x + pad; grew = true }
+    if (q.x < minX) { minX = q.x - pad; grew = true }
+    if (q.y > maxY) { maxY = q.y + pad; grew = true }
+    if (q.y < minY) { minY = q.y - pad; grew = true }
+  }
+  if (grew) form.stream.dict.set(PDFName.of('BBox'), doc.context.obj([minX, minY, maxX, maxY]))
 }
 
 // Concatenate a page's content stream bytes (Contents may be a single stream or an array).
@@ -737,6 +787,15 @@ export async function replaceNestedLineAtEx(
   const glue = edit.replacement && after && !WS.has(after[0]) ? '\n' : ''
   const newContent = before + edit.replacement + glue + after
 
+  // Grow the form's /BBox if the (possibly lengthened) edit now extends past it. A
+  // Form XObject's BBox is a hard clip: text drawn beyond it is silently truncated by
+  // renderers that honour the clip (mupdf) even though text-extraction engines that
+  // ignore it (PDFium, PDF.js) still read the codes. A tightly-bounded field ("City")
+  // that we extend ("City, Country") must therefore enlarge the clip or the tail
+  // vanishes. Enlarging only ever reveals more of the form's own content (there is
+  // nothing else beyond a field's own bound), so it is safe.
+  growBBoxToFit(doc, target.form, ctmAt(target.form.content, edit.removeStart), edit.extentPoints)
+
   const deflated = zlib.deflateSync(Buffer.from(newContent, 'latin1'))
   const newStream = PDFRawStream.of(target.form.stream.dict, new Uint8Array(deflated))
   newStream.dict.set(PDFName.of('Length'), doc.context.obj(deflated.length))
@@ -756,7 +815,41 @@ export async function replaceNestedLineAtEx(
   return { bytes: outBytes, outcome: edit.outcome, substituteFamily: edit.substituteFamily }
 }
 
-interface BlockEdit { removeStart: number; removeEnd: number; replacement: string; outcome: NestedOutcome; expectBlockText: string; substituteFamily?: string }
+interface BlockEdit {
+  removeStart: number; removeEnd: number; replacement: string; outcome: NestedOutcome
+  expectBlockText: string; substituteFamily?: string
+  // Extent of the edited content in the CTM space active at the block's BT (i.e.
+  // Glyph.tm space). Composed with ctmAt(removeStart) these give the new content's
+  // corners in the form's BBox space, so a lengthened line can grow the BBox clip
+  // instead of being truncated by it (see maybeGrowBBox).
+  extentPoints: Array<{ x: number; y: number }>
+}
+
+// Corners (glyph-local → CTM-at-BT space) spanning a run of length `runLen` in text
+// space at matrix `tm`, padded to the font's ascent/descent so the whole glyph box is
+// covered — not just the baseline.
+function runExtentPoints(tm: Mat, runLen: number, fontSize: number): Array<{ x: number; y: number }> {
+  const asc = Math.abs(fontSize), desc = -0.35 * Math.abs(fontSize)
+  const pts: Array<{ x: number; y: number }> = []
+  for (const lx of [0, runLen]) for (const ly of [desc, asc]) pts.push(applyMat(tm, lx, ly))
+  return pts
+}
+
+// Extent (in Glyph.tm space) of the edited content: the new run's box, plus — when the
+// edit lengthens the line (delta>0) so the kept tail shifts right — the shifted far
+// end of the block's last glyph, so a grown line is never clipped by the form BBox.
+function editExtentPoints(
+  firstTm: Mat, newRunLen: number, fontSize: number, delta: number, block: Block, form: FormStream,
+): Array<{ x: number; y: number }> {
+  const pts = runExtentPoints(firstTm, newRunLen, fontSize)
+  if (delta > 0 && block.glyphs.length) {
+    const gL = block.glyphs[block.glyphs.length - 1]
+    const fi = form.fonts.get(gL.font)
+    const wL = fi ? runAdvance(gL.codes, fi, gL.size) : gL.chars.length * 0.6 * gL.size
+    pts.push(...runExtentPoints(gL.tm, wL + delta, gL.size))
+  }
+  return pts
+}
 
 async function buildBlockEdit(
   doc: PDFDocument, target: Target, newMiddle: string,
@@ -792,7 +885,7 @@ async function buildBlockEdit(
   // TJ path: only when the whole change is inside a single TJ operator.
   if (changed.some(s => s.g.usesTJ)) {
     if (changed.length !== 1 || !changed[0].g.usesTJ) throw new Error('edit spans a TJ array and other runs; cannot edit in place')
-    return buildTJEdit(changed[0], localCs, localCe, newMiddle, block, fontInfo, expectBlockText)
+    return buildTJEdit(changed[0], localCs, localCe, newMiddle, block, fontInfo, expectBlockText, form)
   }
 
   // Plain Tj path (v1 behaviour, extended with subset-font fallback).
@@ -818,6 +911,7 @@ async function buildBlockEdit(
   }
 
   const oldCodes = changed.flatMap(s => s.g.codes)
+  const oldWidth = runAdvance(oldCodes, fontInfo, fontSize)
 
   const enc = encodeCodes(editText, block, fontInfo)
   if (enc !== null) {
@@ -825,7 +919,8 @@ async function buildBlockEdit(
     const tj = editText ? `<${enc.hex}> Tj` : ''
     const foldOp = followedByKeptGlyph ? `${fmtNum(foldX)} 0 Td` : ''
     const replacement = [tj, foldOp].filter(Boolean).join('\n')
-    return { removeStart, removeEnd, replacement, outcome: 'in-place-form', expectBlockText }
+    const extentPoints = editExtentPoints(first.g.tm, foldX, fontSize, foldX - oldWidth, block, form)
+    return { removeStart, removeEnd, replacement, outcome: 'in-place-form', expectBlockText, extentPoints }
   }
 
   // Tier 1 — subset-font glyph EXTENSION: the embedded font's own family IS
@@ -849,24 +944,25 @@ async function buildBlockEdit(
 
   const extKey = ensureExtendedFontKey(doc, form, ext.ref)
   const newHex = ext.encodeHex(editText)
-  const oldWidth = runAdvance(oldCodes, fontInfo, fontSize)
   const newWidth = ext.widthOfText(editText, fontSize)
   const delta = newWidth - oldWidth
   // Restore the original font resource after the run so following glyphs (if any)
-  // keep rendering in the document's own subset font.
-  const restore = `/${font} ${fmtNum(fontSize)} Tf`
+  // keep rendering in the document's own subset font. `font` already carries its
+  // leading slash (it is the raw /Name token), so do NOT prefix another one.
+  const restore = `${font} ${fmtNum(fontSize)} Tf`
   const tj = `/${extKey} ${fmtNum(fontSize)} Tf\n<${newHex}> Tj\n${restore}`
   // When kept glyphs follow, keep their ORIGINAL inter-glyph Td but insert a fold so
   // the tail shifts by exactly the width delta of the changed run.
   const foldOp = followedByKeptGlyph ? `${fmtNum(oldWidth + delta)} 0 Td` : ''
   const replacement = [tj, foldOp].filter(Boolean).join('\n')
-  return { removeStart, removeEnd, replacement, outcome, expectBlockText, substituteFamily }
+  const extentPoints = editExtentPoints(first.g.tm, newWidth, fontSize, delta, block, form)
+  return { removeStart, removeEnd, replacement, outcome, expectBlockText, substituteFamily, extentPoints }
 }
 
 // Rewrite a single TJ operator, preserving untouched glyphs' kerning numbers.
 function buildTJEdit(
   span: { g: Glyph; start: number; end: number }, localCs: number, localCe: number,
-  newMiddle: string, block: Block, fontInfo: FontInfo, expectBlockText: string,
+  newMiddle: string, block: Block, fontInfo: FontInfo, expectBlockText: string, form: FormStream,
 ): BlockEdit {
   const g = span.g
   const units = g.tjUnits ?? []
@@ -900,7 +996,14 @@ function buildTJEdit(
 
   const arr = elems.map(e => (e.s ? `<${e.hex}>` : ` ${fmtNum(e.num)} `)).join('')
   const replacement = `[${arr}] TJ`
-  return { removeStart: g.tjStart, removeEnd: g.tjEnd, replacement, outcome: 'in-place-form', expectBlockText }
+  // Width delta of the changed units, for BBox growth when the line lengthens (kerning
+  // numbers are ignored — negligible for a clip pad, and TJ kerns are small).
+  const oldMid = units.slice(a, b).map(u => u.code)
+  const delta = runAdvance(encMiddle.codes, fontInfo, g.size) - runAdvance(oldMid, fontInfo, g.size)
+  const newAllCodes = [...units.slice(0, a).map(u => u.code), ...encMiddle.codes, ...units.slice(b).map(u => u.code)]
+  const runLen = runAdvance(newAllCodes, fontInfo, g.size)
+  const extentPoints = editExtentPoints(g.tm, runLen, g.size, delta, block, form)
+  return { removeStart: g.tjStart, removeEnd: g.tjEnd, replacement, outcome: 'in-place-form', expectBlockText, extentPoints }
 }
 
 // Add `ref` to the form's Resources/Font dict under a fresh key and return it.

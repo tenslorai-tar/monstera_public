@@ -148,6 +148,33 @@ interface FKFace {
 }
 
 let metricIndex: FontMetric[] | null = null
+// In-flight build so concurrent callers await ONE build (never parse twice at once).
+let metricBuildPromise: Promise<FontMetric[]> | null = null
+// Directory for the persistent parsed-metric cache (app userData). Unset in tests,
+// where persistence is simply skipped.
+let fontCacheDir: string | null = null
+
+// One persisted cache entry per registry font NAME: the file it resolved to plus its
+// size+mtime (the invalidation key) and the parsed metric. A launch reuses entries
+// whose file is byte-for-byte unchanged and only re-parses new/changed files.
+interface MetricCacheEntry { path: string; size: number; mtime: number; metric: FontMetric }
+type MetricCache = Record<string, MetricCacheEntry>
+
+export function setFontCacheDir(dir: string): void { fontCacheDir = dir }
+
+function metricCacheFile(): string | null {
+  return fontCacheDir ? path.join(fontCacheDir, 'font-metric-cache.json') : null
+}
+function loadMetricCache(): MetricCache {
+  const p = metricCacheFile()
+  if (!p) return {}
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')) as MetricCache } catch { return {} }
+}
+function saveMetricCache(c: MetricCache): void {
+  const p = metricCacheFile()
+  if (!p) return
+  try { fs.writeFileSync(p, JSON.stringify(c)) } catch { /* cache is best-effort */ }
+}
 
 // serif class from OS/2 sFamilyClass (authoritative) then PANOSE, then name.
 export function classifySerif(sFamilyClass: number | undefined, panose: number[] | Uint8Array | undefined, name: string): boolean {
@@ -221,6 +248,72 @@ function buildMetricIndex(): FontMetric[] {
     try { const m = faceMetric(face, regName, filePath); if (m) out.push(m) } catch { /* skip unparseable metrics */ }
   }
   return out
+}
+
+// Async twin of buildMetricIndex: reuses the persistent cache for unchanged files,
+// re-parses only new/changed ones, and yields to the event loop between files so a
+// warmup (or a cold first edit) never blocks IPC for the whole parse. Result and the
+// refreshed cache are written back only when something actually changed.
+async function buildMetricIndexAsync(): Promise<FontMetric[]> {
+  if (!index) index = buildIndex()
+  const out: FontMetric[] = []
+  if (process.platform !== 'win32' || index.size === 0) return out
+  const cache = loadMetricCache()
+  const next: MetricCache = {}
+  const parsedByPath = new Map<string, FKFace | null>()
+  let changed = false
+  let seen = 0
+  for (const [regName, filePath] of index) {
+    const lower = filePath.toLowerCase()
+    if (lower.endsWith('.fon') || lower.endsWith('.pfb') || lower.endsWith('.pfm') || lower.endsWith('.pfa')) continue
+    let st: fs.Stats
+    try { st = fs.statSync(filePath) } catch { changed = true; continue }
+    const hit = cache[regName]
+    if (hit && hit.path === filePath && hit.size === st.size && hit.mtime === st.mtimeMs && hit.metric) {
+      out.push(hit.metric); next[regName] = hit
+    } else {
+      let parsed = parsedByPath.get(filePath)
+      if (parsed === undefined) {
+        try { parsed = fontkit.create(fs.readFileSync(filePath)) as unknown as FKFace } catch { parsed = null }
+        parsedByPath.set(filePath, parsed)
+      }
+      if (parsed) {
+        const face = parsed.fonts && parsed.fonts.length ? pickFace(parsed.fonts, regName) : parsed
+        try {
+          const m = faceMetric(face, regName, filePath)
+          if (m) { out.push(m); next[regName] = { path: filePath, size: st.size, mtime: st.mtimeMs, metric: m }; changed = true }
+        } catch { /* skip unparseable metrics */ }
+      } else changed = true
+    }
+    if ((++seen % 12) === 0) await new Promise<void>(r => setImmediate(r))
+  }
+  if (Object.keys(cache).length !== Object.keys(next).length) changed = true
+  if (changed) saveMetricCache(next)
+  return out
+}
+
+/**
+ * Resolve the metric index, building it once in the background if needed. Concurrent
+ * callers share a single in-flight build. Cheap (returns immediately) once warm.
+ */
+export function ensureMetricIndex(): Promise<FontMetric[]> {
+  if (metricIndex) return Promise.resolve(metricIndex)
+  if (!metricBuildPromise) {
+    metricBuildPromise = buildMetricIndexAsync()
+      .then(m => { metricIndex = m; return m })
+      .catch(e => { metricBuildPromise = null; throw e })
+  }
+  return metricBuildPromise
+}
+
+/**
+ * Kick off the substitute-font metric index a few seconds after startup so it is warm
+ * before the first Edit Text substitute, without competing with first-frame work.
+ * Pass the app's userData dir to enable the cross-launch parsed-metric cache.
+ */
+export function warmSubstituteFontIndex(cacheDir?: string): void {
+  if (cacheDir) setFontCacheDir(cacheDir)
+  setTimeout(() => { void ensureMetricIndex().catch(() => { /* warmup is best-effort */ }) }, 4000)
 }
 
 function scoreMetric(q: SubstituteQuery, f: FontMetric): number {
