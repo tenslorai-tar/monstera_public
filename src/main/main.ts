@@ -8,6 +8,7 @@ import * as spell from './spell'
 import * as mupdfOps from './mupdfOps'
 import * as trocr from './trocrEngine'
 import { convertToPdfA } from './pdfaExport'
+import { buildParagraphsDocx, type DocxPage } from './docxParagraphs'
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
@@ -1850,21 +1851,30 @@ ipcMain.handle('export:toXlsx', async (_event, bytes: ArrayBuffer): Promise<Arra
 // ── Azure Document Intelligence: layout analysis (tables + handwriting OCR) ──
 // Runs in the main process to avoid CORS; the renderer maps the raw result.
 
-ipcMain.handle('azure:layoutAnalyze', async (_event, bytes: ArrayBuffer, endpoint: string, key: string, pages: string): Promise<unknown> => {
+// Shared analyze-and-poll for any Document Intelligence prebuilt model
+// (`prebuilt-layout` for tables, `prebuilt-read` for handwriting prose).
+async function azureAnalyze(model: string, bytes: ArrayBuffer, endpoint: string, key: string, pages: string): Promise<unknown> {
   const base = endpoint.trim().replace(/\/+$/, '')
   if (!/^https:\/\//i.test(base)) throw new Error('Azure endpoint must be an https:// URL (copy it from the Azure portal, "Keys and Endpoint").')
+  if (!key.trim()) throw new Error('Azure key is missing — add it in Settings → API keys.')
   const pagesQ = pages ? `&pages=${encodeURIComponent(pages)}` : ''
   const body = JSON.stringify({ base64Source: Buffer.from(bytes).toString('base64') })
   const headers = { 'Content-Type': 'application/json', 'Ocp-Apim-Subscription-Key': key }
 
-  let res = await fetch(`${base}/documentintelligence/documentModels/prebuilt-layout:analyze?api-version=2024-11-30${pagesQ}`,
+  let res = await fetch(`${base}/documentintelligence/documentModels/${model}:analyze?api-version=2024-11-30${pagesQ}`,
     { method: 'POST', headers, body })
   if (res.status === 404) {
-    // Older Form Recognizer resources expose the same model on the v3.1 path.
-    res = await fetch(`${base}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31${pagesQ}`,
+    // Older Form Recognizer resources expose the same models on the v3.1 path.
+    res = await fetch(`${base}/formrecognizer/documentModels/${model}:analyze?api-version=2023-07-31${pagesQ}`,
       { method: 'POST', headers, body })
   }
   if (res.status === 401 || res.status === 403) throw new Error('Azure rejected the key — check the key and that the endpoint matches the resource region.')
+  if (res.status === 429) throw new Error('Azure rate limit reached (free F0 tier). Wait a minute, or reduce the page range, and try again.')
+  if (res.status === 400) {
+    const detail = (await res.text()).slice(0, 300)
+    if (/page/i.test(detail)) throw new Error('Azure rejected the request — the free F0 tier reads only the first 2 pages per call. Select a smaller page range.')
+    throw new Error(`Azure error 400: ${detail}`)
+  }
   if (res.status !== 202) throw new Error(`Azure error ${res.status}: ${(await res.text()).slice(0, 300)}`)
   const opLoc = res.headers.get('operation-location')
   if (!opLoc) throw new Error('Azure did not return an Operation-Location header.')
@@ -1872,12 +1882,19 @@ ipcMain.handle('azure:layoutAnalyze', async (_event, bytes: ArrayBuffer, endpoin
   for (let i = 0; i < 80; i++) {
     await new Promise(r => setTimeout(r, 1500))
     const poll = await fetch(opLoc, { headers: { 'Ocp-Apim-Subscription-Key': key } })
+    if (poll.status === 429) continue
     const j = await poll.json() as { status: string; analyzeResult?: unknown; error?: unknown }
     if (j.status === 'succeeded') return j.analyzeResult ?? {}
     if (j.status === 'failed') throw new Error(`Azure analysis failed: ${JSON.stringify(j.error ?? {}).slice(0, 300)}`)
   }
   throw new Error('Azure analysis timed out after 2 minutes.')
-})
+}
+
+ipcMain.handle('azure:layoutAnalyze', (_event, bytes: ArrayBuffer, endpoint: string, key: string, pages: string): Promise<unknown> =>
+  azureAnalyze('prebuilt-layout', bytes, endpoint, key, pages))
+
+ipcMain.handle('azure:readAnalyze', (_event, bytes: ArrayBuffer, endpoint: string, key: string, pages: string): Promise<unknown> =>
+  azureAnalyze('prebuilt-read', bytes, endpoint, key, pages))
 
 ipcMain.handle('pdfium:styledRuns', (_event, bytes: ArrayBuffer, pageIndex: number) =>
   pdfium.getStyledTextRuns(Buffer.from(bytes), pageIndex))
@@ -1904,6 +1921,12 @@ ipcMain.handle('trocr:setup', async (_event, model?: string) => {
 
 ipcMain.handle('trocr:recognize', async (_event, png: ArrayBuffer, model?: string): Promise<string> =>
   trocrConfigured().recognizePng(Buffer.from(png), trocrModelId(model)))
+
+// Handwriting → Word: assemble recognized paragraphs into an editable .docx.
+ipcMain.handle('export:paragraphsToDocx', async (_event, pages: DocxPage[]): Promise<ArrayBuffer> => {
+  const buf = await buildParagraphsDocx(pages)
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
+})
 
 // ── Open/Save file dialog accepting multiple types (for Office import) ────────
 
