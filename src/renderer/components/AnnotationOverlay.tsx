@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { usePdfStore } from '../store/usePdfStore'
 import { useSettingsStore } from '../store/useSettingsStore'
-import { toast } from '../store/useToastStore'
 import ContextMenu, { type ContextMenuEntry } from './ContextMenu'
 import { canvasToPdf, pdfToCanvas, newId } from '../utils/annotationUtils'
 import { loadPdfFont, bytesToBase64 } from '../utils/pdfFonts'
@@ -1363,13 +1362,10 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
           const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
           const res = await window.electronAPI.pdfiumReplaceLine(ab, pageNum - 1, d.linePoint.x, d.linePoint.y, text, d.lineBBox)
           await store.applyContentEdit(new Uint8Array(res.bytes), pageNum)
-          // Tell the user which fidelity the edit landed on — a silent substitution
-          // used to look like "nothing happened but the font changed".
-          if (res.outcome === 'in-place') toast.success('Edited in the original font')
-          else if (res.outcome === 'in-place-form') toast.success('Edited in place (inside form)')
-          else if (res.outcome === 'in-place-extended') toast.success('Edited in place (font extended)')
-          else if (res.outcome === 'in-place-substituted') toast.info(`Edited in place (closest matching font${res.substituteFamily ? ` — ${res.substituteFamily}` : ''} — original font not installed)`)
-          else if (res.outcome === 'substituted') toast.info(`Original font couldn't render the new text — substituted ${res.substituteFamily || 'a matching font'}`)
+          // Outcome (in-place / extended / substituted) is deliberately not
+          // surfaced — substitution is silent, like Acrobat/XChange (user
+          // request 2026-07-14). The outcome still reaches the log below.
+          logger.debug('line edit outcome', res.outcome, res.substituteFamily)
           return
         }
       } catch (err) {
@@ -1402,7 +1398,6 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
     // overlay, redrawn in the document's OWN embedded font (fontDataB64) at the
     // original baseline, or a base-14 match when the font can't be embedded.
     // Never rewrites existing page content, so it can't corrupt other fonts.
-    if (d.linePoint || d.editPoint || d.editRect) toast.info('Edited with an overlay (the engine could not edit this text in place)')
     const [x, y_top] = toPdf(d.x, d.y)
     const [, y_bot] = toPdf(d.x, d.y + d.h)
     const [x2] = toPdf(d.x + d.w, d.y)
