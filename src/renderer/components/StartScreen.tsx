@@ -35,7 +35,7 @@ export default function StartScreen({
         </div>
         <h1 className="start-title">Monstera</h1>
         <div className="start-subtitle">PDF EDITOR</div>
-        <p className="start-tagline">A modern PDF editor — built for the way you work.</p>
+        <p className="start-tagline">Built For The Way You Work</p>
       </div>
 
       <button className="btn-primary start-open-btn" onClick={onOpen}>
