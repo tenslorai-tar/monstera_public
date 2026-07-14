@@ -11,8 +11,9 @@ interface Props { onClose: () => void }
 
 type ExportTab = 'images' | 'text' | 'docx' | 'xlsx' | 'pdfa' | 'annotations'
 type ImageFormat = 'png' | 'jpeg' | 'webp'
-type DocxMode = 'rich' | 'layout' | 'text'
+type DocxMode = 'rich' | 'layout' | 'text' | 'handwriting'
 type XlsxEngine = 'auto' | 'ocr' | 'trocr' | 'azure'
+type HwEngine = 'trocr' | 'azure'
 
 export default function ExportDialog({ onClose }: Props) {
   const pdfDoc = usePdfStore(s => s.pdfDoc)
@@ -42,6 +43,8 @@ export default function ExportDialog({ onClose }: Props) {
   const [grids, setGrids] = useState<PageGrid[] | null>(null)
   const [gridIdx, setGridIdx] = useState(0)
   const [combineSheets, setCombineSheets] = useState(true)
+  const [hwEngine, setHwEngine] = useState<HwEngine>('trocr')
+  const [hwParas, setHwParas] = useState<Array<{ page: number; paragraphs: string[] }> | null>(null)
 
   useEffect(() => {
     window.electronAPI.pdf2docxStatus().then(s => {
@@ -383,7 +386,7 @@ export default function ExportDialog({ onClose }: Props) {
   // Output is readable text in DOCX format — think "searchable copy", not layout clone.
 
   const exportDocx = async () => {
-    if (!pdfDoc || !pdfBytes) return
+    if (!pdfDoc || !pdfBytes || docxMode === 'handwriting') return
     setBusy(true)
     try {
       const ab = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength) as ArrayBuffer
@@ -406,6 +409,111 @@ export default function ExportDialog({ onClose }: Props) {
       }
     } catch (e: any) {
       setStatus(`Error: ${e?.message ?? 'DOCX export failed'}`)
+    }
+    setBusy(false)
+  }
+
+  // ── Handwriting → Word (TrOCR prose / Azure read) ─────────────────────────
+
+  const recognizeHandwriting = async () => {
+    if (!pdfDoc || !pdfBytes) return
+    const pages = parsePageNums()
+    if (pages.length === 0) { setStatus('No valid pages.'); return }
+    setBusy(true)
+    setHwParas(null)
+    cancelRef.current = false
+    try {
+      const ex = await import('../utils/extractTables')
+
+      if (hwEngine === 'azure') {
+        const endpoint = settings.azureDiEndpoint.trim()
+        const key = settings.azureDiKey.trim()
+        if (!endpoint || !key) { setStatus('Error: add your Azure endpoint and key in Settings (Ctrl+,) → API keys first.'); setBusy(false); return }
+        setStatus('Reading handwriting with Azure (prebuilt-read)…')
+        const ab = pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength) as ArrayBuffer
+        const result = await window.electronAPI.azureReadAnalyze(ab, endpoint, key, pages.join(','))
+        const out = ex.azureReadToParagraphs(result, pages)
+        setHwParas(out)
+        const n = out.filter(g => g.paragraphs.length > 0).length
+        setStatus(n > 0
+          ? `✓ ${n} page${n !== 1 ? 's' : ''} read — edit any text below, then export to Word.`
+          : 'Azure found no readable text on the selected pages.')
+        setBusy(false)
+        return
+      }
+
+      const model = settings.trocrModel === 'small' ? 'small' : 'base'
+      const st = await window.electronAPI.trocrStatus(model)
+      if (!st.ready) {
+        setStatus(st.cached
+          ? 'Loading the local handwriting model…'
+          : `Downloading the ${model === 'base' ? 'best-quality' : 'fast'} handwriting model (one-time, ≈${model === 'base' ? '340' : '80'} MB)…`)
+        await window.electronAPI.trocrSetup(model)
+      }
+      const out: Array<{ page: number; paragraphs: string[] }> = []
+      for (const p of pages) {
+        if (cancelRef.current) break
+        setStatus(`Analyzing the layout of page ${p}…`)
+        const scale = Math.min(200 / 72, 4000 / Math.max(pageSizes[p - 1]?.width ?? 612, pageSizes[p - 1]?.height ?? 792))
+        const img = await renderPagePixels(p, scale)
+        if (!img) { out.push({ page: p, paragraphs: [] }); continue }
+        const seg = ex.segmentTextLines({ data: img.data, width: img.width, height: img.height, channels: 4 })
+        const recognized: Array<{ text: string; y: number; h: number }> = []
+        for (let i = 0; i < seg.lines.length; i++) {
+          if (cancelRef.current) break
+          const line = seg.lines[i]
+          setStatus(`Page ${p}: reading line ${i + 1} / ${seg.lines.length} with the local model…`)
+          const c2 = document.createElement('canvas')
+          c2.width = line.w
+          c2.height = line.h
+          const ictx = c2.getContext('2d')!
+          const id = ictx.createImageData(line.w, line.h)
+          for (let yy = 0; yy < line.h; yy++) {
+            for (let xx = 0; xx < line.w; xx++) {
+              const v = seg.ink[(line.y + yy) * img.width + (line.x + xx)] ? 0 : 255
+              const o = (yy * line.w + xx) * 4
+              id.data[o] = v; id.data[o + 1] = v; id.data[o + 2] = v; id.data[o + 3] = 255
+            }
+          }
+          ictx.putImageData(id, 0, 0)
+          const blob = await new Promise<Blob | null>(res => c2.toBlob(res, 'image/png'))
+          if (!blob) continue
+          const text = await window.electronAPI.trocrRecognize(await blob.arrayBuffer(), model)
+          recognized.push({ text, y: line.y, h: line.h })
+        }
+        out.push({ page: p, paragraphs: ex.groupLinesToParagraphs(recognized) })
+      }
+      if (cancelRef.current) { setStatus('Cancelled.'); setBusy(false); return }
+      setHwParas(out)
+      const n = out.filter(g => g.paragraphs.length > 0).length
+      setStatus(n > 0
+        ? `✓ ${n} page${n !== 1 ? 's' : ''} read with the local handwriting model — edit any text below, then export to Word.`
+        : 'No handwriting found on the selected pages.')
+    } catch (e: any) {
+      setStatus(`Error: ${e?.message ?? 'handwriting recognition failed'}`)
+    }
+    setBusy(false)
+  }
+
+  const updateHwText = (pageIdx: number, value: string) => {
+    setHwParas(hp => {
+      if (!hp) return hp
+      return hp.map((g, i) => i !== pageIdx ? g : { ...g, paragraphs: value.split(/\n{2,}/).map(s => s.trim()).filter(Boolean) })
+    })
+  }
+
+  const exportHandwritingDocx = async () => {
+    if (!hwParas) return
+    setBusy(true)
+    try {
+      const result = await window.electronAPI.paragraphsToDocx(hwParas)
+      const savePath = await window.electronAPI.saveFileDialog(`${baseName}.docx`)
+      if (savePath) {
+        await window.electronAPI.writeFile(savePath, result)
+        setStatus('✓ Word document saved — editable text from the recognized handwriting.')
+      } else setStatus('Cancelled.')
+    } catch (e: any) {
+      setStatus(`Error: ${e?.message ?? 'Word export failed'}`)
     }
     setBusy(false)
   }
@@ -459,7 +567,7 @@ export default function ExportDialog({ onClose }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{
-        width: tab === 'xlsx' && grids ? 760 : 480, maxWidth: '94vw',
+        width: (tab === 'xlsx' && grids) || (tab === 'docx' && docxMode === 'handwriting' && hwParas) ? 760 : 480, maxWidth: '94vw',
         maxHeight: '88vh', display: 'flex', flexDirection: 'column',
       }}>
         <div className="modal-title"><Upload size={18} /> Export</div>
@@ -603,6 +711,7 @@ export default function ExportDialog({ onClose }: Props) {
               {([
                 { id: 'layout', title: 'Keep original design', desc: 'Each page is placed as a high-resolution image — looks exactly like the PDF (colours, photos, columns). Text is not editable.' },
                 { id: 'text',   title: 'Editable text',        desc: 'Reconstructs flowing, editable paragraphs (font size, bold/italic). Best for editing content; the visual layout is not preserved.' },
+                { id: 'handwriting', title: 'Handwriting → editable text', desc: 'Reads handwritten (or scanned) pages with AI — locally or via Azure — into editable paragraphs. Review and fix the text before exporting.' },
               ] as const).map(opt => (
                 <label key={opt.id}
                   style={{
@@ -612,7 +721,7 @@ export default function ExportDialog({ onClose }: Props) {
                     background: docxMode === opt.id ? 'var(--accent-dim)' : 'transparent',
                   }}>
                   <input type="radio" name="docxMode" checked={docxMode === opt.id}
-                    onChange={() => setDocxMode(opt.id)} style={{ marginTop: 2 }} />
+                    onChange={() => { setDocxMode(opt.id); setHwParas(null) }} style={{ marginTop: 2 }} />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: docxMode === opt.id ? 'var(--accent)' : 'var(--text-primary)' }}>{opt.title}</div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.45 }}>{opt.desc}</div>
@@ -621,10 +730,118 @@ export default function ExportDialog({ onClose }: Props) {
               ))}
             </div>
 
-            <p style={{ fontSize: 11.5, color: 'var(--text-dim)', margin: 0, lineHeight: 1.5 }}>
-              <strong style={{ color: 'var(--text-muted)' }}>PowerPoint (.pptx)</strong> places a crisp snapshot of each
-              page on its own slide — looks exactly like the PDF and never needs repair.
-            </p>
+            {docxMode === 'handwriting' && !hwParas && (
+              <div style={{ marginBottom: 14 }}>
+                <div className="modal-field">
+                  <label className="modal-label">Pages</label>
+                  <input className="modal-input" value={pageRange}
+                    onChange={e => { setPageRange(e.target.value); setHwParas(null) }}
+                    placeholder={`all  or  1-3, 5  (1–${numPages})`} />
+                </div>
+
+                <label className="modal-label" style={{ display: 'block', marginBottom: 6 }}>Handwriting engine</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+                  {([
+                    { id: 'trocr', title: 'Local handwriting (offline)', desc: 'Reads handwriting with an AI model on this PC — private, no cloud, no key. One-time model download; slower, so check the text before export.' },
+                    { id: 'azure', title: 'Azure AI (read, cloud)',      desc: 'Cloud analysis with the best handwriting accuracy. Needs a free Azure Document Intelligence key.' },
+                  ] as const).map(opt => (
+                    <label key={opt.id}
+                      style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
+                        padding: '7px 11px', borderRadius: 8,
+                        border: `1px solid ${hwEngine === opt.id ? 'var(--accent)' : 'var(--border)'}`,
+                        background: hwEngine === opt.id ? 'var(--accent-dim)' : 'transparent',
+                      }}>
+                      <input type="radio" name="hwEngine" checked={hwEngine === opt.id}
+                        onChange={() => { setHwEngine(opt.id); setHwParas(null) }} style={{ marginTop: 2 }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 600, color: hwEngine === opt.id ? 'var(--accent)' : 'var(--text-primary)' }}>{opt.title}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1, lineHeight: 1.4 }}>{opt.desc}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+
+                {hwEngine === 'trocr' && (
+                  <div style={{ margin: '0 0 6px', padding: '8px 11px', border: '1px solid var(--border)', borderRadius: 8 }}>
+                    <label className="modal-label" style={{ display: 'block', marginBottom: 5 }}>Model quality</label>
+                    {([
+                      { id: 'base',  title: 'Best quality (recommended)', desc: 'Reads words more reliably and invents far less text. One-time ≈340 MB download; a little slower per line.' },
+                      { id: 'small', title: 'Fast',                       desc: 'Smaller one-time download (≈80 MB) and quicker, but misreads more.' },
+                    ] as const).map(opt => (
+                      <label key={opt.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', padding: '3px 0' }}>
+                        <input type="radio" name="hwTrocrModel" checked={(settings.trocrModel === 'small' ? 'small' : 'base') === opt.id}
+                          onChange={() => { updateSettings({ trocrModel: opt.id }); setHwParas(null) }} style={{ marginTop: 2 }} />
+                        <div>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{opt.title}</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}> — {opt.desc}</span>
+                        </div>
+                      </label>
+                    ))}
+                    <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '5px 0 0' }}>
+                      After the one-time download the model works offline. Each line is read individually, so a dense page can take a few minutes.
+                    </p>
+                  </div>
+                )}
+
+                {hwEngine === 'azure' && (
+                  <p style={{ fontSize: 11, color: settings.azureDiEndpoint.trim() && settings.azureDiKey.trim() ? 'var(--text-muted)' : 'var(--warning)', margin: '0 0 6px' }}>
+                    {settings.azureDiEndpoint.trim() && settings.azureDiKey.trim()
+                      ? '✓ Azure is configured — manage the endpoint and key in Settings (Ctrl+,) → API keys.'
+                      : 'Not configured yet: add your Azure Document Intelligence endpoint and key in Settings (Ctrl+,) → API keys. The free tier reads only the first 2 pages per call.'}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {docxMode === 'handwriting' && hwParas && (() => {
+              const g = hwParas[Math.min(gridIdx, hwParas.length - 1)]
+              return (
+                <div style={{ marginTop: 4, marginBottom: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, fontSize: 12, color: 'var(--text-muted)' }}>
+                    <span>Engine: <strong style={{ color: 'var(--text-primary)' }}>{hwEngine === 'trocr' ? `Local (${settings.trocrModel === 'small' ? 'fast' : 'best quality'})` : 'Azure AI'}</strong> · Pages: {pageRange}</span>
+                    <button onClick={() => { setHwParas(null); setStatus('') }}
+                      style={{ border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', borderRadius: 999, padding: '2px 10px', fontSize: 11, cursor: 'pointer' }}>
+                      Change options
+                    </button>
+                  </div>
+                  {hwParas.length > 1 && (
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+                      {hwParas.map((gg, i) => (
+                        <button key={gg.page} onClick={() => setGridIdx(i)}
+                          style={{
+                            padding: '3px 10px', fontSize: 11, cursor: 'pointer', borderRadius: 999,
+                            border: `1px solid ${i === gridIdx ? 'var(--accent)' : 'var(--border)'}`,
+                            background: i === gridIdx ? 'var(--accent)' : 'transparent',
+                            color: i === gridIdx ? '#fff' : 'var(--text-muted)',
+                          }}>
+                          Page {gg.page}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <textarea
+                    value={g ? g.paragraphs.join('\n\n') : ''}
+                    onChange={e => updateHwText(Math.min(gridIdx, hwParas.length - 1), e.target.value)}
+                    spellCheck
+                    style={{
+                      width: '100%', minHeight: 220, resize: 'vertical', boxSizing: 'border-box',
+                      border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px',
+                      background: 'var(--bg)', color: 'var(--text-primary)', fontSize: 13, lineHeight: 1.5,
+                    }} />
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '6px 0 0' }}>
+                    Separate paragraphs with a blank line. Fix any misreads before exporting to Word.
+                  </p>
+                </div>
+              )
+            })()}
+
+            {docxMode !== 'handwriting' && (
+              <p style={{ fontSize: 11.5, color: 'var(--text-dim)', margin: 0, lineHeight: 1.5 }}>
+                <strong style={{ color: 'var(--text-muted)' }}>PowerPoint (.pptx)</strong> places a crisp snapshot of each
+                page on its own slide — looks exactly like the PDF and never needs repair.
+              </p>
+            )}
           </div>
         )}
 
@@ -905,7 +1122,25 @@ export default function ExportDialog({ onClose }: Props) {
               {busy ? 'Extracting…' : <><Download size={15} /> Save as .txt</>}
             </button>
           )}
-          {tab === 'docx' && (
+          {tab === 'docx' && docxMode === 'handwriting' && (
+            <>
+              {hwParas && (
+                <button className="modal-btn-secondary" onClick={recognizeHandwriting} disabled={busy}>
+                  {busy ? 'Working…' : 'Re-read'}
+                </button>
+              )}
+              {!hwParas ? (
+                <button className="modal-btn-primary" onClick={recognizeHandwriting} disabled={busy || !pdfDoc}>
+                  {busy ? 'Reading…' : <><FileType size={15} /> Read Handwriting</>}
+                </button>
+              ) : (
+                <button className="modal-btn-primary" onClick={exportHandwritingDocx} disabled={busy}>
+                  {busy ? 'Exporting…' : <><Download size={15} /> Export to Word</>}
+                </button>
+              )}
+            </>
+          )}
+          {tab === 'docx' && docxMode !== 'handwriting' && (
             <>
               <button className="modal-btn-secondary" onClick={exportPptx} disabled={busy}
                 title="Export one slide per page (page snapshots)">

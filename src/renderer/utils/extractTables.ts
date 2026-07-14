@@ -257,7 +257,9 @@ export interface CellBox { row: number; col: number; x: number; y: number; w: nu
 // the model's view.
 export interface SegmentedPage { cells: CellBox[]; rows: number; cols: number; ink: Uint8Array }
 
-export function segmentTableCells(px: Pix): SegmentedPage {
+// Binarize a rendered page and strip ruled lines / borders / speckle, leaving
+// only the writing. Shared by table-cell and prose-line segmentation.
+function computeInkMask(px: Pix): { ink: Uint8Array; w: number; h: number } {
   const { data, width: w, height: h } = px
   const n = px.channels ?? 4
   const mask = new Uint8Array(w * h)
@@ -323,8 +325,8 @@ export function segmentTableCells(px: Pix): SegmentedPage {
         for (let dx = -1; dx <= 1; dx++) {
           const nx = x + dx
           if (nx < 0 || nx >= w) continue
-          const n = ny * w + nx
-          if (ink[n] && !visited[n]) { visited[n] = 1; queue[tail++] = n }
+          const nn = ny * w + nx
+          if (ink[nn] && !visited[nn]) { visited[nn] = 1; queue[tail++] = nn }
         }
       }
     }
@@ -333,6 +335,30 @@ export function segmentTableCells(px: Pix): SegmentedPage {
       for (let i = 0; i < tail; i++) ink[queue[i]] = 0
     }
   }
+  return { ink, w, h }
+}
+
+// Contiguous runs of a 1-D ink projection above `floor`, merged across small
+// gaps and filtered by minimum length. Shared by row/column/line banding.
+function bandsFromInk(proj: Uint32Array, size: number, floor: number, mergeGap: number, minLen: number): Array<[number, number]> {
+  const runs: Array<[number, number]> = []
+  let start = -1
+  for (let i = 0; i <= size; i++) {
+    const on = i < size && proj[i] > floor
+    if (on && start < 0) start = i
+    else if (!on && start >= 0) { runs.push([start, i - 1]); start = -1 }
+  }
+  const merged: Array<[number, number]> = []
+  for (const r of runs) {
+    const last = merged[merged.length - 1]
+    if (last && r[0] - last[1] <= mergeGap) last[1] = r[1]
+    else merged.push([...r] as [number, number])
+  }
+  return merged.filter(b => b[1] - b[0] + 1 >= minLen)
+}
+
+export function segmentTableCells(px: Pix): SegmentedPage {
+  const { ink, w, h } = computeInkMask(px)
 
   const inkRow = new Uint32Array(h)
   for (let y = 0; y < h; y++) {
@@ -342,23 +368,6 @@ export function segmentTableCells(px: Pix): SegmentedPage {
   }
   // Noise floor keeps speckle and leftover line fragments from bridging gaps.
   const rowFloor = Math.max(2, Math.round(w * 0.004))
-
-  const bandsFromInk = (proj: Uint32Array, size: number, floor: number, mergeGap: number, minLen: number): Array<[number, number]> => {
-    const runs: Array<[number, number]> = []
-    let start = -1
-    for (let i = 0; i <= size; i++) {
-      const on = i < size && proj[i] > floor
-      if (on && start < 0) start = i
-      else if (!on && start >= 0) { runs.push([start, i - 1]); start = -1 }
-    }
-    const merged: Array<[number, number]> = []
-    for (const r of runs) {
-      const last = merged[merged.length - 1]
-      if (last && r[0] - last[1] <= mergeGap) last[1] = r[1]
-      else merged.push([...r] as [number, number])
-    }
-    return merged.filter(b => b[1] - b[0] + 1 >= minLen)
-  }
 
   const rowBands = bandsFromInk(inkRow, h, rowFloor, 3, 5)
   if (rowBands.length === 0) return { cells: [], rows: 0, cols: 0, ink }
@@ -446,6 +455,134 @@ export function segmentTableCells(px: Pix): SegmentedPage {
     if (ci > maxCols) maxCols = ci
   }
   return { cells, rows: rowBands.length, cols: maxCols, ink }
+}
+
+// ── Prose line segmentation (handwriting → Word) ─────────────────────────────
+// Segments a rendered page into text LINES for the TrOCR prose path. Same
+// binarize / line-strip / speckle-clean as table segmentation, then horizontal
+// ink projection → row bands → one crop per line. A wide horizontal gap inside
+// a band splits it into two columns, emitted left-to-right in reading order.
+
+export interface LineBox { x: number; y: number; w: number; h: number; order: number }
+export interface SegmentedLines { lines: LineBox[]; ink: Uint8Array; width: number; height: number }
+
+export function segmentTextLines(px: Pix): SegmentedLines {
+  const { ink, w, h } = computeInkMask(px)
+
+  const inkRow = new Uint32Array(h)
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) if (ink[y * w + x]) inkRow[y]++
+  }
+  const rowFloor = Math.max(2, Math.round(w * 0.004))
+  const rowBands = bandsFromInk(inkRow, h, rowFloor, 3, 5)
+  if (rowBands.length === 0) return { lines: [], ink, width: w, height: h }
+
+  // Column split threshold: conservative, so ordinary word spacing never
+  // splits a line. A gap wider than 12% of the page (and at least a few line
+  // heights) is treated as a column boundary.
+  const bandHeights = rowBands.map(([y1, y2]) => y2 - y1 + 1)
+  const medH = median(bandHeights)
+  const colGap = Math.max(Math.round(w * 0.12), Math.round(medH * 3))
+
+  const lines: LineBox[] = []
+  let order = 0
+  for (const [y1, y2] of rowBands) {
+    const proj = new Uint32Array(w)
+    for (let y = y1; y <= y2; y++) for (let x = 0; x < w; x++) if (ink[y * w + x]) proj[x]++
+    const runs = bandsFromInk(proj, w, 0, Math.max(4, Math.round(w * 0.004)), 2)
+    if (runs.length === 0) continue
+
+    // Merge word runs into clusters, breaking only on a column-wide gap.
+    const clusters: Array<[number, number]> = []
+    let cx1 = runs[0][0], cx2 = runs[0][1]
+    for (let i = 1; i < runs.length; i++) {
+      if (runs[i][0] - cx2 > colGap) { clusters.push([cx1, cx2]); cx1 = runs[i][0] }
+      cx2 = runs[i][1]
+    }
+    clusters.push([cx1, cx2])
+
+    for (const [x1, x2] of clusters) {
+      // Tighten the vertical extent to the ink actually present in this cluster.
+      let a = y2, b = y1
+      for (let y = y1; y <= y2; y++) {
+        for (let x = x1; x <= x2; x++) if (ink[y * w + x]) { if (y < a) a = y; if (y > b) b = y; break }
+      }
+      if (b < a) continue
+      const pad = 3
+      const lx = Math.max(0, x1 - pad)
+      const ly = Math.max(0, a - pad)
+      lines.push({
+        x: lx, y: ly,
+        w: Math.min(w - 1, x2 + pad) - lx + 1,
+        h: Math.min(h - 1, b + pad) - ly + 1,
+        order: order++,
+      })
+    }
+  }
+  return { lines, ink, width: w, height: h }
+}
+
+// Groups recognized lines (in reading order) into paragraphs: a vertical gap
+// wider than ~1.6× the median line height — or a jump back up the page (a new
+// column) — starts a new paragraph. Hyphenated line-breaks are rejoined.
+export function groupLinesToParagraphs(lines: Array<{ text: string; y: number; h: number }>): string[] {
+  const kept = lines.filter(l => l.text.trim().length > 0)
+  if (kept.length === 0) return []
+  const medH = median(kept.map(l => l.h)) || kept[0].h
+  const paras: string[] = []
+  let cur = ''
+  let prev: { text: string; y: number; h: number } | null = null
+  for (const l of kept) {
+    const text = l.text.trim()
+    if (prev) {
+      const gap = l.y - (prev.y + prev.h)
+      const columnJump = l.y + l.h < prev.y // moved up the page
+      if (gap > medH * 1.6 || columnJump) { paras.push(cur); cur = '' }
+    }
+    if (cur === '') cur = text
+    else if (/[-‐-―]$/.test(cur)) cur = cur.replace(/[-‐-―]$/, '') + text
+    else cur += ' ' + text
+    prev = l
+  }
+  if (cur) paras.push(cur)
+  return paras
+}
+
+// ── Azure Document Intelligence (prebuilt-read) → paragraphs ─────────────────
+// prebuilt-read returns document paragraphs (preferred) and, per page, lines.
+// Falls back to grouping page lines with the same gap heuristic as the TrOCR
+// prose path when paragraph objects are absent.
+
+interface AzureReadLine { content?: string; polygon?: number[] }
+interface AzureReadPage { pageNumber?: number; lines?: AzureReadLine[]; unit?: string }
+interface AzureReadParagraph { content?: string; boundingRegions?: Array<{ pageNumber?: number }> }
+interface AzureReadResult { paragraphs?: AzureReadParagraph[]; pages?: AzureReadPage[] }
+
+export function azureReadToParagraphs(result: unknown, wantedPages: number[]): Array<{ page: number; paragraphs: string[] }> {
+  const r = (result ?? {}) as AzureReadResult
+  const out: Array<{ page: number; paragraphs: string[] }> = []
+
+  const byPage = new Map<number, string[]>()
+  for (const p of r.paragraphs ?? []) {
+    const pn = p.boundingRegions?.[0]?.pageNumber
+    const text = (p.content ?? '').trim()
+    if (!pn || !text) continue
+    if (!byPage.has(pn)) byPage.set(pn, [])
+    byPage.get(pn)!.push(text)
+  }
+
+  for (const page of wantedPages) {
+    if (byPage.has(page)) { out.push({ page, paragraphs: byPage.get(page)! }); continue }
+    // Fallback: reconstruct from this page's lines.
+    const pg = (r.pages ?? []).find(p => p.pageNumber === page)
+    const lines = (pg?.lines ?? []).map((l, i) => {
+      const ys = l.polygon && l.polygon.length >= 8 ? [l.polygon[1], l.polygon[3], l.polygon[5], l.polygon[7]] : [i, i]
+      const top = Math.min(...ys), bot = Math.max(...ys)
+      return { text: l.content ?? '', y: top, h: Math.max(0.0001, bot - top) }
+    }).filter(l => l.text.trim().length > 0)
+    out.push({ page, paragraphs: lines.length ? groupLinesToParagraphs(lines) : [] })
+  }
+  return out
 }
 
 // ── Azure Document Intelligence (prebuilt-layout) result mapping ─────────────

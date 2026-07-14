@@ -123,6 +123,7 @@ declare global {
       }>>
 
       exportToDocx: (bytes: ArrayBuffer, fileName: string, mode?: 'text' | 'layout') => Promise<ArrayBuffer>
+      paragraphsToDocx: (pages: Array<{ page: number; paragraphs: string[] }>) => Promise<ArrayBuffer>
       exportToPptx: (bytes: ArrayBuffer, dpi?: number) => Promise<ArrayBuffer>
 
       formsIdentify: (bytes: ArrayBuffer) => Promise<Array<{
@@ -228,6 +229,7 @@ declare global {
       pdf2docxInstall: () => Promise<{ ok: boolean; version: string; log: string }>
 
       azureLayoutAnalyze: (bytes: ArrayBuffer, endpoint: string, key: string, pages: string) => Promise<unknown>
+      azureReadAnalyze: (bytes: ArrayBuffer, endpoint: string, key: string, pages: string) => Promise<unknown>
       pdfiumStyledRuns: (bytes: ArrayBuffer, pageIndex: number) => Promise<Array<{
         text: string; x1: number; y1: number; x2: number; y2: number
         fontName: string; family: string; bold: boolean; italic: boolean

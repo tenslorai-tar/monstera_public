@@ -178,6 +178,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportToDocx: (bytes: ArrayBuffer, fileName: string, mode?: 'text' | 'layout'): Promise<ArrayBuffer> =>
     ipcRenderer.invoke('export:toDocx', bytes, fileName, mode),
 
+  paragraphsToDocx: (pages: Array<{ page: number; paragraphs: string[] }>): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('export:paragraphsToDocx', pages),
+
   exportToPptx: (bytes: ArrayBuffer, dpi?: number): Promise<ArrayBuffer> =>
     ipcRenderer.invoke('export:toPptx', bytes, dpi),
 
@@ -370,6 +373,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   azureLayoutAnalyze: (bytes: ArrayBuffer, endpoint: string, key: string, pages: string): Promise<unknown> =>
     ipcRenderer.invoke('azure:layoutAnalyze', bytes, endpoint, key, pages),
+
+  azureReadAnalyze: (bytes: ArrayBuffer, endpoint: string, key: string, pages: string): Promise<unknown> =>
+    ipcRenderer.invoke('azure:readAnalyze', bytes, endpoint, key, pages),
 
   pdfiumStyledRuns: (bytes: ArrayBuffer, pageIndex: number): Promise<Array<{
     text: string; x1: number; y1: number; x2: number; y2: number
