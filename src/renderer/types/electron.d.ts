@@ -84,7 +84,8 @@ declare global {
         x: number,
         y: number,
         newText: string,
-      ) => Promise<{ bytes: ArrayBuffer; outcome: 'in-place' | 'in-place-form' | 'in-place-extended' | 'substituted' | 'cleared' | 'unchanged'; substituteFamily: string }>
+        bbox?: { x1: number; y1: number; x2: number; y2: number },
+      ) => Promise<{ bytes: ArrayBuffer; outcome: 'in-place' | 'in-place-form' | 'in-place-extended' | 'in-place-substituted' | 'substituted' | 'cleared' | 'unchanged'; substituteFamily: string }>
       pdfaConvert: (
         bytes: ArrayBuffer,
       ) => Promise<{ bytes: ArrayBuffer; report: Array<{ level: string; message: string }>; ok: boolean }>
