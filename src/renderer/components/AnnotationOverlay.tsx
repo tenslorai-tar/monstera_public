@@ -1338,6 +1338,7 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
           // Tell the user which fidelity the edit landed on — a silent substitution
           // used to look like "nothing happened but the font changed".
           if (res.outcome === 'in-place') toast.success('Edited in the original font')
+          else if (res.outcome === 'in-place-form') toast.success('Edited in place (inside form)')
           else if (res.outcome === 'substituted') toast.info(`Original font couldn't render the new text — substituted ${res.substituteFamily || 'a matching font'}`)
           return
         }
