@@ -123,7 +123,7 @@ declare global {
       }>>
 
       exportToDocx: (bytes: ArrayBuffer, fileName: string, mode?: 'text' | 'layout') => Promise<ArrayBuffer>
-      paragraphsToDocx: (pages: Array<{ page: number; paragraphs: string[] }>) => Promise<ArrayBuffer>
+      paragraphsToDocx: (pages: Array<{ page: number; paragraphs?: string[]; markdown?: string }>) => Promise<ArrayBuffer>
       exportToPptx: (bytes: ArrayBuffer, dpi?: number) => Promise<ArrayBuffer>
 
       formsIdentify: (bytes: ArrayBuffer) => Promise<Array<{
@@ -168,6 +168,7 @@ declare global {
       recoveryDiscard: (id: string) => Promise<void>
 
       aiQuery: (apiKey: string, messages: Array<{ role: 'user' | 'assistant'; content: string }>, systemPrompt: string) => Promise<string>
+      aiVisionAnalyze: (apiKey: string, pngBytes: ArrayBuffer, mode: 'text' | 'tables', model?: string) => Promise<string | Array<{ rows: string[][] }>>
 
       importDocx: (bytes: ArrayBuffer) => Promise<ArrayBuffer>
       importXlsx: (bytes: ArrayBuffer) => Promise<ArrayBuffer>

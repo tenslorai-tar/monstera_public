@@ -10,6 +10,7 @@ import * as mupdfOps from './mupdfOps'
 import * as trocr from './trocrEngine'
 import { convertToPdfA } from './pdfaExport'
 import { buildParagraphsDocx, type DocxPage } from './docxParagraphs'
+import { buildVisionRequest, parseTablesResponse, mapAnthropicError, type VisionMode, type VisionTable } from './aiVision'
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
@@ -1710,6 +1711,46 @@ ipcMain.handle('ai:query', async (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const block = (response.content as any[])[0]
   return block?.text ?? ''
+})
+
+// ── AI Vision (Claude) ───────────────────────────────────────────────────────
+// Transcribe ONE rendered page (PNG, already downscaled by the renderer) into
+// markdown prose ('text') or table JSON ('tables'). Highest-accuracy engine for
+// handwriting; uses the user's own Anthropic key (never logged or exported).
+
+ipcMain.handle('ai:visionAnalyze', async (
+  _event,
+  apiKey: string,
+  pngBytes: ArrayBuffer,
+  mode: VisionMode,
+  model?: string,
+): Promise<string | VisionTable[]> => {
+  if (!apiKey || !apiKey.trim()) throw new Error('Add your Anthropic API key in Settings (Ctrl+,) → API keys first.')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const Anthropic = require('@anthropic-ai/sdk')
+  const client = new (Anthropic.default ?? Anthropic)({ apiKey })
+  const req = buildVisionRequest(Buffer.from(pngBytes).toString('base64'), mode, model || 'claude-opus-4-8')
+
+  let response: unknown
+  try {
+    response = await client.messages.create(req)
+  } catch (e) {
+    // Rate limited: retry once after the server-suggested delay, then surface.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((e as any)?.status === 429) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ra = Number((e as any)?.headers?.['retry-after'])
+      await new Promise(r => setTimeout(r, (Number.isFinite(ra) && ra > 0 ? Math.min(ra, 30) : 5) * 1000))
+      try { response = await client.messages.create(req) }
+      catch (e2) { throw new Error(mapAnthropicError(e2)) }
+    } else {
+      throw new Error(mapAnthropicError(e))
+    }
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const block = ((response as any).content as any[]).find(b => b?.type === 'text')
+  const text: string = block?.text ?? ''
+  return mode === 'tables' ? parseTablesResponse(text) : text
 })
 
 // ── DOCX Import (DOCX → PDF) ─────────────────────────────────────────────────

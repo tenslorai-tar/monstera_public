@@ -9,7 +9,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist'
 import type { OcrWord } from './ocrUtils'
 
 export interface TableItem { str: string; x: number; y: number; w: number; h: number }
-export type GridSource = 'text' | 'ocr' | 'azure' | 'trocr'
+export type GridSource = 'text' | 'ocr' | 'azure' | 'trocr' | 'claude'
 
 export interface CellStyle {
   family?: string; size?: number; bold?: boolean; italic?: boolean
@@ -639,6 +639,26 @@ export function azureResultToGrids(result: unknown, wantedPages: number[]): Page
     grids.push({ page: pn, grid: itemsToGrid(items), source: 'azure' })
   }
   return grids
+}
+
+// ── Claude vision (tables mode) result mapping ───────────────────────────────
+// The main process already parsed and validated the JSON into {rows} tables.
+// Concatenate a page's tables (blank spacer row between them, like Azure) into
+// one review grid, padding ragged rows so every row has the same column count.
+export function claudeTablesToGrid(tables: Array<{ rows: string[][] }>): string[][] {
+  const grid: string[][] = []
+  for (const t of tables) {
+    const rows = (t.rows ?? []).filter(r => Array.isArray(r))
+    if (rows.length === 0) continue
+    if (grid.length > 0) grid.push([])
+    const cols = Math.max(...rows.map(r => r.length))
+    for (const r of rows) {
+      const row = r.map(c => (c == null ? '' : String(c)).replace(/\r?\n/g, ' ').trim())
+      while (row.length < cols) row.push('')
+      grid.push(row)
+    }
+  }
+  return trimGrid(grid)
 }
 
 // ── Workbook assembly ─────────────────────────────────────────────────────────

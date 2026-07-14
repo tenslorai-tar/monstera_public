@@ -251,6 +251,7 @@ export function installBrowserApi() {
     formsIdentify: emptyArr,
     spellCheck: emptyArr,
     aiQuery: async () => '',
+    aiVisionAnalyze: async () => { throw new Error('Claude vision analysis runs in the desktop app, not the browser preview') },
     azureLayoutAnalyze: async () => { throw new Error('Azure analysis runs in the desktop app, not the browser preview') },
     azureReadAnalyze: async () => { throw new Error('Azure analysis runs in the desktop app, not the browser preview') },
     pdfiumStyledRuns: async () => [],

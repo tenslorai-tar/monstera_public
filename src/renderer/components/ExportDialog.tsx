@@ -12,8 +12,8 @@ interface Props { onClose: () => void }
 type ExportTab = 'images' | 'text' | 'docx' | 'xlsx' | 'pdfa' | 'annotations'
 type ImageFormat = 'png' | 'jpeg' | 'webp'
 type DocxMode = 'rich' | 'layout' | 'text' | 'handwriting'
-type XlsxEngine = 'auto' | 'ocr' | 'trocr' | 'azure'
-type HwEngine = 'trocr' | 'azure'
+type XlsxEngine = 'auto' | 'ocr' | 'trocr' | 'azure' | 'claude'
+type HwEngine = 'trocr' | 'azure' | 'claude'
 
 export default function ExportDialog({ onClose }: Props) {
   const pdfDoc = usePdfStore(s => s.pdfDoc)
@@ -204,6 +204,34 @@ export default function ExportDialog({ onClose }: Props) {
     return ex.detectRuledColumnSeparators({ data: img.data, width: img.width, height: img.height, channels: 4 }, scale)
   }
 
+  // Render one page to a PNG (longest edge ≤ 1568 px, Claude's optimal size)
+  // for the Claude vision engine. Downscaling happens here so the main process
+  // stays image-agnostic.
+  async function renderPagePngForAi(pageNum: number): Promise<ArrayBuffer> {
+    if (!pdfDoc) throw new Error('No document')
+    const wPt = pageSizes[pageNum - 1]?.width ?? 612
+    const hPt = pageSizes[pageNum - 1]?.height ?? 792
+    const scale = Math.min(200 / 72, 1568 / Math.max(wPt, hPt))
+    const page = await pdfDoc.getPage(pageNum)
+    const vp = page.getViewport({ scale })
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.ceil(vp.width)
+    canvas.height = Math.ceil(vp.height)
+    const ctx = canvas.getContext('2d')!
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    await page.render({ canvas, viewport: vp }).promise
+    const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/png'))
+    if (!blob) throw new Error('Failed to render the page image.')
+    return blob.arrayBuffer()
+  }
+
+  // Cost/consent gate for cloud AI runs: warn once for larger jobs.
+  function confirmClaudeRun(n: number): boolean {
+    if (n <= 3) return true
+    return window.confirm(`${n} page${n !== 1 ? 's' : ''} will be sent to the Anthropic API using your key (typically about a cent or two per page). Continue?`)
+  }
+
   const detectTables = async () => {
     if (!pdfDoc || !pdfBytes) return
     const pages = parsePageNums()
@@ -288,6 +316,30 @@ export default function ExportDialog({ onClose }: Props) {
         setStatus(n > 0
           ? `✓ ${n} page${n !== 1 ? 's' : ''} analyzed — click any cell below to correct it, then export.`
           : 'Azure found no readable content on the selected pages.')
+        setBusy(false)
+        return
+      }
+
+      if (xlsxEngine === 'claude') {
+        const key = settings.anthropicApiKey.trim()
+        if (!key) { setStatus('Error: add your Anthropic API key in Settings (Ctrl+,) → API keys first.'); setBusy(false); return }
+        if (!confirmClaudeRun(pages.length)) { setStatus('Cancelled.'); setBusy(false); return }
+        const out: PageGrid[] = []
+        for (let i = 0; i < pages.length; i++) {
+          if (cancelRef.current) break
+          const p = pages[i]
+          setStatus(`Reading page ${p} with Claude (${i + 1} / ${pages.length})…`)
+          const png = await renderPagePngForAi(p)
+          const result = await window.electronAPI.aiVisionAnalyze(key, png, 'tables', settings.aiModel)
+          const tables = Array.isArray(result) ? result : []
+          out.push({ page: p, grid: ex.claudeTablesToGrid(tables), source: 'claude' })
+        }
+        if (cancelRef.current) { setStatus('Cancelled.'); setBusy(false); return }
+        setGrids(out)
+        const n = out.filter(g => g.grid.length > 0).length
+        setStatus(n > 0
+          ? `✓ ${n} page${n !== 1 ? 's' : ''} read with Claude — click any cell below to correct it, then export.`
+          : 'Claude found no table content on the selected pages.')
         setBusy(false)
         return
       }
@@ -442,6 +494,32 @@ export default function ExportDialog({ onClose }: Props) {
         return
       }
 
+      if (hwEngine === 'claude') {
+        const key = settings.anthropicApiKey.trim()
+        if (!key) { setStatus('Error: add your Anthropic API key in Settings (Ctrl+,) → API keys first.'); setBusy(false); return }
+        if (!confirmClaudeRun(pages.length)) { setStatus('Cancelled.'); setBusy(false); return }
+        const out: Array<{ page: number; paragraphs: string[] }> = []
+        for (let i = 0; i < pages.length; i++) {
+          if (cancelRef.current) break
+          const p = pages[i]
+          setStatus(`Reading page ${p} with Claude (${i + 1} / ${pages.length})…`)
+          const png = await renderPagePngForAi(p)
+          const result = await window.electronAPI.aiVisionAnalyze(key, png, 'text', settings.aiModel)
+          const md = (typeof result === 'string' ? result : '').trim()
+          // Keep markdown structure: split into editable blocks on blank lines
+          // (list items stay grouped). Rejoined with blank lines on export.
+          out.push({ page: p, paragraphs: md ? md.split(/\n{2,}/).map(s => s.replace(/\s+$/, '')).filter(s => s.trim().length > 0) : [] })
+        }
+        if (cancelRef.current) { setStatus('Cancelled.'); setBusy(false); return }
+        setHwParas(out)
+        const n = out.filter(g => g.paragraphs.length > 0).length
+        setStatus(n > 0
+          ? `✓ ${n} page${n !== 1 ? 's' : ''} read with Claude — edit the markdown below, then export to Word.`
+          : 'Claude found no readable text on the selected pages.')
+        setBusy(false)
+        return
+      }
+
       const model = settings.trocrModel === 'small' ? 'small' : 'base'
       const st = await window.electronAPI.trocrStatus(model)
       if (!st.ready) {
@@ -506,7 +584,12 @@ export default function ExportDialog({ onClose }: Props) {
     if (!hwParas) return
     setBusy(true)
     try {
-      const result = await window.electronAPI.paragraphsToDocx(hwParas)
+      // Claude returns markdown: reconstruct it per page so headings and lists
+      // become real Word structure. TrOCR/Azure send plain paragraphs as before.
+      const payload = hwEngine === 'claude'
+        ? hwParas.map(g => ({ page: g.page, markdown: g.paragraphs.join('\n\n') }))
+        : hwParas
+      const result = await window.electronAPI.paragraphsToDocx(payload)
       const savePath = await window.electronAPI.saveFileDialog(`${baseName}.docx`)
       if (savePath) {
         await window.electronAPI.writeFile(savePath, result)
@@ -742,6 +825,7 @@ export default function ExportDialog({ onClose }: Props) {
                 <label className="modal-label" style={{ display: 'block', marginBottom: 6 }}>Handwriting engine</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
                   {([
+                    { id: 'claude', title: 'AI (Claude)',                desc: 'Highest accuracy — reads handwriting into structured markdown (headings, lists, paragraphs) with your Anthropic key. Pages are sent to Anthropic; typically about a cent or two per page.' },
                     { id: 'trocr', title: 'Local handwriting (offline)', desc: 'Reads handwriting with an AI model on this PC — private, no cloud, no key. One-time model download; slower, so check the text before export.' },
                     { id: 'azure', title: 'Azure AI (read, cloud)',      desc: 'Cloud analysis with the best handwriting accuracy. Needs a free Azure Document Intelligence key.' },
                   ] as const).map(opt => (
@@ -791,6 +875,14 @@ export default function ExportDialog({ onClose }: Props) {
                       : 'Not configured yet: add your Azure Document Intelligence endpoint and key in Settings (Ctrl+,) → API keys. The free tier reads only the first 2 pages per call.'}
                   </p>
                 )}
+
+                {hwEngine === 'claude' && (
+                  <p style={{ fontSize: 11, color: settings.anthropicApiKey.trim() ? 'var(--text-muted)' : 'var(--warning)', margin: '0 0 6px' }}>
+                    {settings.anthropicApiKey.trim()
+                      ? '✓ Anthropic key set — pages are sent to Anthropic using your key; typical cost is on the order of a cent or two per page.'
+                      : 'Not configured yet: add your Anthropic API key in Settings (Ctrl+,) → API keys. Pages are sent to Anthropic using your key (about a cent or two per page).'}
+                  </p>
+                )}
               </div>
             )}
 
@@ -799,7 +891,7 @@ export default function ExportDialog({ onClose }: Props) {
               return (
                 <div style={{ marginTop: 4, marginBottom: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, fontSize: 12, color: 'var(--text-muted)' }}>
-                    <span>Engine: <strong style={{ color: 'var(--text-primary)' }}>{hwEngine === 'trocr' ? `Local (${settings.trocrModel === 'small' ? 'fast' : 'best quality'})` : 'Azure AI'}</strong> · Pages: {pageRange}</span>
+                    <span>Engine: <strong style={{ color: 'var(--text-primary)' }}>{hwEngine === 'trocr' ? `Local (${settings.trocrModel === 'small' ? 'fast' : 'best quality'})` : hwEngine === 'claude' ? 'AI (Claude)' : 'Azure AI'}</strong> · Pages: {pageRange}</span>
                     <button onClick={() => { setHwParas(null); setStatus('') }}
                       style={{ border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', borderRadius: 999, padding: '2px 10px', fontSize: 11, cursor: 'pointer' }}>
                       Change options
@@ -855,7 +947,7 @@ export default function ExportDialog({ onClose }: Props) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, fontSize: 12, color: 'var(--text-muted)' }}>
                 <span>
                   Engine: <strong style={{ color: 'var(--text-primary)' }}>
-                    {xlsxEngine === 'auto' ? 'Automatic' : xlsxEngine === 'ocr' ? 'Force OCR' : xlsxEngine === 'trocr' ? `Local handwriting (${settings.trocrModel === 'small' ? 'fast' : 'best quality'})` : 'Azure AI'}
+                    {xlsxEngine === 'auto' ? 'Automatic' : xlsxEngine === 'ocr' ? 'Force OCR' : xlsxEngine === 'trocr' ? `Local handwriting (${settings.trocrModel === 'small' ? 'fast' : 'best quality'})` : xlsxEngine === 'claude' ? 'AI (Claude)' : 'Azure AI'}
                   </strong> · Pages: {pageRange}
                 </span>
                 <button onClick={() => { setGrids(null); setStatus('') }}
@@ -889,6 +981,7 @@ export default function ExportDialog({ onClose }: Props) {
                 { id: 'ocr',   title: 'Force OCR',                    desc: 'Re-reads every page with OCR — use when the embedded text layer is wrong.' },
                 { id: 'trocr', title: 'Local handwriting (offline)',  desc: 'Reads handwriting with an AI model on this PC — private, no cloud, no key. One-time model download; slower, so check the review grid.' },
                 { id: 'azure', title: 'Azure AI (handwriting, cloud)', desc: 'Cloud analysis that reads handwriting and detects table cells precisely. Best accuracy; needs a free Azure Document Intelligence key.' },
+                { id: 'claude', title: 'AI (Claude)',                  desc: 'Highest accuracy — reads handwritten and printed tables with your Anthropic key. Pages are sent to Anthropic; typically about a cent or two per page.' },
               ] as const).map(opt => (
                 <label key={opt.id}
                   style={{
@@ -946,6 +1039,14 @@ export default function ExportDialog({ onClose }: Props) {
                   : 'Not configured yet: add your Azure Document Intelligence endpoint and key in Settings (Ctrl+,) → API keys. The free tier analyzes 500 pages/month (first 2 pages per call).'}
               </p>
             )}
+
+            {xlsxEngine === 'claude' && (
+              <p style={{ fontSize: 11, color: settings.anthropicApiKey.trim() ? 'var(--text-muted)' : 'var(--warning)', margin: '0 0 10px' }}>
+                {settings.anthropicApiKey.trim()
+                  ? '✓ Anthropic key set — pages are sent to Anthropic using your key; typical cost is on the order of a cent or two per page.'
+                  : 'Not configured yet: add your Anthropic API key in Settings (Ctrl+,) → API keys. Pages are sent to Anthropic using your key (about a cent or two per page).'}
+              </p>
+            )}
             </>)}
 
             {grids && (() => {
@@ -993,7 +1094,7 @@ export default function ExportDialog({ onClose }: Props) {
                   )}
                   <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '6px 0 0' }}>
                     {g?.source === 'ocr' ? 'Read with OCR — ' : g?.source === 'azure' ? 'Read with Azure AI — '
-                      : g?.source === 'trocr' ? 'Read with the local handwriting model — ' : ''}
+                      : g?.source === 'trocr' ? 'Read with the local handwriting model — ' : g?.source === 'claude' ? 'Read with Claude — ' : ''}
                     click any cell to correct it before exporting.
                   </p>
                 </div>

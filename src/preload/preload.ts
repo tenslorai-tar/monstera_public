@@ -178,7 +178,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportToDocx: (bytes: ArrayBuffer, fileName: string, mode?: 'text' | 'layout'): Promise<ArrayBuffer> =>
     ipcRenderer.invoke('export:toDocx', bytes, fileName, mode),
 
-  paragraphsToDocx: (pages: Array<{ page: number; paragraphs: string[] }>): Promise<ArrayBuffer> =>
+  paragraphsToDocx: (pages: Array<{ page: number; paragraphs?: string[]; markdown?: string }>): Promise<ArrayBuffer> =>
     ipcRenderer.invoke('export:paragraphsToDocx', pages),
 
   exportToPptx: (bytes: ArrayBuffer, dpi?: number): Promise<ArrayBuffer> =>
@@ -215,6 +215,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     systemPrompt: string,
     model?: string
   ): Promise<string> => ipcRenderer.invoke('ai:query', apiKey, messages, systemPrompt, model),
+
+  aiVisionAnalyze: (
+    apiKey: string,
+    pngBytes: ArrayBuffer,
+    mode: 'text' | 'tables',
+    model?: string,
+  ): Promise<string | Array<{ rows: string[][] }>> =>
+    ipcRenderer.invoke('ai:visionAnalyze', apiKey, pngBytes, mode, model),
 
   // Office import
   importDocx: (bytes: ArrayBuffer): Promise<ArrayBuffer> =>
