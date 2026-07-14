@@ -28,7 +28,7 @@ type DrawPhase =
   | { k: 'textbox-edit'; x: number; y: number; w: number; h: number; text: string }
   | { k: 'typewriter-edit'; x: number; y: number; text: string }
   | { k: 'text-edit-size'; sx: number; sy: number; cx: number; cy: number }
-  | { k: 'text-edit-edit'; x: number; y: number; w: number; h: number; text: string; fontSize?: number; color?: string; bg?: string; fontFamily?: string; fontDataB64?: string; baselineX?: number; baselineY?: number; linePoint?: { x: number; y: number }; editPoint?: { x: number; y: number }; editRect?: { x1: number; y1: number; x2: number; y2: number }; sample?: FontSample }
+  | { k: 'text-edit-edit'; x: number; y: number; w: number; h: number; text: string; fontSize?: number; color?: string; bg?: string; fontFamily?: string; fontDataB64?: string; baselineX?: number; baselineY?: number; linePoint?: { x: number; y: number }; lineBBox?: { x1: number; y1: number; x2: number; y2: number }; editPoint?: { x: number; y: number }; editRect?: { x1: number; y1: number; x2: number; y2: number }; sample?: FontSample }
   | { k: 'callout-size'; sx: number; sy: number; cx: number; cy: number }
   | { k: 'callout-edit'; x: number; y: number; w: number; h: number; text: string; tipSvgX: number; tipSvgY: number }
   | { k: 'poly'; pts: Array<[number, number]>; curX: number; curY: number }
@@ -828,7 +828,10 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
                     setDraw({ k: 'text-edit-edit', x: lx1, y: ly2,
                       w: Math.max(24, lx2 - lx1), h: Math.max(10, ly1 - ly2),
                       text: line.text, fontSize: line.fontSize, color: line.color, fontFamily,
-                      linePoint: { x: px, y: py } })
+                      linePoint: { x: px, y: py },
+                      // PDF page-space bbox of the clicked line — lets the main process
+                      // disambiguate byte-identical duplicate lines by position.
+                      lineBBox: { x1: line.x1, y1: line.y1, x2: line.x2, y2: line.y2 } })
                     return
                   }
                 } catch { /* fall through to the single-object path */ }
@@ -1333,13 +1336,14 @@ export default function AnnotationOverlay({ pageNum, scale, pageW, pageH }: Prop
         const bytes = store.pdfBytes
         if (bytes && await pdfiumReady()) {
           const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
-          const res = await window.electronAPI.pdfiumReplaceLine(ab, pageNum - 1, d.linePoint.x, d.linePoint.y, text)
+          const res = await window.electronAPI.pdfiumReplaceLine(ab, pageNum - 1, d.linePoint.x, d.linePoint.y, text, d.lineBBox)
           await store.applyContentEdit(new Uint8Array(res.bytes), pageNum)
           // Tell the user which fidelity the edit landed on — a silent substitution
           // used to look like "nothing happened but the font changed".
           if (res.outcome === 'in-place') toast.success('Edited in the original font')
           else if (res.outcome === 'in-place-form') toast.success('Edited in place (inside form)')
           else if (res.outcome === 'in-place-extended') toast.success('Edited in place (font extended)')
+          else if (res.outcome === 'in-place-substituted') toast.info(`Edited in place (closest matching font${res.substituteFamily ? ` — ${res.substituteFamily}` : ''} — original font not installed)`)
           else if (res.outcome === 'substituted') toast.info(`Original font couldn't render the new text — substituted ${res.substituteFamily || 'a matching font'}`)
           return
         }

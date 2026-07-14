@@ -28,7 +28,7 @@
  */
 import zlib from 'zlib'
 import { PDFDocument, PDFName, PDFDict, PDFRawStream, PDFRef, PDFArray, PDFNumber } from 'pdf-lib'
-import { buildExtendedFont, type ExtendedFont } from './subsetExtend'
+import { buildExtendedFont, buildSubstituteFont, type ExtendedFont, type SubstituteFont } from './subsetExtend'
 
 // ── Font info ─────────────────────────────────────────────────────────────────
 // All target fonts are Type0 / Identity-H / CIDFontType2: 2-byte codes where the
@@ -224,6 +224,26 @@ function lex(content: string): Tok[] {
   return toks
 }
 
+// ── Affine matrices ─────────────────────────────────────────────────────────
+// PDF row-vector convention: [a b c d e f] maps (x,y) → (a·x+c·y+e, b·x+d·y+f).
+type Mat = [number, number, number, number, number, number]
+const IDENT: Mat = [1, 0, 0, 1, 0, 0]
+// Compose so `b` is applied first, then `a` (matches PDF: cm pre-multiplies CTM,
+// and a form's /Matrix maps form space before the CTM at its Do).
+function mul(a: Mat, b: Mat): Mat {
+  return [
+    a[0] * b[0] + a[2] * b[1],
+    a[1] * b[0] + a[3] * b[1],
+    a[0] * b[2] + a[2] * b[3],
+    a[1] * b[2] + a[3] * b[3],
+    a[0] * b[4] + a[2] * b[5] + a[4],
+    a[1] * b[4] + a[3] * b[5] + a[5],
+  ]
+}
+function applyMat(m: Mat, x: number, y: number): { x: number; y: number } {
+  return { x: m[0] * x + m[2] * y + m[4], y: m[1] * x + m[3] * y + m[5] }
+}
+
 // ── Glyph model ───────────────────────────────────────────────────────────────
 // One shown glyph run = a Tj string (possibly multiple codes) or a TJ array. For a
 // plain Tj, `adv` is the following `tx ty Td` (only real Td advances can be folded).
@@ -242,7 +262,10 @@ interface Glyph {
   tjUnits?: TJUnit[]
   tjKernAfter?: Map<number, number>
 }
-interface Block { glyphs: Glyph[]; text: string }
+// originX/originY: the first glyph's baseline origin in this form's CONTENT space
+// (from the text matrix in effect at that glyph). size: that glyph's font size.
+// Used only for position-based duplicate-line disambiguation.
+interface Block { glyphs: Glyph[]; text: string; originX: number; originY: number; size: number }
 
 function decode2(bytes: string, fwd: Map<number, string>): { chars: string; codes: number[] } {
   let chars = ''
@@ -265,37 +288,67 @@ function extractBlocks(toks: Tok[], fonts: Map<string, FontInfo>): Block[] {
   let lastName = ''
   let n1 = 0, n2 = 0
   let lastStr: Tok | null = null
+  const nums: number[] = []
+  // Text matrix (tm) and text line matrix (tlm) tracked so we can capture each
+  // block's first-glyph origin in form-content space for position disambiguation.
+  let tm: Mat = IDENT
+  let tlm: Mat = IDENT
+  let leading = 0
+  let haveOrigin = false
+  let originX = 0, originY = 0, originSize = 0
 
   const flush = (): void => {
-    if (glyphs.length) blocks.push({ glyphs, text: glyphs.map(g => g.chars).join('') })
+    if (glyphs.length) blocks.push({ glyphs, text: glyphs.map(g => g.chars).join(''), originX, originY, size: originSize })
     glyphs = []
+    haveOrigin = false; originX = 0; originY = 0; originSize = 0
   }
-  const resetOperands = (): void => { n1 = 0; n2 = 0; lastStr = null }
+  const resetOperands = (): void => { n1 = 0; n2 = 0; lastStr = null; nums.length = 0 }
+  const captureOrigin = (): void => {
+    if (haveOrigin) return
+    originX = tm[4]; originY = tm[5]; originSize = curSize; haveOrigin = true
+  }
 
   for (let k = 0; k < toks.length; k++) {
     const t = toks[k]
-    if (t.type === 'num') { n2 = n1; n1 = parseFloat(t.text); continue }
+    if (t.type === 'num') { n2 = n1; n1 = parseFloat(t.text); nums.push(n1); continue }
     if (t.type === 'name') { lastName = t.text; continue }
     if (t.type === 'str') { lastStr = t; continue }
     if (t.type !== 'op') continue
     const op = t.text
-    if (op === 'BT') { flush(); inBT = true; resetOperands(); continue }
+    if (op === 'BT') { flush(); inBT = true; tm = IDENT; tlm = IDENT; resetOperands(); continue }
     if (op === 'ET') { flush(); inBT = false; resetOperands(); continue }
     if (!inBT) { resetOperands(); continue }
     if (op === 'Tf') { curFont = lastName; curSize = n1; resetOperands(); continue }
+    if (op === 'TL') { leading = n1; resetOperands(); continue }
     if (op === 'Td') {
       const g = glyphs[glyphs.length - 1]
       if (g) g.adv = { end: t.end, tx: n2, ty: n1 }
+      tlm = mul(tlm, [1, 0, 0, 1, n2, n1]); tm = tlm
       resetOperands(); continue
     }
-    if (op === 'TD' || op === 'Tm' || op === 'T*') {
+    if (op === 'TD') {
       const g = glyphs[glyphs.length - 1]
       if (g) g.adv = null // non-plain-Td positioning cannot be re-folded
+      leading = -n1
+      tlm = mul(tlm, [1, 0, 0, 1, n2, n1]); tm = tlm
+      resetOperands(); continue
+    }
+    if (op === 'Tm') {
+      const g = glyphs[glyphs.length - 1]
+      if (g) g.adv = null
+      if (nums.length >= 6) { const m = nums.slice(-6) as Mat; tm = m; tlm = m }
+      resetOperands(); continue
+    }
+    if (op === 'T*') {
+      const g = glyphs[glyphs.length - 1]
+      if (g) g.adv = null
+      tlm = mul(tlm, [1, 0, 0, 1, 0, -leading]); tm = tlm
       resetOperands(); continue
     }
     if (op === 'Tj' || op === "'" || op === '"') {
       const map = fonts.get(curFont)
       if (lastStr) {
+        captureOrigin()
         const d = map ? decode2(lastStr.bytes ?? '', map.fwd) : { chars: '�', codes: [] }
         glyphs.push({ chars: d.chars, codes: d.codes, tjStart: lastStr.start, tjEnd: t.end, font: curFont, size: curSize, usesTJ: false, adv: null })
       }
@@ -303,7 +356,7 @@ function extractBlocks(toks: Tok[], fonts: Map<string, FontInfo>): Block[] {
     }
     if (op === 'TJ') {
       const g = reconstructTJ(toks, k, fonts.get(curFont), curFont, curSize)
-      if (g) glyphs.push(g)
+      if (g) { captureOrigin(); glyphs.push(g) }
       resetOperands(); continue
     }
     resetOperands()
@@ -352,6 +405,7 @@ interface FormStream {
   fonts: Map<string, FontInfo>
   content: string
   fontDict: PDFDict | null      // the form's Resources/Font dict, for adding an extended font
+  placements: Mat[]             // form-content → page-space matrices (one per Do that draws it)
 }
 
 function inflateStream(stream: PDFRawStream): Uint8Array {
@@ -392,11 +446,80 @@ function collectForms(page: PDFDict): FormStream[] {
       }
       let content = ''
       try { content = Buffer.from(inflateStream(stream)).toString('latin1') } catch { content = '' }
-      if (content) out.push({ ref, stream, fonts, content, fontDict: fdict })
+      if (content) out.push({ ref, stream, fonts, content, fontDict: fdict, placements: [] })
       visit(fres, depth + 1)
     }
   }
   visit(page.lookupMaybe(PDFName.of('Resources'), PDFDict), 0)
+  return out
+}
+
+// Read the /Matrix of a form XObject stream (defaults to identity).
+function formMatrix(stream: PDFRawStream): Mat {
+  const m = stream.dict.lookupMaybe(PDFName.of('Matrix'), PDFArray)
+  if (!m || m.size() < 6) return IDENT
+  const v: number[] = []
+  for (let i = 0; i < 6; i++) { const n = m.get(i); v.push(n instanceof PDFNumber ? n.asNumber() : (i === 0 || i === 3 ? 1 : 0)) }
+  return v as Mat
+}
+
+// Concatenate a page's content stream bytes (Contents may be a single stream or an array).
+function pageContent(page: PDFDict): string {
+  const c = page.lookup(PDFName.of('Contents'))
+  const streams: PDFRawStream[] = []
+  if (c instanceof PDFRawStream) streams.push(c)
+  else if (c instanceof PDFArray) for (let i = 0; i < c.size(); i++) { const s = c.lookup(i); if (s instanceof PDFRawStream) streams.push(s) }
+  let out = ''
+  for (const s of streams) {
+    try { out += Buffer.from(inflateStream(s)).toString('latin1') + '\n' }
+    catch { try { out += Buffer.from(s.contents).toString('latin1') + '\n' } catch { /* skip */ } }
+  }
+  return out
+}
+
+// Walk page (and nested form) content streams tracking the CTM (q/Q/cm) so every
+// `Do` that draws a Form XObject records the form-content → page-space matrix.
+// A form drawn by several `Do`s (or inside a form itself drawn several times)
+// accumulates several placements; a form with ≠1 placement can't have one instance
+// edited in isolation, so callers treat that as ambiguous.
+function collectPlacements(page: PDFDict): Map<PDFRef, Mat[]> {
+  const out = new Map<PDFRef, Mat[]>()
+  const add = (ref: PDFRef, m: Mat): void => { const a = out.get(ref); if (a) a.push(m); else out.set(ref, [m]) }
+  const visit = (content: string, resources: PDFDict | undefined, ctm: Mat, depth: number, path: Set<PDFRef>): void => {
+    if (!resources || depth > 12) return
+    const xobjs = resources.lookupMaybe(PDFName.of('XObject'), PDFDict)
+    if (!xobjs) return
+    const toks = lex(content)
+    const stack: Mat[] = []
+    let cur = ctm
+    let lastName = ''
+    const nums: number[] = []
+    for (const t of toks) {
+      if (t.type === 'num') { nums.push(parseFloat(t.text)); continue }
+      if (t.type === 'name') { lastName = t.text; continue }
+      if (t.type !== 'op') { if (t.type === 'arr_open' || t.type === 'arr_close' || t.type === 'str') nums.length = 0; continue }
+      const op = t.text
+      if (op === 'q') stack.push(cur)
+      else if (op === 'Q') { const p = stack.pop(); if (p) cur = p }
+      else if (op === 'cm') { if (nums.length >= 6) cur = mul(cur, nums.slice(-6) as Mat) }
+      else if (op === 'Do') {
+        const key = lastName.replace(/^\//, '')
+        const ref = xobjs.get(PDFName.of(key))
+        const st = xobjs.lookup(PDFName.of(key))
+        if (ref instanceof PDFRef && st instanceof PDFRawStream && String(st.dict.lookup(PDFName.of('Subtype'))) === '/Form' && !path.has(ref)) {
+          const placement = mul(cur, formMatrix(st))
+          add(ref, placement)
+          const fres = st.dict.lookupMaybe(PDFName.of('Resources'), PDFDict)
+          let inner = ''
+          try { inner = Buffer.from(inflateStream(st)).toString('latin1') } catch { inner = '' }
+          if (inner) visit(inner, fres, placement, depth + 1, new Set([...path, ref]))
+        }
+      }
+      nums.length = 0
+      lastName = ''
+    }
+  }
+  visit(pageContent(page), page.lookupMaybe(PDFName.of('Resources'), PDFDict), IDENT, 0, new Set())
   return out
 }
 
@@ -447,8 +570,8 @@ function runAdvance(codes: number[], font: FontInfo, fontSize: number): number {
   return w
 }
 
-export type NestedOutcome = 'in-place-form' | 'in-place-extended'
-export interface NestedResult { bytes: Buffer; outcome: NestedOutcome }
+export type NestedOutcome = 'in-place-form' | 'in-place-extended' | 'in-place-substituted'
+export interface NestedResult { bytes: Buffer; outcome: NestedOutcome; substituteFamily?: string }
 
 // Result of routing an edit to one covering block.
 interface Target { form: FormStream; block: Block; localCs: number; localCe: number }
@@ -468,16 +591,33 @@ function occurrences(hay: string, needle: string): number[] {
   return out
 }
 
+// The clicked line's bounding box in PDF PAGE space (y-up), from PDFium's getLineAt.
+// Used only to disambiguate byte-identical duplicate lines by position.
+export interface LineBBox { x1: number; y1: number; x2: number; y2: number }
+
+// Distance of scalar v from the closed interval [lo,hi] (0 inside).
+function distToInterval(v: number, lo: number, hi: number): number {
+  if (v < lo) return lo - v
+  if (v > hi) return v - hi
+  return 0
+}
+
 /**
  * Route the change region [cs,ce) of the visual line `oldT` to the single block
  * that covers it. The visual line PDFium reports may be several blocks (segments)
  * concatenated — possibly with single spaces PDFium inserts between side-by-side
  * columns — so we find the block whose text sits at an oldT offset range fully
  * containing [cs,ce). Throws (→ overlay fallback) when the edit spans a block
- * boundary or the covering block's text is not unique in the document (which could
- * otherwise edit the wrong duplicate line).
+ * boundary.
+ *
+ * Duplicate handling: when the covering block's text is NOT unique in the document,
+ * two lines could be rewritten. If the caller passed the clicked line's page-space
+ * bbox, the duplicate whose form-content origin (mapped to page space via its Form
+ * XObject placement CTM) sits inside/nearest that bbox — by a clear margin — wins.
+ * Without a bbox (or without a clear winner) it still throws, so a duplicate line is
+ * never silently edited.
  */
-function routeEdit(forms: FormStream[], oldT: string, cs: number, ce: number): Target {
+function routeEdit(forms: FormStream[], oldT: string, cs: number, ce: number, bbox?: LineBBox): Target {
   const all: Array<{ form: FormStream; block: Block }> = []
   for (const form of forms) {
     for (const block of extractBlocks(lex(form.content), form.fonts)) {
@@ -500,17 +640,52 @@ function routeEdit(forms: FormStream[], oldT: string, cs: number, ce: number): T
   const whole = cands.find(c => trimEnd(c.block.text) === trimEnd(oldT))
   const chosen = whole ?? cands[cands.length - 1]
 
-  // Uniqueness: the smallest-covering length must be unambiguous, and the chosen
-  // block's text must be unique across the whole document, or a duplicate line
-  // elsewhere could be the one we actually rewrite.
   if (!whole) {
     const minLen = chosen.be - chosen.bs
     const tied = cands.filter(c => (c.be - c.bs) === minLen)
-    if (tied.length > 1) throw new Error('ambiguous: multiple blocks cover the edited region')
+    if (tied.length > 1 && !bbox) throw new Error('ambiguous: multiple blocks cover the edited region')
   }
   const chosenText = trimEnd(chosen.block.text)
   const dupCount = all.filter(x => trimEnd(x.block.text) === chosenText).length
-  if (dupCount > 1) throw new Error('ambiguous: the edited segment text is not unique in the document')
+
+  if (dupCount > 1) {
+    // Byte-identical duplicate line(s) exist. Position-disambiguate among the
+    // covering candidates that share the chosen text, using the passed bbox.
+    if (!bbox) throw new Error('ambiguous: the edited segment text is not unique in the document')
+    const group = cands.filter(c => trimEnd(c.block.text) === chosenText)
+    const scored = group
+      .map(c => {
+        // Only a form drawn by exactly one Do can have this instance edited in
+        // isolation; a form drawn several times shares one stream across copies.
+        if (c.form.placements.length !== 1) return null
+        const p = applyMat(c.form.placements[0], c.block.originX, c.block.originY)
+        const vy = distToInterval(p.y, bbox.y1, bbox.y2)
+        const vx = distToInterval(p.x, bbox.x1, bbox.x2)
+        return { c, vy, vx }
+      })
+      .filter((x): x is { c: Cand; vy: number; vx: number } => x !== null)
+    if (scored.length === 0) throw new Error('ambiguous duplicate line: no isolable placement to match against the clicked position')
+    // Vertical position dominates (lines stack vertically); horizontal breaks ties
+    // for side-by-side duplicates.
+    scored.sort((a, b) => (a.vy - b.vy) || (a.vx - b.vx))
+    const win = scored[0]
+    const lineH = Math.max(bbox.y2 - bbox.y1, chosen.block.size || 0, 1)
+    const lineW = Math.max(bbox.x2 - bbox.x1, 1)
+    if (win.vy > lineH + 4 || win.vx > lineW + 8) {
+      throw new Error('ambiguous duplicate line: best candidate is not near the clicked position')
+    }
+    if (scored.length > 1) {
+      const next = scored[1]
+      const vyMargin = Math.max(lineH * 0.5, 3)
+      const vxMargin = Math.max(lineW * 0.3, 3)
+      const clearOnY = next.vy - win.vy >= vyMargin
+      const clearOnX = Math.abs(next.vy - win.vy) < 1 && next.vx - win.vx >= vxMargin
+      if (!clearOnY && !clearOnX) {
+        throw new Error('ambiguous duplicate line: no clear positional winner near the clicked position')
+      }
+    }
+    return { form: win.c.form, block: win.c.block, localCs: cs - win.c.bs, localCe: ce - win.c.bs }
+  }
 
   return { form: chosen.form, block: chosen.block, localCs: cs - chosen.bs, localCe: ce - chosen.bs }
 }
@@ -523,13 +698,13 @@ function routeEdit(forms: FormStream[], oldT: string, cs: number, ce: number): T
  * falls back to the overlay path and never writes a wrong edit.
  */
 export async function replaceNestedLineAt(
-  bytes: Buffer, pageIndex: number, oldText: string, newText: string,
+  bytes: Buffer, pageIndex: number, oldText: string, newText: string, bbox?: LineBBox,
 ): Promise<Buffer> {
-  return (await replaceNestedLineAtEx(bytes, pageIndex, oldText, newText)).bytes
+  return (await replaceNestedLineAtEx(bytes, pageIndex, oldText, newText, bbox)).bytes
 }
 
 export async function replaceNestedLineAtEx(
-  bytes: Buffer, pageIndex: number, oldText: string, newText: string,
+  bytes: Buffer, pageIndex: number, oldText: string, newText: string, bbox?: LineBBox,
 ): Promise<NestedResult> {
   const oldT = trimEnd(oldText)
   const newT = trimEnd(newText.replace(/[\r\n]+/g, ' '))
@@ -539,6 +714,8 @@ export async function replaceNestedLineAtEx(
   const doc = await PDFDocument.load(bytes, { updateMetadata: false })
   const page = doc.getPage(pageIndex).node
   const forms = collectForms(page)
+  const placements = collectPlacements(page)
+  for (const form of forms) form.placements = placements.get(form.ref) ?? []
 
   // Minimal changed character range via common prefix/suffix (mirrors replaceLineAt).
   let p = 0
@@ -550,9 +727,10 @@ export async function replaceNestedLineAtEx(
   const ce = oldT.length - sfx
   const newMiddle = newT.slice(p, newT.length - sfx)
 
-  const target = routeEdit(forms, oldT, cs, ce)
+  const target = routeEdit(forms, oldT, cs, ce, bbox)
   const extCache = new Map<string, ExtendedFont | null>()
-  const edit = await buildBlockEdit(doc, target, newMiddle, extCache)
+  const subCache = new Map<string, SubstituteFont | null>()
+  const edit = await buildBlockEdit(doc, target, newMiddle, extCache, subCache)
 
   const before = target.form.content.slice(0, edit.removeStart)
   const after = target.form.content.slice(edit.removeEnd)
@@ -575,13 +753,14 @@ export async function replaceNestedLineAtEx(
   // in that case and only require the stream to re-parse cleanly.
   await verifyEdit(outBytes, pageIndex, edit.expectBlockText, edit.outcome)
 
-  return { bytes: outBytes, outcome: edit.outcome }
+  return { bytes: outBytes, outcome: edit.outcome, substituteFamily: edit.substituteFamily }
 }
 
-interface BlockEdit { removeStart: number; removeEnd: number; replacement: string; outcome: NestedOutcome; expectBlockText: string }
+interface BlockEdit { removeStart: number; removeEnd: number; replacement: string; outcome: NestedOutcome; expectBlockText: string; substituteFamily?: string }
 
 async function buildBlockEdit(
-  doc: PDFDocument, target: Target, newMiddle: string, extCache: Map<string, ExtendedFont | null>,
+  doc: PDFDocument, target: Target, newMiddle: string,
+  extCache: Map<string, ExtendedFont | null>, subCache: Map<string, SubstituteFont | null>,
 ): Promise<BlockEdit> {
   const { form, block, localCs, localCe } = target
   const blockText = block.text
@@ -649,12 +828,26 @@ async function buildBlockEdit(
     return { removeStart, removeEnd, replacement, outcome: 'in-place-form', expectBlockText }
   }
 
-  // Subset-font glyph extension: embed the matching installed full font, reference
-  // it in this form's resources, and render ONLY this run through it.
-  const ext = await buildExtendedFont(doc, fontInfo.fontData, fontInfo.baseName, editText, extCache)
-  if (!ext) throw new Error('replacement uses characters absent from the embedded font and no matching installed font covers them')
-  const extKey = ensureExtendedFontKey(doc, form, ext.ref)
+  // Tier 1 — subset-font glyph EXTENSION: the embedded font's own family IS
+  // installed, so embed that installed cut and render ONLY this run through it. The
+  // edited run is visually the same typeface as the rest of the line.
+  let ext: ExtendedFont | null = await buildExtendedFont(doc, fontInfo.fontData, fontInfo.baseName, editText, extCache)
+  let outcome: NestedOutcome = 'in-place-extended'
+  let substituteFamily: string | undefined
 
+  // Tier 2 — closest metric-compatible SUBSTITUTE (XChange-style): the family is not
+  // installed, so pick the nearest installed font of the same serif class + style
+  // that fully covers the new glyphs. Visually differs but stays class/style-
+  // consistent, and the caller toasts it explicitly (never silent).
+  if (!ext) {
+    const sub = await buildSubstituteFont(doc, fontInfo.fontData, fontInfo.baseName, editText, subCache)
+    if (!sub) throw new Error('replacement uses characters absent from the embedded font and no confident matching installed font covers them')
+    ext = sub.font
+    outcome = 'in-place-substituted'
+    substituteFamily = sub.family
+  }
+
+  const extKey = ensureExtendedFontKey(doc, form, ext.ref)
   const newHex = ext.encodeHex(editText)
   const oldWidth = runAdvance(oldCodes, fontInfo, fontSize)
   const newWidth = ext.widthOfText(editText, fontSize)
@@ -667,7 +860,7 @@ async function buildBlockEdit(
   // the tail shifts by exactly the width delta of the changed run.
   const foldOp = followedByKeptGlyph ? `${fmtNum(oldWidth + delta)} 0 Td` : ''
   const replacement = [tj, foldOp].filter(Boolean).join('\n')
-  return { removeStart, removeEnd, replacement, outcome: 'in-place-extended', expectBlockText }
+  return { removeStart, removeEnd, replacement, outcome, expectBlockText, substituteFamily }
 }
 
 // Rewrite a single TJ operator, preserving untouched glyphs' kerning numbers.
@@ -746,7 +939,7 @@ async function verifyEdit(outBytes: Buffer, pageIndex: number, expectBlockText: 
   } catch (e) {
     throw new Error('post-edit verification failed: saved PDF did not re-parse (' + (e as Error).message + ')')
   }
-  if (outcome === 'in-place-extended' || !marker) return
+  if (outcome === 'in-place-extended' || outcome === 'in-place-substituted' || !marker) return
   for (const form of forms) {
     for (const block of extractBlocks(lex(form.content), form.fonts)) {
       if (block.text.replace(/\s+/g, ' ').includes(marker)) return
