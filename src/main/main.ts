@@ -4,7 +4,7 @@ import fs from 'fs'
 import * as nativeBins from './nativeBins'
 import * as pdfium from './pdfiumEngine'
 import { replaceNestedLineAtEx } from './nestedTextEdit'
-import { resolveSystemFont } from './systemFonts'
+import { resolveSystemFont, ensureMetricIndex, warmSubstituteFontIndex } from './systemFonts'
 import { resolveSubstituteBytes } from './subsetExtend'
 import * as spell from './spell'
 import * as mupdfOps from './mupdfOps'
@@ -450,6 +450,7 @@ ipcMain.handle('recovery:discard', (_e, id: string) => {
 app.whenReady().then(() => {
   createWindow()
   ensureMupdfChild()   // warm up the off-thread MuPDF worker so it's ready on first use
+  warmSubstituteFontIndex(app.getPath('userData'))  // parse installed-font metrics in the background (cached across launches)
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
@@ -771,6 +772,9 @@ ipcMain.handle('pdfium:replaceLine', async (
         ?? resolveSystemFont(hit.fontName, meta.bold, meta.italic)
       if (named) { substitute = named.data; substituteFamily = meta.family }
       else {
+        // Await the background-warmed metric index so this (synchronous) resolve
+        // doesn't build hundreds of fonts inline on the IPC thread on first use.
+        if (hit.fontData.length > 0) await ensureMetricIndex().catch(() => { /* falls back to a sync build */ })
         const metric = hit.fontData.length > 0
           ? resolveSubstituteBytes(Buffer.from(hit.fontData), hit.fontName, newText)
           : null

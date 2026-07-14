@@ -22,7 +22,7 @@
 import { readFileSync } from 'fs'
 import type { PDFDocument, PDFRef } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
-import { resolveSystemFont, pickSubstituteFontPath, classifySerif, type SubstituteQuery } from './systemFonts'
+import { resolveSystemFont, pickSubstituteFontPath, ensureMetricIndex, classifySerif, type SubstituteQuery } from './systemFonts'
 
 interface FontkitFont {
   fonts?: FontkitFont[]
@@ -231,6 +231,10 @@ export async function buildSubstituteFont(
   const key = `${prof.serif ? 's' : 'x'}|${prof.bold ? 'b' : ''}|${prof.italic ? 'i' : ''}`
   const cached = cache.get(key) as SubstituteFontInternal | null | undefined
   if (cached !== undefined && cached !== null && cached.covers(neededText)) return cached
+
+  // Await the (background-warmed) metric index so the first substitute edit doesn't
+  // build it synchronously on the IPC thread; concurrent calls share one build.
+  await ensureMetricIndex().catch(() => { /* pickSubstituteFontPath falls back to a sync build */ })
 
   const q: SubstituteQuery = {
     serif: prof.serif, bold: prof.bold, italic: prof.italic, weight: prof.weight,
