@@ -3,7 +3,7 @@ import path from 'path'
 import fs from 'fs'
 import * as nativeBins from './nativeBins'
 import * as pdfium from './pdfiumEngine'
-import { replaceNestedLineAt } from './nestedTextEdit'
+import { replaceNestedLineAtEx } from './nestedTextEdit'
 import { resolveSystemFont } from './systemFonts'
 import * as spell from './spell'
 import * as mupdfOps from './mupdfOps'
@@ -754,10 +754,11 @@ ipcMain.handle('pdfium:replaceLine', async (
   // normal engine (which throws for nested text → renderer overlay fallback).
   if (hit && hit.found && !hit.editable) {
     try {
-      const edited = await replaceNestedLineAt(buf, pageIndex, hit.text, newText)
+      const edited = await replaceNestedLineAtEx(buf, pageIndex, hit.text, newText)
+      const out = edited.bytes
       return {
-        bytes: edited.buffer.slice(edited.byteOffset, edited.byteOffset + edited.byteLength),
-        outcome: 'in-place-form' as const,
+        bytes: out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength),
+        outcome: edited.outcome,
         substituteFamily: '',
       }
     } catch { /* fall through to the standard engine path */ }

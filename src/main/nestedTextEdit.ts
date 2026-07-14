@@ -1,35 +1,69 @@
 /**
- * Nested (Form XObject) in-place text editing.
+ * Nested (Form XObject) in-place text editing — v2.
  *
  * PDFium's FPDFPage_GenerateContent only rewrites TOP-LEVEL page content, so text
- * that design tools (Canva, InDesign, Office) wrap in a Form XObject can be READ
- * by PDFium but never SAVED in place — replaceLineAt throws and the tool drops to a
- * cover-and-replace overlay in a substitute font. This module does the write PDFium
- * can't: direct content-stream surgery on the Form XObject stream via pdf-lib, so
- * the edited word keeps the document's own embedded font byte-for-byte.
+ * that design tools (Canva, InDesign, Office/LibreOffice) wrap in a Form XObject can
+ * be READ by PDFium but never SAVED in place — replaceLineAt throws and the tool
+ * drops to a cover-and-replace overlay in a substitute font. This module does the
+ * write PDFium can't: direct content-stream surgery on the Form XObject stream via
+ * pdf-lib, so the edited word keeps the document's own embedded font byte-for-byte.
  *
- * Read path stays PDFium (hit-testing / line text). This module only needs the old
- * line text (from PDFium) and the new text; it finds the unique text block in a
- * form stream, rewrites the minimal changed glyph run, and folds the removed
- * positioning into one Td so untouched glyphs render pixel-identically.
+ * v2 adds three capabilities over v1's "one BT…ET block whose text equals the whole
+ * line":
+ *   1. Segmented-line matching — a visual line PDFium reports (e.g. "Emem NDON,Msc.")
+ *      is often several Tj/TJ segments, possibly across several BT…ET blocks or even
+ *      separate Form XObjects (side-by-side columns PDFium merges into one line). We
+ *      route the edit to the single segment/block that actually covers the changed
+ *      region and leave the others untouched.
+ *   2. TJ-array handling — kerned TJ arrays are decoded per glyph and rewritten with
+ *      the untouched glyphs' kerning numbers preserved.
+ *   3. Subset-font glyph extension — when the replacement needs a character absent
+ *      from the embedded subset, embed the matching INSTALLED full font as a new
+ *      resource and switch to it (Tf) for only the edited run (see subsetExtend.ts).
  *
- * Conservative by contract: ANY uncertainty throws, so the caller's existing
- * substitute/overlay fallback still applies and a wrong edit is never written.
+ * Read path stays PDFium (hit-testing / line text). Conservative by contract: ANY
+ * uncertainty throws, so the caller's existing overlay fallback still applies and a
+ * wrong edit is never written. Every successful surgery is re-parsed before return
+ * to assert the intended text is present.
  */
 import zlib from 'zlib'
 import { PDFDocument, PDFName, PDFDict, PDFRawStream, PDFRef, PDFArray, PDFNumber } from 'pdf-lib'
+import { buildExtendedFont, type ExtendedFont } from './subsetExtend'
 
 // ── Font info ─────────────────────────────────────────────────────────────────
 // All target fonts are Type0 / Identity-H / CIDFontType2: 2-byte codes where the
-// code equals the CID equals the glyph id. The /ToUnicode CMap (bfchar + bfrange)
-// gives code → unicode (inverting it gives unicode → code for the replacement);
-// the descendant CIDFont's /W array (default /DW) gives code → glyph advance in
-// 1000-unit text space, needed to shift the rest of the line by the width delta.
+// code equals the CID equals the glyph id. The /ToUnicode CMap gives code → unicode
+// (inverting it gives unicode → code for the replacement); the descendant CIDFont's
+// /W array (default /DW) gives code → glyph advance in 1000-unit text space.
 interface FontInfo {
   fwd: Map<number, string>
   inv: Map<string, number[]>
   widths: Map<number, number>
   dw: number
+  fontData: Buffer          // embedded FontFile2/FontFile3 program (for family resolution)
+  baseName: string          // PostScript base name (e.g. "CAAAAA+Calibri")
+}
+
+function readFontProgram(fd: PDFDict): Buffer {
+  const df = fd.lookupMaybe(PDFName.of('DescendantFonts'), PDFArray)
+  const cid = df?.lookup(0)
+  if (!(cid instanceof PDFDict)) return Buffer.alloc(0)
+  const desc = cid.lookupMaybe(PDFName.of('FontDescriptor'), PDFDict)
+  if (!desc) return Buffer.alloc(0)
+  for (const k of ['FontFile2', 'FontFile3', 'FontFile']) {
+    const ff = desc.lookup(PDFName.of(k))
+    if (ff instanceof PDFRawStream) {
+      try { return Buffer.from(zlib.inflateSync(Buffer.from(ff.contents))) }
+      catch { try { return Buffer.from(ff.contents) } catch { return Buffer.alloc(0) } }
+    }
+  }
+  return Buffer.alloc(0)
+}
+
+function baseNameOf(fd: PDFDict): string {
+  const bf = fd.lookup(PDFName.of('BaseFont'))
+  if (bf instanceof PDFName) return String(bf).replace(/^\//, '')
+  return ''
 }
 
 function parseFont(fd: PDFDict): FontInfo | null {
@@ -62,12 +96,10 @@ function parseFont(fd: PDFDict): FontInfo | null {
   }
   if (!fwd.size) return null
   const { widths, dw } = parseCidWidths(fd)
-  return { fwd, inv, widths, dw }
+  return { fwd, inv, widths, dw, fontData: readFontProgram(fd), baseName: baseNameOf(fd) }
 }
 
 // Read code → advance from the descendant CIDFont's /W array (and default /DW).
-// /W is [ c [w1 w2 …]  cFirst cLast w  … ] — a run either lists per-glyph widths
-// after a start code, or a shared width for an inclusive code range.
 function parseCidWidths(fd: PDFDict): { widths: Map<number, number>; dw: number } {
   const widths = new Map<number, number>()
   let dw = 1000
@@ -193,13 +225,12 @@ function lex(content: string): Tok[] {
 }
 
 // ── Glyph model ───────────────────────────────────────────────────────────────
-// One shown glyph run = a string operand rendered by Tj. In the target document
-// each Tj shows exactly one 2-byte code, and a `tx ty Td` between consecutive Tj's
-// carries all positioning. We record each glyph's Tj byte range, the following Td
-// (end offset + tx/ty), active font, decoded unicode, and raw codes so the line
-// text can be rebuilt/diffed and re-encoded. A glyph whose following op is NOT a
-// plain Td has adv=null, barring it from a replaced span (only real Td advances can
-// be re-folded). usesTJ marks array shows, which are never edited here.
+// One shown glyph run = a Tj string (possibly multiple codes) or a TJ array. For a
+// plain Tj, `adv` is the following `tx ty Td` (only real Td advances can be folded).
+// For TJ, tjUnits holds one entry per 2-byte code and tjKernAfter holds the kerning
+// number appearing AFTER that unit, so an in-array edit can re-emit the array with
+// untouched kerns preserved.
+interface TJUnit { code: number; char: string }
 interface Glyph {
   chars: string
   codes: number[]
@@ -208,6 +239,8 @@ interface Glyph {
   size: number
   usesTJ: boolean
   adv: { end: number; tx: number; ty: number } | null
+  tjUnits?: TJUnit[]
+  tjKernAfter?: Map<number, number>
 }
 interface Block { glyphs: Glyph[]; text: string }
 
@@ -279,8 +312,8 @@ function extractBlocks(toks: Tok[], fonts: Map<string, FontInfo>): Block[] {
   return blocks
 }
 
-// Decode a TJ array into a single glyph carrying its concatenated text (for line
-// matching only); usesTJ bars it from being edited (fold math assumes Tj+Td).
+// Decode a TJ array into a single glyph carrying its per-unit codes/chars and the
+// kern number after each unit, so an in-array edit can preserve untouched kerns.
 function reconstructTJ(toks: Tok[], opIndex: number, map: FontInfo | undefined, font: string, size: number): Glyph | null {
   let j = opIndex - 1
   while (j >= 0 && toks[j].type !== 'arr_close') j--
@@ -289,13 +322,37 @@ function reconstructTJ(toks: Tok[], opIndex: number, map: FontInfo | undefined, 
   while (j >= 0 && toks[j].type !== 'arr_open') j--
   if (j < 0) return null
   const open = j
+  const units: TJUnit[] = []
+  const kernAfter = new Map<number, number>()
   let chars = ''
-  for (let m = open + 1; m < close; m++) if (toks[m].type === 'str' && map) chars += decode2(toks[m].bytes ?? '', map.fwd).chars
-  return { chars, codes: [], tjStart: toks[open].start, tjEnd: toks[opIndex].end, font, size, usesTJ: true, adv: null }
+  const codes: number[] = []
+  for (let m = open + 1; m < close; m++) {
+    const tk = toks[m]
+    if (tk.type === 'str' && map) {
+      const d = decode2(tk.bytes ?? '', map.fwd)
+      for (let u = 0; u < d.codes.length; u++) {
+        units.push({ code: d.codes[u], char: d.chars[u] ?? '�' })
+        codes.push(d.codes[u])
+      }
+      chars += d.chars
+    } else if (tk.type === 'num') {
+      if (units.length) kernAfter.set(units.length - 1, parseFloat(tk.text))
+    }
+  }
+  return {
+    chars, codes, tjStart: toks[open].start, tjEnd: toks[opIndex].end,
+    font, size, usesTJ: true, adv: null, tjUnits: units, tjKernAfter: kernAfter,
+  }
 }
 
 // ── Form traversal ────────────────────────────────────────────────────────────
-interface FormStream { ref: PDFRef; stream: PDFRawStream; fonts: Map<string, FontInfo>; content: string }
+interface FormStream {
+  ref: PDFRef
+  stream: PDFRawStream
+  fonts: Map<string, FontInfo>
+  content: string
+  fontDict: PDFDict | null      // the form's Resources/Font dict, for adding an extended font
+}
 
 function inflateStream(stream: PDFRawStream): Uint8Array {
   const filter = stream.dict.lookup(PDFName.of('Filter'))
@@ -323,7 +380,7 @@ function collectForms(page: PDFDict): FormStream[] {
       seen.add(ref)
       const fres = stream.dict.lookupMaybe(PDFName.of('Resources'), PDFDict)
       const fonts = new Map<string, FontInfo>()
-      const fdict = fres?.lookupMaybe(PDFName.of('Font'), PDFDict)
+      const fdict = fres?.lookupMaybe(PDFName.of('Font'), PDFDict) ?? null
       if (fdict) {
         for (const fk of fdict.keys()) {
           const fd = fdict.lookupMaybe(fk, PDFDict)
@@ -335,7 +392,7 @@ function collectForms(page: PDFDict): FormStream[] {
       }
       let content = ''
       try { content = Buffer.from(inflateStream(stream)).toString('latin1') } catch { content = '' }
-      if (content) out.push({ ref, stream, fonts, content })
+      if (content) out.push({ ref, stream, fonts, content, fontDict: fdict })
       visit(fres, depth + 1)
     }
   }
@@ -343,7 +400,7 @@ function collectForms(page: PDFDict): FormStream[] {
   return out
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 const trimEnd = (s: string): string => s.replace(/[ \t]+$/, '')
 
 function fmtNum(v: number): string {
@@ -351,13 +408,21 @@ function fmtNum(v: number): string {
   return v.toFixed(6).replace(/0+$/, '').replace(/\.$/, '')
 }
 
+// Encode `text` to the block's own Identity-H codes. Prefer, per character, a code
+// actually used in this block (proves the glyph is present in the embedded subset);
+// fall back to any inverse-map code. Returns null if ANY character is absent from
+// the embedded font — the caller then tries subset extension.
 function encodeCodes(text: string, block: Block, font: FontInfo): { hex: string; codes: number[] } | null {
-  // Prefer, per character, a code actually used in this block (proves the glyph is
-  // present in the embedded subset); fall back to any inverse-map code.
   const used = new Map<string, number>()
   for (const g of block.glyphs) {
-    if (g.usesTJ || g.chars.length !== 1 || g.codes.length !== 1) continue
-    if (!used.has(g.chars)) used.set(g.chars, g.codes[0])
+    if (g.usesTJ) {
+      for (const u of g.tjUnits ?? []) if (u.char.length === 1 && !used.has(u.char)) used.set(u.char, u.code)
+      continue
+    }
+    // map each character of a multi-code Tj to its code
+    if (g.codes.length === g.chars.length) {
+      for (let i = 0; i < g.chars.length; i++) if (!used.has(g.chars[i])) used.set(g.chars[i], g.codes[i])
+    }
   }
   let hex = ''
   const codes: number[] = []
@@ -382,34 +447,98 @@ function runAdvance(codes: number[], font: FontInfo, fontSize: number): number {
   return w
 }
 
+export type NestedOutcome = 'in-place-form' | 'in-place-extended'
+export interface NestedResult { bytes: Buffer; outcome: NestedOutcome }
+
+// Result of routing an edit to one covering block.
+interface Target { form: FormStream; block: Block; localCs: number; localCe: number }
+
+// Find every occurrence of `needle` in `hay` (may overlap-free is fine; needles
+// here are whole segments so occurrences don't overlap themselves).
+function occurrences(hay: string, needle: string): number[] {
+  const out: number[] = []
+  if (!needle) return out
+  let from = 0
+  for (;;) {
+    const idx = hay.indexOf(needle, from)
+    if (idx < 0) break
+    out.push(idx)
+    from = idx + 1
+  }
+  return out
+}
+
+/**
+ * Route the change region [cs,ce) of the visual line `oldT` to the single block
+ * that covers it. The visual line PDFium reports may be several blocks (segments)
+ * concatenated — possibly with single spaces PDFium inserts between side-by-side
+ * columns — so we find the block whose text sits at an oldT offset range fully
+ * containing [cs,ce). Throws (→ overlay fallback) when the edit spans a block
+ * boundary or the covering block's text is not unique in the document (which could
+ * otherwise edit the wrong duplicate line).
+ */
+function routeEdit(forms: FormStream[], oldT: string, cs: number, ce: number): Target {
+  const all: Array<{ form: FormStream; block: Block }> = []
+  for (const form of forms) {
+    for (const block of extractBlocks(lex(form.content), form.fonts)) {
+      if (block.text.trim() !== '') all.push({ form, block })
+    }
+  }
+  interface Cand { form: FormStream; block: Block; bs: number; be: number }
+  const cands: Cand[] = []
+  for (const { form, block } of all) {
+    const bt = trimEnd(block.text)
+    for (const bs of occurrences(oldT, bt)) {
+      const be = bs + bt.length
+      if (bs <= cs && ce <= be) cands.push({ form, block, bs, be })
+    }
+  }
+  if (cands.length === 0) throw new Error('no form block covers the edited region (edit may span a segment boundary)')
+
+  // Prefer a block equal to the whole line; else the smallest covering block.
+  cands.sort((a, b) => (b.be - b.bs) - (a.be - a.bs))
+  const whole = cands.find(c => trimEnd(c.block.text) === trimEnd(oldT))
+  const chosen = whole ?? cands[cands.length - 1]
+
+  // Uniqueness: the smallest-covering length must be unambiguous, and the chosen
+  // block's text must be unique across the whole document, or a duplicate line
+  // elsewhere could be the one we actually rewrite.
+  if (!whole) {
+    const minLen = chosen.be - chosen.bs
+    const tied = cands.filter(c => (c.be - c.bs) === minLen)
+    if (tied.length > 1) throw new Error('ambiguous: multiple blocks cover the edited region')
+  }
+  const chosenText = trimEnd(chosen.block.text)
+  const dupCount = all.filter(x => trimEnd(x.block.text) === chosenText).length
+  if (dupCount > 1) throw new Error('ambiguous: the edited segment text is not unique in the document')
+
+  return { form: chosen.form, block: chosen.block, localCs: cs - chosen.bs, localCe: ce - chosen.bs }
+}
+
+// ── Public API ────────────────────────────────────────────────────────────────
 /**
  * Rewrite the visual line whose PDFium text is `oldText` to `newText`, editing the
- * Form XObject content stream directly. Returns the saved PDF bytes. Throws on any
- * condition it can't handle with certainty (unmatched/ambiguous line, TJ layout,
- * non-Td positioning, missing glyph code, multi-font edit span, non-Flate stream),
- * so the caller falls back to the overlay path and never writes a wrong edit.
+ * Form XObject content stream directly. Returns the saved PDF bytes plus which path
+ * was taken. Throws on any condition it can't handle with certainty, so the caller
+ * falls back to the overlay path and never writes a wrong edit.
  */
 export async function replaceNestedLineAt(
   bytes: Buffer, pageIndex: number, oldText: string, newText: string,
 ): Promise<Buffer> {
+  return (await replaceNestedLineAtEx(bytes, pageIndex, oldText, newText)).bytes
+}
+
+export async function replaceNestedLineAtEx(
+  bytes: Buffer, pageIndex: number, oldText: string, newText: string,
+): Promise<NestedResult> {
   const oldT = trimEnd(oldText)
   const newT = trimEnd(newText.replace(/[\r\n]+/g, ' '))
-  if (oldT === newT) return Buffer.from(bytes)
+  if (oldT === newT) return { bytes: Buffer.from(bytes), outcome: 'in-place-form' }
   if (oldT.trim() === '' || newT.trim() === '') throw new Error('empty source/target line')
 
   const doc = await PDFDocument.load(bytes, { updateMetadata: false })
   const page = doc.getPage(pageIndex).node
   const forms = collectForms(page)
-
-  const hits: Array<{ form: FormStream; block: Block }> = []
-  for (const form of forms) {
-    for (const block of extractBlocks(lex(form.content), form.fonts)) {
-      if (trimEnd(block.text) === oldT) hits.push({ form, block })
-    }
-  }
-  if (hits.length === 0) throw new Error('line not found in any form stream')
-  if (hits.length > 1) throw new Error('ambiguous line: matches multiple form blocks')
-  const { form, block } = hits[0]
 
   // Minimal changed character range via common prefix/suffix (mirrors replaceLineAt).
   let p = 0
@@ -421,42 +550,77 @@ export async function replaceNestedLineAt(
   const ce = oldT.length - sfx
   const newMiddle = newT.slice(p, newT.length - sfx)
 
-  // Map the character range onto glyphs, expanding to whole-glyph boundaries.
+  const target = routeEdit(forms, oldT, cs, ce)
+  const extCache = new Map<string, ExtendedFont | null>()
+  const edit = await buildBlockEdit(doc, target, newMiddle, extCache)
+
+  const before = target.form.content.slice(0, edit.removeStart)
+  const after = target.form.content.slice(edit.removeEnd)
+  const glue = edit.replacement && after && !WS.has(after[0]) ? '\n' : ''
+  const newContent = before + edit.replacement + glue + after
+
+  const deflated = zlib.deflateSync(Buffer.from(newContent, 'latin1'))
+  const newStream = PDFRawStream.of(target.form.stream.dict, new Uint8Array(deflated))
+  newStream.dict.set(PDFName.of('Length'), doc.context.obj(deflated.length))
+  newStream.dict.set(PDFName.of('Filter'), PDFName.of('FlateDecode'))
+  doc.context.assign(target.form.ref, newStream)
+
+  const outBytes = Buffer.from(await doc.save({ useObjectStreams: false }))
+
+  // Self-verification: re-parse the saved bytes and confirm some block on the page
+  // now decodes to the intended block text. A stream we can't prove correct must not
+  // be returned (the caller's overlay fallback is safer than a corrupt write). For an
+  // extended-font run the new glyphs come from a DIFFERENT font resource (not this
+  // form's subset), so the re-decode can't read them back — skip the text assertion
+  // in that case and only require the stream to re-parse cleanly.
+  await verifyEdit(outBytes, pageIndex, edit.expectBlockText, edit.outcome)
+
+  return { bytes: outBytes, outcome: edit.outcome }
+}
+
+interface BlockEdit { removeStart: number; removeEnd: number; replacement: string; outcome: NestedOutcome; expectBlockText: string }
+
+async function buildBlockEdit(
+  doc: PDFDocument, target: Target, newMiddle: string, extCache: Map<string, ExtendedFont | null>,
+): Promise<BlockEdit> {
+  const { form, block, localCs, localCe } = target
+  const blockText = block.text
+  const expectBlockText = blockText.slice(0, localCs) + newMiddle + blockText.slice(localCe)
+
+  // Map the local char range onto glyphs, expanding to whole-glyph boundaries.
   const spans: Array<{ g: Glyph; start: number; end: number }> = []
   let acc = 0
   for (const g of block.glyphs) { spans.push({ g, start: acc, end: acc + g.chars.length }); acc += g.chars.length }
 
-  let gStart = spans.findIndex(s => s.end > cs && s.start < Math.max(cs + 1, ce))
+  let gStart = spans.findIndex(s => s.end > localCs && s.start < Math.max(localCs + 1, localCe))
   if (gStart < 0) {
-    gStart = spans.findIndex(s => s.end === cs)
-    if (gStart < 0) gStart = spans.findIndex(s => s.start >= cs)
+    gStart = spans.findIndex(s => s.end === localCs)
+    if (gStart < 0) gStart = spans.findIndex(s => s.start >= localCs)
   }
   if (gStart < 0) throw new Error('could not map edit start to a glyph')
   let gEnd = gStart
-  while (gEnd < spans.length && spans[gEnd].start < ce) gEnd++
+  while (gEnd < spans.length && spans[gEnd].start < localCe) gEnd++
   if (gEnd <= gStart) gEnd = gStart + 1
 
-  const first = spans[gStart]
-  const last = spans[gEnd - 1]
-  const editText = oldT.slice(first.start, cs) + newMiddle + oldT.slice(ce, last.end)
-
-  const changed = spans.slice(gStart, gEnd).map(s => s.g)
-  if (changed.some(g => g.usesTJ)) throw new Error('line uses TJ arrays; cannot edit in place')
-  const font = changed[0].font
-  if (!font || changed.some(g => g.font !== font)) throw new Error('edit spans multiple fonts')
+  const changed = spans.slice(gStart, gEnd)
+  const font = changed[0].g.font
+  if (changed.some(s => s.g.font !== font)) throw new Error('edit spans multiple fonts')
   const fontInfo = form.fonts.get(font)
   if (!fontInfo) throw new Error('font is not an Identity-H Type0 font')
-  const fontSize = changed[0].size
+  const fontSize = changed[0].g.size
   if (!(fontSize > 0)) throw new Error('missing font size for the edited run')
 
-  const encoded = encodeCodes(editText, block, fontInfo)
-  if (encoded === null) throw new Error('replacement uses characters absent from the embedded font')
+  // TJ path: only when the whole change is inside a single TJ operator.
+  if (changed.some(s => s.g.usesTJ)) {
+    if (changed.length !== 1 || !changed[0].g.usesTJ) throw new Error('edit spans a TJ array and other runs; cannot edit in place')
+    return buildTJEdit(changed[0], localCs, localCe, newMiddle, block, fontInfo, expectBlockText)
+  }
 
-  // Replace the changed glyphs (and every Td among them and the one leading to the
-  // first kept glyph) with a single Tj, then a Td that advances by the NEW run's
-  // width — so glyphs after the edit shift by the width delta and keep their
-  // spacing (never overlapping, never leaving a spurious gap). Only horizontal
-  // single-baseline layout is handled; a vertical advance in the run bails out.
+  // Plain Tj path (v1 behaviour, extended with subset-font fallback).
+  const first = spans[gStart]
+  const last = spans[gEnd - 1]
+  const editText = blockText.slice(first.start, localCs) + newMiddle + blockText.slice(localCe, last.end)
+
   const followedByKeptGlyph = gEnd < spans.length
   const removeStart = first.g.tjStart
   for (let gi = gStart; gi < gEnd - 1; gi++) {
@@ -474,21 +638,119 @@ export async function replaceNestedLineAt(
     removeEnd = exitAdv ? exitAdv.end : last.g.tjEnd
   }
 
-  const foldX = runAdvance(encoded.codes, fontInfo, fontSize)
-  const tj = editText ? `<${encoded.hex}> Tj` : ''
-  const foldOp = followedByKeptGlyph ? `${fmtNum(foldX)} 0 Td` : ''
+  const oldCodes = changed.flatMap(s => s.g.codes)
+
+  const enc = encodeCodes(editText, block, fontInfo)
+  if (enc !== null) {
+    const foldX = runAdvance(enc.codes, fontInfo, fontSize)
+    const tj = editText ? `<${enc.hex}> Tj` : ''
+    const foldOp = followedByKeptGlyph ? `${fmtNum(foldX)} 0 Td` : ''
+    const replacement = [tj, foldOp].filter(Boolean).join('\n')
+    return { removeStart, removeEnd, replacement, outcome: 'in-place-form', expectBlockText }
+  }
+
+  // Subset-font glyph extension: embed the matching installed full font, reference
+  // it in this form's resources, and render ONLY this run through it.
+  const ext = await buildExtendedFont(doc, fontInfo.fontData, fontInfo.baseName, editText, extCache)
+  if (!ext) throw new Error('replacement uses characters absent from the embedded font and no matching installed font covers them')
+  const extKey = ensureExtendedFontKey(doc, form, ext.ref)
+
+  const newHex = ext.encodeHex(editText)
+  const oldWidth = runAdvance(oldCodes, fontInfo, fontSize)
+  const newWidth = ext.widthOfText(editText, fontSize)
+  const delta = newWidth - oldWidth
+  // Restore the original font resource after the run so following glyphs (if any)
+  // keep rendering in the document's own subset font.
+  const restore = `/${font} ${fmtNum(fontSize)} Tf`
+  const tj = `/${extKey} ${fmtNum(fontSize)} Tf\n<${newHex}> Tj\n${restore}`
+  // When kept glyphs follow, keep their ORIGINAL inter-glyph Td but insert a fold so
+  // the tail shifts by exactly the width delta of the changed run.
+  const foldOp = followedByKeptGlyph ? `${fmtNum(oldWidth + delta)} 0 Td` : ''
   const replacement = [tj, foldOp].filter(Boolean).join('\n')
+  return { removeStart, removeEnd, replacement, outcome: 'in-place-extended', expectBlockText }
+}
 
-  const before = form.content.slice(0, removeStart)
-  const after = form.content.slice(removeEnd)
-  const glue = replacement && after && !WS.has(after[0]) ? '\n' : ''
-  const newContent = before + replacement + glue + after
+// Rewrite a single TJ operator, preserving untouched glyphs' kerning numbers.
+function buildTJEdit(
+  span: { g: Glyph; start: number; end: number }, localCs: number, localCe: number,
+  newMiddle: string, block: Block, fontInfo: FontInfo, expectBlockText: string,
+): BlockEdit {
+  const g = span.g
+  const units = g.tjUnits ?? []
+  const kernAfter = g.tjKernAfter ?? new Map<number, number>()
+  // Char offsets are unit indices only when every unit maps to exactly one char.
+  if (units.some(u => u.char.length !== 1)) throw new Error('TJ contains multi-char (ligature) units; cannot edit in place')
+  const a = localCs - span.start
+  const b = localCe - span.start
+  if (a < 0 || b > units.length || a > b) throw new Error('TJ edit range out of bounds')
 
-  const deflated = zlib.deflateSync(Buffer.from(newContent, 'latin1'))
-  const newStream = PDFRawStream.of(form.stream.dict, new Uint8Array(deflated))
-  newStream.dict.set(PDFName.of('Length'), doc.context.obj(deflated.length))
-  newStream.dict.set(PDFName.of('Filter'), PDFName.of('FlateDecode'))
-  doc.context.assign(form.ref, newStream)
+  const encMiddle = newMiddle ? encodeCodes(newMiddle, block, fontInfo) : { hex: '', codes: [] }
+  if (encMiddle === null) throw new Error('TJ replacement uses characters absent from the embedded font')
 
-  return Buffer.from(await doc.save({ useObjectStreams: false }))
+  type Elem = { s: true; hex: string } | { s: false; num: number }
+  const elems: Elem[] = []
+  let acc = ''
+  const flush = (): void => { if (acc) { elems.push({ s: true, hex: acc }); acc = '' } }
+  const hexOf = (code: number): string => code.toString(16).toUpperCase().padStart(4, '0')
+
+  for (let i = 0; i < a; i++) {
+    acc += hexOf(units[i].code)
+    if (i < a - 1 && kernAfter.has(i)) { flush(); elems.push({ s: false, num: kernAfter.get(i)! }) }
+  }
+  flush()
+  if (encMiddle.hex) elems.push({ s: true, hex: encMiddle.hex })
+  for (let i = b; i < units.length; i++) {
+    acc += hexOf(units[i].code)
+    if (i < units.length - 1 && kernAfter.has(i)) { flush(); elems.push({ s: false, num: kernAfter.get(i)! }) }
+  }
+  flush()
+
+  const arr = elems.map(e => (e.s ? `<${e.hex}>` : ` ${fmtNum(e.num)} `)).join('')
+  const replacement = `[${arr}] TJ`
+  return { removeStart: g.tjStart, removeEnd: g.tjEnd, replacement, outcome: 'in-place-form', expectBlockText }
+}
+
+// Add `ref` to the form's Resources/Font dict under a fresh key and return it.
+// Reuses an existing key that already points at this ref (idempotent within a save).
+function ensureExtendedFontKey(doc: PDFDocument, form: FormStream, ref: PDFRef): string {
+  let dict = form.fontDict
+  if (!dict) {
+    // No Font resource dict on this form — create one on its Resources.
+    const res = form.stream.dict.lookupMaybe(PDFName.of('Resources'), PDFDict)
+    if (!res) throw new Error('form has no Resources dict for an extended font')
+    dict = doc.context.obj({}) as PDFDict
+    res.set(PDFName.of('Font'), dict)
+    form.fontDict = dict
+  }
+  for (const k of dict.keys()) {
+    if (dict.get(k) === ref) return k.toString().replace(/^\//, '')
+  }
+  let i = 0
+  let key = `MEx${i}`
+  const has = (name: string): boolean => dict!.keys().some(k => k.toString() === `/${name}`)
+  while (has(key)) { i++; key = `MEx${i}` }
+  dict.set(PDFName.of(key), ref)
+  return key
+}
+
+// Re-open the saved bytes and assert some block on the page decodes to the intended
+// block text. Guards against a splice that silently produced the wrong glyphs. For
+// extended-font edits the new glyphs live in a separate font resource this decoder
+// doesn't map, so we only require a clean re-parse (no text assertion).
+async function verifyEdit(outBytes: Buffer, pageIndex: number, expectBlockText: string, outcome: NestedOutcome): Promise<void> {
+  const marker = trimEnd(expectBlockText).replace(/\s+/g, ' ').trim()
+  let forms: FormStream[]
+  try {
+    const doc = await PDFDocument.load(outBytes, { updateMetadata: false })
+    forms = collectForms(doc.getPage(pageIndex).node)
+  } catch (e) {
+    throw new Error('post-edit verification failed: saved PDF did not re-parse (' + (e as Error).message + ')')
+  }
+  if (outcome === 'in-place-extended' || !marker) return
+  for (const form of forms) {
+    for (const block of extractBlocks(lex(form.content), form.fonts)) {
+      if (block.text.replace(/\s+/g, ' ').includes(marker)) return
+    }
+  }
+  throw new Error('post-edit verification failed: edited text not found in any re-parsed form block')
 }

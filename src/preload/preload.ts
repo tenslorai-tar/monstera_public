@@ -109,7 +109,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     x: number,
     y: number,
     newText: string,
-  ): Promise<{ bytes: ArrayBuffer; outcome: 'in-place' | 'in-place-form' | 'substituted' | 'cleared' | 'unchanged'; substituteFamily: string }> =>
+  ): Promise<{ bytes: ArrayBuffer; outcome: 'in-place' | 'in-place-form' | 'in-place-extended' | 'substituted' | 'cleared' | 'unchanged'; substituteFamily: string }> =>
     ipcRenderer.invoke('pdfium:replaceLine', bytes, pageIndex, x, y, newText),
   pdfaConvert: (
     bytes: ArrayBuffer,
