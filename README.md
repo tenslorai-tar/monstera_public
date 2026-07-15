@@ -4,8 +4,9 @@ A feature-rich desktop PDF editor for Windows, built with Electron + React + Typ
 It aims for PDF-XChange-level capability: viewing, page management, annotations, forms,
 OCR, redaction, digital signatures, in-place text editing, and export to Office formats.
 
-> Personal-use project. Not distributed. See `CLAUDE.md` for the full feature checklist
-> and per-feature test steps.
+> Personal-use project, shared publicly for code review. See `CLAUDE.md` for the full
+> feature checklist and per-feature test steps. Licensed AGPL-3.0 (see `LICENSE`) —
+> inherited from its `mupdf` and `@cantoo/pdf-lib` dependencies.
 
 ## Tech stack
 
