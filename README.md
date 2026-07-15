@@ -10,6 +10,12 @@ OCR, redaction, digital signatures, in-place text editing, and export to Office 
 > feature checklist and per-feature test steps. Licensed AGPL-3.0 (see `LICENSE`) —
 > inherited from its `mupdf` and `@cantoo/pdf-lib` dependencies.
 
+## Demo
+
+[![Monstera PDF Editor demo video](https://ememndon.com/posters/monstera.png)](https://ememndon.com/videos/monstera.mp4)
+
+*Click the thumbnail to play the demo video.*
+
 ## Screenshots
 
 <!-- TODO: replace with real screenshots — see screenshots/README.md for what to capture -->
