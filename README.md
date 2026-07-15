@@ -1,5 +1,7 @@
 # Monstera PDF Editor
 
+[![CI](https://github.com/tenslorai-tar/monstera_public/actions/workflows/ci.yml/badge.svg)](https://github.com/tenslorai-tar/monstera_public/actions/workflows/ci.yml)
+
 A feature-rich desktop PDF editor for Windows, built with Electron + React + TypeScript.
 It aims for PDF-XChange-level capability: viewing, page management, annotations, forms,
 OCR, redaction, digital signatures, in-place text editing, and export to Office formats.
@@ -7,6 +9,73 @@ OCR, redaction, digital signatures, in-place text editing, and export to Office 
 > Personal-use project, shared publicly for code review. See `CLAUDE.md` for the full
 > feature checklist and per-feature test steps. Licensed AGPL-3.0 (see `LICENSE`) —
 > inherited from its `mupdf` and `@cantoo/pdf-lib` dependencies.
+
+## Screenshots
+
+<!-- TODO: replace with real screenshots — see screenshots/README.md for what to capture -->
+| Viewer & annotations | Forms & OCR |
+|---|---|
+| ![Viewer](screenshots/viewer.png) | ![Forms](screenshots/forms.png) |
+
+## Features
+
+- **Viewer** — continuous multi-page scroll, lazy rendering, zoom (fit-width/page,
+  presets, Ctrl+scroll), thumbnail sidebar, full-text search with regex/case/whole-word
+  options, recent-files list.
+- **Page management** — delete, rotate, reorder (drag-and-drop), duplicate, insert
+  blank/from-PDF/from-image, extract, merge, split, undo/redo.
+- **Annotations** — highlight/underline/strikethrough, freehand ink, shapes, text boxes,
+  sticky notes, stamps, typewriter, image insertion — all saved as real PDF annotation
+  objects that round-trip through save/reopen.
+- **Forms** — fill AcroForm fields (text, checkbox, radio, dropdown, listbox, signature),
+  create new fields, flatten to static content, export field data (JSON/XFDF).
+- **OCR** — Tesseract.js for scanned pages, invisible searchable text layer, 13 languages;
+  TrOCR (local, offline) and Azure Document Intelligence for handwriting.
+- **Redaction** — true content removal via MuPDF (not just a cosmetic overlay), solid or
+  blurred style.
+- **Security** — AES-256 password protection, permission flags, PDF/A-2b export.
+- **Signatures** — draw/upload/type visible signature stamps; PKCS#7/CMS digital signing
+  with .pfx/.p12 certificates, signature verification.
+- **In-place text editing** — line-level content-stream editing (not overlay-and-cover)
+  that preserves font, colour, and kerning of untouched text on the same line.
+- **Export** — PNG/JPEG/WebP, plain text, Word (.docx), PowerPoint (.pptx), and Excel
+  (.xlsx) with table detection, OCR, and styled output (fonts, borders, merged headers)
+  matching the source PDF.
+- **Bookmarks, multi-tab documents, split view, crash recovery, autosave, dark/light
+  theme**, and more — see `CLAUDE.md` for the full checklist.
+
+## Architecture
+
+Monstera runs as a standard Electron app, but the interesting part is that no single PDF
+library does everything — four engines are combined, each used for what it's best at:
+
+```
+renderer (React, browser context)
+  │  window.electronAPI.*  (contextBridge, no direct Node access)
+  ▼
+preload (contextBridge surface)
+  │  ipcRenderer.invoke(...)
+  ▼
+main process (Node.js)
+  ├─ pdf.js        — page rendering to canvas, text layer, search
+  ├─ pdf-lib        — annotation/form objects, page ops, metadata (JS, portable)
+  ├─ mupdf (WASM)   — redaction, outline, appearance streams, print rasterization
+  │                   (fitz coordinate space is y-down — flipped at every boundary
+  │                   that crosses into/out of PDF space)
+  └─ PDFium (koffi FFI) — line-level in-place text editing directly against the
+                           content stream; diffs old/new line text and rewrites only
+                           the changed run so untouched runs keep their exact font
+                           bytes
+```
+
+Why split across engines instead of picking one: `pdf.js` has no write path, `pdf-lib`
+has no rasterizer, and neither can do true (non-cosmetic) redaction or content-stream-level
+text editing — MuPDF and PDFium fill those gaps respectively. The main process owns all of
+them; the renderer never touches PDF bytes directly, only IPC calls.
+
+Electron security baseline: `contextIsolation: true`, `nodeIntegration: false`, in-app
+navigation blocked, external links forced to the OS browser, saves are atomic
+(temp-file + rename with retry).
 
 ## Tech stack
 
