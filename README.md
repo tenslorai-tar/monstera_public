@@ -12,7 +12,7 @@ OCR, redaction, digital signatures, in-place text editing, and export to Office 
 
 ## Demo
 
-[![Monstera PDF Editor demo video](https://ememndon.com/posters/monstera.png)](https://ememndon.com/videos/monstera.mp4)
+[![Monstera PDF Editor demo video](screenshots/monstera.png)](https://ememndon.com/videos/monstera.mp4)
 
 *Click the thumbnail to play the demo video.*
 
